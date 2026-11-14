@@ -38,18 +38,10 @@ import type {
   Winner,
 } from '../types.ts';
 import { GROUND } from '../types.ts';
-import { findPath } from './pathfinding.ts';
+import { findPath, STEP_DX, STEP_DY } from './pathfinding.ts';
 import { cellIndex, isFree, occIndex, unitById } from './state.ts';
 
 type Events = BattleEvent[] | undefined;
-
-/**
- * Step directions seen from player 0 (forward = towards higher rows): straight steps
- * first, then diagonals. Player 1 uses the same list rotated by 180 degrees, so ties
- * are resolved mirror-symmetrically.
- */
-const STEP_DX = [0, -1, 1, 0, -1, 1, -1, 1];
-const STEP_DY = [1, 0, 0, -1, 1, 1, -1, -1];
 
 /** Advances the battle by one tick. Pass `events` to collect what happened for rendering. */
 export function stepTick(b: BattleState, events?: BattleEvent[]): void {
