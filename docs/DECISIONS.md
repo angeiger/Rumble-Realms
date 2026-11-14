@@ -316,3 +316,44 @@ Andreas möchte einen eigenen Tab, in dem man sein Deck aus vier Karten zusammen
   Level ausprobiert werden können.
 - **M4:** Sammlung, Kopien, Gold, Level-Up und Upgrades mit Kosten, serverseitig abgesichert (SPEC 7 und 14).
   Der freie Testmodus entfällt dann.
+
+### D-049 Assassine: langsamere Aufladung, Sprung zum Startfeld des Ziels (ändert SPEC 5.3, ersetzt D-028 teilweise)
+
+- Die Aufladung dauert 2,5 s statt 2 s (20 % langsamer).
+- Das Sprungziel steht schon bei Kampfbeginn fest: der Bodengegner, der dann am weitesten vom Assassinen entfernt
+  steht. Der Assassine springt zu dem Feld, auf dem dieser Gegner **bei Kampfbeginn stand**, nicht dorthin, wo er
+  sich gerade befindet. Ist das Feld belegt, landet er auf dem nächstgelegenen freien Bodenfeld.
+- Nach dem Sprung gilt die normale Zielwahl (nächster Gegner).
+
+### D-050 Lauf-TNT: Zündung mit Lunte (ändert SPEC 5.3, ersetzt D-028 teilweise)
+
+- Kommt ein Bodengegner bis auf 2 Felder heran, beginnt die Lunte zu brennen (1,25 s, halb so lang wie die
+  Aufladung des Assassinen). Das TNT läuft dabei weiter auf sein Ziel zu.
+- Ist beim Ende der Lunte noch ein Gegner im Umkreis, explodiert es. Verlässt der letzte Gegner den Umkreis vorher,
+  erlischt die Lunte und beginnt beim nächsten Mal von vorn.
+- Stirbt das TNT durch Schaden, explodiert es wie bisher sofort.
+- Das Tempo bleibt vorerst bei 1,5 Feldern/s (zweitschnellste Einheit); Feinabstimmung in der Balance-Runde.
+
+### D-051 M3 in zwei Schritten
+
+- **M3a:** die Änderungswünsche D-042 bis D-046, D-049, D-050 und der Deck-Tab (D-048). Eigenes Gate, damit
+  Andreas die geänderten Regeln früh testen kann.
+- **M3b:** Sonderkarten, alle Upgrades, die übrigen sechs Einheiten, Bots „Mittel“ und „Schwer“, Balance-Tool
+  und erste Balance-Runde.
+
+### D-052 Aufstellung im Detail (zu D-042)
+
+- Pro Spieler werden die Karten in drei Gruppen aufgestellt, von der Grundlinie aus: zuerst alle „hinten“-Einheiten,
+  davor alle „Mitte“-Einheiten, davor alle „vorne“-Einheiten. Jede Gruppe beginnt in der ersten Reihe, die die
+  Gruppe dahinter nicht benutzt.
+- Innerhalb der Gruppe sucht jede Einheit das nächste freie Feld ihrer Ebene zur Zufallsspalte ihrer Karte in der
+  ersten Reihe der Gruppe. Reihenabstand zählt dabei doppelt, die Formation wird also eher breit als tief.
+- Die Aufstellung wird nach jedem Pick für die ganze Armee neu berechnet; Einheiten früherer Picks können dabei
+  nach vorne rücken. Was nicht mehr in die eigene Hälfte passt, verfällt.
+
+### D-053 Wachsende Armee im Detail (zu D-046)
+
+- Die Engine merkt sich jede gespielte Karte des Matches samt ihrer Zufallsspalte. Zu Beginn jeder Runde stehen
+  alle früheren Karten beider Spieler wieder mit vollen LP auf dem Feld, schon während des Drafts sichtbar.
+- Jede Einheit behält ihre Nummer über alle Runden. Die Verarbeitungsreihenfolge im Kampf folgt damit der
+  Reihenfolge, in der die Karten gespielt wurden.
