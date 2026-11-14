@@ -306,3 +306,13 @@ Die Änderung braucht eine neue `ENGINE_VERSION`.
 ### D-047 Grafik später überarbeiten
 
 Die Platzhalter-Figuren bleiben vorerst. Eine Überarbeitung der Grafik ist für M6 (Feinschliff) vorgesehen.
+
+### D-048 Deck-Tab schon in M3, Fortschritt wie geplant in M4
+
+Andreas möchte einen eigenen Tab, in dem man sein Deck aus vier Karten zusammenstellt und Karten levelt.
+
+- **M3:** Deck-Tab mit freier Wahl von vier der verfügbaren Karten; das Deck wird im Browser gespeichert.
+  Das Kartenlevel lässt sich dort vorläufig frei einstellen (Testmodus, ohne Kosten), damit alle Einheiten und
+  Level ausprobiert werden können.
+- **M4:** Sammlung, Kopien, Gold, Level-Up und Upgrades mit Kosten, serverseitig abgesichert (SPEC 7 und 14).
+  Der freie Testmodus entfällt dann.
