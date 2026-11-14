@@ -1,0 +1,6 @@
+{
+  "app.title": "Rumble Realms",
+  "title.underConstruction": "Das Spiel ist noch im Aufbau (Meilenstein M0).",
+  "title.engineVersion": "Engine v{version}",
+  "title.buildId": "Build {id}"
+}

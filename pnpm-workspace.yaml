@@ -2,3 +2,7 @@ packages:
   - 'apps/*'
   - 'packages/*'
   - 'tools/*'
+
+# esbuild arrives via tsx and works without its install script (it only verifies the binary).
+ignoredBuiltDependencies:
+  - esbuild

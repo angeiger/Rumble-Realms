@@ -1,4 +1,6 @@
 import js from '@eslint/js';
+import globals from 'globals';
+import reactHooks from 'eslint-plugin-react-hooks';
 import tseslint from 'typescript-eslint';
 
 const ALLOWED_MATH = ['abs', 'min', 'max', 'sign', 'trunc', 'floor', 'ceil', 'imul', 'clz32'];
@@ -41,7 +43,16 @@ export default tseslint.config(
   js.configs.recommended,
   tseslint.configs.recommended,
   engineDeterminismConfig,
-  // Package B (apps/web): add blocks here, after the engine rules, e.g. React plugin rules
-  // and browser globals (`globals.browser`) scoped to `apps/web/**`. Node globals for
-  // tools/*: scope `globals.node` to `tools/**`. Never extend the engine block's files.
+  {
+    files: ['apps/web/src/**/*.{ts,tsx}'],
+    languageOptions: { globals: globals.browser },
+  },
+  {
+    files: ['apps/web/*.ts', 'apps/web/scripts/**/*.mjs', 'tools/**/*.{ts,mjs}'],
+    languageOptions: { globals: globals.node },
+  },
+  {
+    files: ['apps/web/**/*.{ts,tsx}'],
+    extends: [reactHooks.configs.flat.recommended],
+  },
 );

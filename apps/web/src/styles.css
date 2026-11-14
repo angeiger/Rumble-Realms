@@ -1,0 +1,86 @@
+:root {
+  --team-blue: #3b78f0;
+  --team-blue-dark: #1d3f9c;
+  --team-orange: #ff6a2b;
+  --outline: #14172e;
+  --cream: #fff6d6;
+  --font-display: 'Lilita One', 'Impact', sans-serif;
+  --font-text: 'Nunito Variable', system-ui, sans-serif;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  overflow: hidden;
+  overscroll-behavior: none;
+  background: var(--team-blue-dark);
+  color: var(--cream);
+  font-family: var(--font-text);
+  -webkit-user-select: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
+}
+
+.title-screen {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: space-between;
+  padding: calc(24px + env(safe-area-inset-top)) calc(24px + env(safe-area-inset-right))
+    calc(16px + env(safe-area-inset-bottom)) calc(24px + env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 50% 35%, var(--team-blue) 0%, transparent 65%),
+    linear-gradient(180deg, var(--team-blue-dark) 0%, #122a6b 100%);
+  text-align: center;
+}
+
+.title-center {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+}
+
+.logo {
+  margin: 0;
+  max-width: 7ch;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: clamp(56px, 20vw, 96px);
+  line-height: 0.95;
+  text-wrap: balance;
+  color: var(--team-orange);
+  -webkit-text-stroke: 0.14em var(--outline);
+  paint-order: stroke fill;
+  text-shadow: 0 0.06em 0 var(--outline);
+  transform: rotate(-3deg);
+}
+
+.hint {
+  margin: 0;
+  max-width: 28ch;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.35;
+}
+
+.version {
+  font-size: 0.75rem;
+  opacity: 0.7;
+}
