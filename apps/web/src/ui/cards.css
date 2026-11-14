@@ -38,7 +38,7 @@
 
 .card__art {
   position: relative;
-  height: 58px;
+  height: 88px;
   display: grid;
   place-items: center;
   border: 3px solid var(--outline);
@@ -47,7 +47,7 @@
 }
 
 .card .figure {
-  height: 54px;
+  height: 78px;
   width: auto;
   aspect-ratio: 100 / 110;
   filter: drop-shadow(0 2px 0 rgb(20 23 46 / 0.35));
@@ -67,7 +67,7 @@
   border-radius: 8px;
   background: var(--cream);
   font-family: var(--font-display);
-  font-size: 0.62rem;
+  font-size: 0.74rem;
   line-height: 1.1;
 }
 
@@ -80,7 +80,7 @@
   right: 3px;
   bottom: 3px;
   background: var(--gold);
-  font-size: 0.78rem;
+  font-size: 0.95rem;
 }
 
 .card__info {
@@ -105,9 +105,9 @@
 }
 
 .card__name {
-  padding: 3px 2px 2px;
+  padding: 5px 2px 4px;
   font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: clamp(0.7rem, calc(11rem / var(--len, 10)), 1.15rem);
   line-height: 1.1;
   text-align: center;
   white-space: nowrap;
@@ -117,21 +117,42 @@
 
 .card__stats {
   display: flex;
-  justify-content: center;
+  justify-content: space-around;
   flex-wrap: nowrap;
-  gap: 1px;
-  font-size: 0.64rem;
+  gap: 2px;
+  font-size: 0.8rem;
   white-space: nowrap;
+}
+
+.card__stats--more {
+  margin-top: 4px;
+  padding-top: 4px;
+  border-top: 2px dashed rgb(20 23 46 / 0.25);
+  justify-content: space-between;
+  gap: 0;
+  padding-inline: 2px;
+  font-size: 0.7rem;
+  opacity: 0.85;
+}
+
+@media (max-width: 400px) {
+  .card__stats {
+    font-size: 0.72rem;
+  }
+
+  .card__stats--more {
+    font-size: 0.64rem;
+  }
+
+  .card__stats--more .chip svg {
+    width: 11px;
+    height: 11px;
+  }
 }
 
 .card__stats .chip {
   min-width: 0;
   gap: 2px;
-}
-
-.card__stats .chip:last-child {
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
 .card:active:not(.card--back) {
@@ -255,8 +276,15 @@
 
 .card .chip svg {
   flex: none;
-  width: 11px;
-  height: 11px;
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 400px) {
+  .card .chip svg {
+    width: 12px;
+    height: 12px;
+  }
 }
 
 /* Level picker in the detail view of the deck tab (test mode) */

@@ -73,39 +73,49 @@ export function DraftBar({ snapshot, onPlay, onInfo, trailing }: DraftBarProps):
     onPlay(slot);
   };
 
+  const statusText = (
+    <span className="draft__text" data-testid="draft-status">
+      {status}
+    </span>
+  );
+  const showCenter = myTurn || ghost !== null;
+
   return (
     <div className="draft" data-testid="draft-bar" data-my-turn={myTurn}>
+      {/* Bottom line: only a small note while the opponent chooses, plus the own lives. */}
       <div className="draft__status">
-        <span className="draft__text" data-testid="draft-status">
-          {status}
-        </span>
+        {!myTurn && statusText}
         {trailing}
       </div>
-      {(myTurn || ghost !== null) && (
-        <div className="draft__cards">
-          {myTurn &&
-            offer.map((slot, i) => (
-              <div className="draft__slot" key={i} style={{ gridColumn: i + 1 }}>
-                <CardView
-                  card={slot.card}
-                  level={players[me].levels[slot.card] ?? 1}
-                  testId={`offer-card-${i}`}
-                  onTap={() => play(i)}
-                  onInfo={() => onInfo(slot.card)}
-                />
+      {/* The offer lies in the middle of the field, over the free meadow along the centre line. */}
+      {showCenter && (
+        <div className="draft__center">
+          {myTurn && <div className="draft__banner">{statusText}</div>}
+          <div className="draft__cards">
+            {myTurn &&
+              offer.map((slot, i) => (
+                <div className="draft__slot" key={i} style={{ gridColumn: i + 1 }}>
+                  <CardView
+                    card={slot.card}
+                    level={players[me].levels[slot.card] ?? 1}
+                    testId={`offer-card-${i}`}
+                    onTap={() => play(i)}
+                    onInfo={() => onInfo(slot.card)}
+                  />
+                </div>
+              ))}
+            {ghost !== null && (
+              <div
+                className="draft__slot draft__slot--ghost"
+                key={`ghost-${ghost.id}`}
+                style={{ gridColumn: ghost.slot + 1 }}
+                aria-hidden="true"
+                data-testid="played-ghost"
+              >
+                <CardView card={ghost.card} level={ghost.level} />
               </div>
-            ))}
-          {ghost !== null && (
-            <div
-              className="draft__slot draft__slot--ghost"
-              key={`ghost-${ghost.id}`}
-              style={{ gridColumn: ghost.slot + 1 }}
-              aria-hidden="true"
-              data-testid="played-ghost"
-            >
-              <CardView card={ghost.card} level={ghost.level} />
-            </div>
-          )}
+            )}
+          </div>
         </div>
       )}
     </div>

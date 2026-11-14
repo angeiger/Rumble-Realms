@@ -1,10 +1,18 @@
 import type { CardId } from '@rumble-realms/engine';
 import { CARDS } from '@rumble-realms/engine';
-import { useEffect, useRef, type PointerEvent, type ReactElement } from 'react';
+import { useEffect, useRef, type CSSProperties, type PointerEvent, type ReactElement } from 'react';
 import { t, type MessageKey } from '../i18n/index.ts';
 import { formatNumber, getCardStats, type CardStats } from './cardStats.ts';
 import { FigureImage } from './FigureImage.tsx';
-import { DamageIcon, HealIcon, HpIcon, InfoIcon, RangeIcon } from './icons.tsx';
+import {
+  ClockIcon,
+  DamageIcon,
+  HealIcon,
+  HpIcon,
+  InfoIcon,
+  RangeIcon,
+  SpeedIcon,
+} from './icons.tsx';
 
 /** Press duration that opens the detail view (SPEC 4.3). */
 export const LONG_PRESS_MS = 450;
@@ -111,7 +119,9 @@ export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps):
           <InfoIcon size={18} />
         </button>
       </div>
-      <div className="card__name">{name}</div>
+      <div className="card__name" style={{ '--len': name.length } as CSSProperties}>
+        {name}
+      </div>
       <div className="card__stats">
         <span className="chip">
           <HpIcon />
@@ -121,9 +131,19 @@ export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps):
           {s.effectKind === 'heal' ? <HealIcon /> : <DamageIcon />}
           {formatNumber(s.effect)}
         </span>
+      </div>
+      <div className="card__stats card__stats--more">
         <span className="chip">
-          <RangeIcon />
+          {s.rangeKind !== 'contact' && <RangeIcon />}
           {rangeText(s)}
+        </span>
+        <span className="chip">
+          <ClockIcon />
+          {s.interval === null ? '–' : `${formatNumber(s.interval)} s`}
+        </span>
+        <span className="chip">
+          <SpeedIcon />
+          {formatNumber(s.speed)}
         </span>
       </div>
     </div>

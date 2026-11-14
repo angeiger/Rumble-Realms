@@ -6,6 +6,11 @@
   background: radial-gradient(circle at 50% 30%, #1a2350 0%, #090d24 80%);
 }
 
+/* The battle lies on a meadow; its surroundings on wide screens are the forest edge. */
+.app-shell:has(.battle) {
+  background: radial-gradient(circle at 50% 40%, #2f6a35 0%, #17361d 85%);
+}
+
 .app-column {
   position: relative;
   width: 100%;
@@ -104,6 +109,9 @@
   justify-content: center;
   padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
   background: rgb(9 13 36 / 0.7);
+  /* No horizontal pan: a dialog in the menu must not swipe the pages behind it. */
+  touch-action: pan-y;
+  overscroll-behavior: contain;
   animation: fade-in 0.18s ease-out;
 }
 

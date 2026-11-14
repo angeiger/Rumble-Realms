@@ -1,7 +1,16 @@
 import type { CardId } from '@rumble-realms/engine';
-import { useState, type ReactNode, type ReactElement } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { t } from '../i18n/index.ts';
 import type { BattleSpeed, SessionSnapshot } from '../game/types.ts';
+import { EdgeInsetsContext } from '../render/BattleCanvas.tsx';
+import { NO_EDGE_INSETS, type EdgeInsets } from '../render/layout.ts';
 import { CardDetail } from './CardDetail.tsx';
 import { cardName } from './CardView.tsx';
 import { DraftBar } from './DraftBar.tsx';
@@ -73,10 +82,43 @@ export function RoundBanner({ snapshot }: { snapshot: SessionSnapshot }): ReactE
   );
 }
 
+/**
+ * Measures the header (top) and a hidden probe that is as tall as the status line at the
+ * bottom including the safe area; the field keeps clear of both (D-043).
+ */
+function useEdgeInsets(): {
+  insets: EdgeInsets;
+  headerRef: RefObject<HTMLElement | null>;
+  probeRef: RefObject<HTMLDivElement | null>;
+} {
+  const headerRef = useRef<HTMLElement>(null);
+  const probeRef = useRef<HTMLDivElement>(null);
+  const [insets, setInsets] = useState<EdgeInsets>(NO_EDGE_INSETS);
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    const probe = probeRef.current;
+    if (header === null || probe === null) return;
+    const measure = (): void => {
+      // The header's scrim fades out over its last 14 px, so only part of it counts.
+      const top = Math.max(0, header.offsetHeight - 6);
+      const bottom = probe.offsetHeight;
+      setInsets((cur) => (cur.top === top && cur.bottom === bottom ? cur : { top, bottom }));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    observer.observe(probe);
+    return () => observer.disconnect();
+  }, []);
+  return { insets, headerRef, probeRef };
+}
+
 /** Whole battle screen for one snapshot. Pure: all state of the game comes in via props. */
 export function BattleView({ snapshot, actions, field }: BattleViewProps): ReactElement {
   const [detail, setDetail] = useState<CardId | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const { insets, headerRef, probeRef } = useEdgeInsets();
   const { me, phase } = snapshot;
   const opp = me === 0 ? 1 : 0;
   const oppName = snapshot.players[opp].name;
@@ -106,12 +148,16 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
       data-round={snapshot.round}
     >
       <div className="battle__field">
-        <div className="battle__canvas">{field}</div>
+        <div className="battle__canvas">
+          <EdgeInsetsContext.Provider value={insets}>{field}</EdgeInsetsContext.Provider>
+        </div>
         <LastPickHint snapshot={snapshot} />
         {phase === 'roundEnd' && <RoundBanner snapshot={snapshot} />}
       </div>
 
-      <header className="battle__header">
+      <div className="battle__bottom-probe" ref={probeRef} aria-hidden="true" />
+
+      <header className="battle__header" ref={headerRef}>
         <div className="battle__who">
           <span className="battle__name">{oppName}</span>
           <div className="battle__heartline">

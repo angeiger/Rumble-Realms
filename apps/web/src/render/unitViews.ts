@@ -8,12 +8,19 @@ import { Container, Sprite, Texture } from 'pixi.js';
 import { FIGURE_BOX, type Team } from './figures.ts';
 import { fieldToScreen, type FieldLayout, type Point } from './layout.ts';
 import { PALETTE } from './palette.ts';
-import { easeOutBack, unitFieldPosition } from './motion.ts';
+import { clamp, easeOutBack, unitFieldPosition } from './motion.ts';
 import type { AnchoredTexture, FigureTextures } from './textures.ts';
 
 /** Height and width of a figure in field widths (SPEC 10). */
 export const FIGURE_CELLS = 1.3;
 const SPAWN_MS = 380;
+/** Plop of a crowd appearing at once (new round): shorter, and spread over `CROWD_SPREAD_MS`. */
+const CROWD_SPAWN_MS = 260;
+const CROWD_SPREAD_MS = 380;
+/** More new units than this in one frame count as a crowd. */
+const CROWD_MIN = 4;
+/** Units that change cells during the draft glide to the new place in this time. */
+const GLIDE_MS = 250;
 const ATTACK_MS = 240;
 const HIT_MS = 170;
 const DEATH_MS = 400;
@@ -27,7 +34,13 @@ export type NumberKind = 'hitOwn' | 'hitEnemy' | 'heal';
 /** Receives the floating numbers of the views. */
 export interface NumberSink {
   number(x: number, y: number, amount: number, kind: NumberKind): void;
+  /** A spark of the burning TNT fuse at (x, y); `intensity` 0..1. */
+  fuseSpark(x: number, y: number, intensity: number): void;
 }
+
+/** Fuse flash colours: red and white, alternating. */
+const FUSE_RED = 0xff3b22;
+const FUSE_WHITE = 0xffffff;
 
 export class UnitView {
   id = 0;
@@ -46,6 +59,8 @@ export class UnitView {
   readonly barFill = new Sprite(Texture.WHITE);
   readonly ring = new Sprite();
   readonly shadow = new Sprite();
+  /** Assassin: faint mark on the cell the shadow jump aims at (only while charging). */
+  readonly marker = new Sprite();
 
   /** Ground position on screen (centre of the unit's cell, interpolated). */
   sx = 0;
@@ -70,6 +85,23 @@ export class UnitView {
   deathDir = 1;
   dmgAcc = 0;
   dmgNextAt = 0;
+  /** Duration of the "plop" on appearing. */
+  spawnMs = SPAWN_MS;
+  /** Explosive cards: ticks of the fuse (0 = none). */
+  fuseTicks = 0;
+  fusePhase = 0;
+  sparkAcc = 0;
+  /** Whether `baseX`/`baseY` hold the position of the previous frame. */
+  hasPos = false;
+  /** Field cell and screen position without glide offset in the previous frame. */
+  lastFx = 0;
+  lastFy = 0;
+  baseX = 0;
+  baseY = 0;
+  /** Glide offset in pixels at the start of the glide, and its age. */
+  glideX = 0;
+  glideY = 0;
+  glideT = GLIDE_MS;
 
   constructor() {
     this.flash.blendMode = 'add';
@@ -82,6 +114,9 @@ export class UnitView {
     this.root.addChild(this.body, this.bar);
     this.shadow.tint = 0x000000;
     this.shadow.anchor.set(0.5);
+    this.marker.anchor.set(0.5);
+    this.marker.tint = 0xff4a3a;
+    this.marker.visible = false;
   }
 }
 
@@ -149,6 +184,7 @@ export class UnitViews {
       v.root.destroy({ children: true });
       v.ring.destroy();
       v.shadow.destroy();
+      v.marker.destroy();
     }
     this.pool.length = 0;
   }
@@ -189,7 +225,11 @@ export class UnitViews {
   /** The unit appeared somewhere (assassin jump): plays the "plop" again. */
   appear(id: number): void {
     const v = this.map.get(id);
-    if (v !== undefined) v.age = 0;
+    if (v === undefined) return;
+    v.age = 0;
+    v.spawnMs = SPAWN_MS;
+    v.hasPos = false;
+    v.glideT = GLIDE_MS;
   }
 
   /**
@@ -208,22 +248,38 @@ export class UnitViews {
     const frameNo = this.frameNo;
     const gen = this.textures.generation;
     const units = battle.units;
+    // Many new units in one frame (new round): they pop up one after the other, quickly.
+    const fresh = units.length - this.list.length;
+    const crowd = fresh >= CROWD_MIN;
+    let newIndex = 0;
     for (let i = 0; i < units.length; i++) {
       const u = units[i];
       if (u === undefined) continue;
       let v = this.map.get(u.id);
-      if (v === undefined) v = this.create(u.id, u.card, u.owner, u.layer === 1, me);
+      if (v === undefined) {
+        v = this.create(u.id, u.card, u.owner, u.layer === 1, me);
+        if (crowd) {
+          v.spawnMs = CROWD_SPAWN_MS;
+          v.age = -(newIndex / fresh) * CROWD_SPREAD_MS;
+          newIndex++;
+        }
+      }
       v.seen = frameNo;
       if (v.texGen !== gen) this.applyTextures(v);
 
       unitFieldPosition(u, v.moveSpeed, alpha, this.pos);
       fieldToScreen(layout, me, this.pos.x, this.pos.y, this.pos);
-      v.sx = this.pos.x;
-      v.sy = this.pos.y;
+      this.place(v, u.x, u.y, this.pos.x, this.pos.y, dt, battle.started);
 
       if (u.hp !== v.hp || u.maxHp !== v.maxHp) this.setHp(v, u.hp, u.maxHp);
       const charging = u.jumpTick >= 0 && battle.started;
-      this.animate(v, dt, now, u.moveCost > 0, charging);
+      let fuse = -1;
+      if (u.fuseTick >= 0 && v.fuseTicks > 0) {
+        fuse = clamp(1 - (u.fuseTick - (battle.tick + alpha)) / v.fuseTicks, 0, 1);
+      }
+      this.animate(v, dt, now, u.moveCost > 0, charging, fuse);
+      if (v.marker.visible !== charging) v.marker.visible = charging;
+      if (charging) this.placeMarker(v, u.jumpX, u.jumpY, layout, me, now);
       if (v.dmgAcc > 0 && now >= v.dmgNextAt) this.flushNumber(v, now);
     }
 
@@ -249,6 +305,65 @@ export class UnitViews {
 
   // ---- internals ----------------------------------------------------------------------
 
+  /**
+   * Sets the screen position of a view. In the draft a unit that changes its cell (the
+   * formation moved up) glides there instead of jumping; in battle steps are continuous.
+   */
+  private place(
+    v: UnitView,
+    fx: number,
+    fy: number,
+    bx: number,
+    by: number,
+    dt: number,
+    battleStarted: boolean,
+  ): void {
+    if (v.hasPos && !battleStarted && (fx !== v.lastFx || fy !== v.lastFy)) {
+      // Keep the picture continuous: the offset is where the figure was drawn minus where it belongs now.
+      const k = this.glideFactor(v);
+      v.glideX = v.baseX + v.glideX * k - bx;
+      v.glideY = v.baseY + v.glideY * k - by;
+      v.glideT = 0;
+    }
+    v.hasPos = true;
+    v.lastFx = fx;
+    v.lastFy = fy;
+    v.baseX = bx;
+    v.baseY = by;
+    if (v.glideT < GLIDE_MS) v.glideT += dt;
+    const k = this.glideFactor(v);
+    v.sx = bx + v.glideX * k;
+    v.sy = by + v.glideY * k;
+  }
+
+  /** Remaining share (1 -> 0) of the glide offset. */
+  private glideFactor(v: UnitView): number {
+    if (v.glideT >= GLIDE_MS) return 0;
+    const u = 1 - v.glideT / GLIDE_MS;
+    return u * u * u;
+  }
+
+  private placeMarker(
+    v: UnitView,
+    jx: number,
+    jy: number,
+    layout: FieldLayout,
+    me: PlayerIndex,
+    now: number,
+  ): void {
+    if (jx < 0 || jy < 0) {
+      v.marker.visible = false;
+      return;
+    }
+    fieldToScreen(layout, me, jx, jy, this.pos);
+    const c = this.cell;
+    const pulse = 0.5 + 0.5 * Math.sin(now * 0.008);
+    v.marker.position.set(this.pos.x, this.pos.y + c * 0.05);
+    v.marker.scale.set((c * (1.0 + 0.15 * pulse)) / 64, (c * (0.55 + 0.08 * pulse)) / 64);
+    v.marker.alpha = 0.4 + 0.3 * pulse;
+    v.marker.zIndex = 0;
+  }
+
   private create(id: number, card: CardId, owner: PlayerIndex, air: boolean, me: PlayerIndex) {
     const v = this.pool.pop() ?? new UnitView();
     v.id = id;
@@ -266,6 +381,15 @@ export class UnitViews {
     v.deathDir = id % 2 === 0 ? 1 : -1;
     v.dmgAcc = 0;
     v.dmgNextAt = 0;
+    v.spawnMs = SPAWN_MS;
+    const attack = CARDS[card].attack;
+    v.fuseTicks = attack.kind === 'explode' ? attack.fuseTicks : 0;
+    v.fusePhase = 0;
+    v.sparkAcc = 0;
+    v.hasPos = false;
+    v.glideT = GLIDE_MS;
+    v.flash.tint = FUSE_WHITE;
+    v.marker.visible = false;
     v.hp = -1;
     v.maxHp = -1;
     v.texGen = -1;
@@ -281,7 +405,9 @@ export class UnitViews {
     v.root.visible = true;
     v.root.alpha = 1;
     v.root.scale.set(1);
+    v.ring.visible = true;
     this.layers.floor.addChild(v.ring);
+    if (CARDS[card].shadowJump !== undefined) this.layers.floor.addChild(v.marker);
     if (air) this.layers.floor.addChild(v.shadow);
     this.layers.units.addChild(v.root);
     this.map.set(id, v);
@@ -298,6 +424,7 @@ export class UnitViews {
     v.root.removeFromParent();
     v.ring.removeFromParent();
     v.shadow.removeFromParent();
+    v.marker.removeFromParent();
     this.pool.push(v);
   }
 
@@ -311,6 +438,7 @@ export class UnitViews {
     v.ring.texture = ring.texture;
     v.ring.anchor.set(ring.anchorX, ring.anchorY);
     v.shadow.texture = this.shadowTexture;
+    v.marker.texture = this.shadowTexture;
     v.topPx = fig.anchorY * fig.texture.height * this.k;
     v.texGen = this.textures.generation;
   }
@@ -345,7 +473,14 @@ export class UnitViews {
   }
 
   /** Transform of the whole figure for the current state (D-037). */
-  private animate(v: UnitView, dt: number, now: number, moving: boolean, charging: boolean): void {
+  private animate(
+    v: UnitView,
+    dt: number,
+    now: number,
+    moving: boolean,
+    charging: boolean,
+    fuse: number,
+  ): void {
     const cell = this.cell;
     const k = this.k;
     v.age += dt;
@@ -405,8 +540,34 @@ export class UnitViews {
       flash = Math.max(flash, 0.45 * c);
     }
 
-    if (v.age < SPAWN_MS) {
-      const s = easeOutBack(v.age / SPAWN_MS);
+    let flashTint = FUSE_WHITE;
+    if (fuse >= 0) {
+      // Burning fuse (D-050): blinks red and white ever faster, swells and trembles.
+      v.fusePhase += (dt / 1000) * (2 + 12 * fuse) * Math.PI * 2;
+      const on = Math.sin(v.fusePhase) > 0;
+      flashTint = Math.sin(v.fusePhase * 0.5) > 0 ? FUSE_RED : FUSE_WHITE;
+      flash = Math.max(flash, on ? 0.7 + 0.3 * fuse : 0.12);
+      const swell = 1 + 0.05 + 0.24 * fuse * fuse;
+      sx *= swell;
+      sy *= swell;
+      const shake = cell * (0.012 + 0.05 * fuse);
+      ox += Math.sin(now * 0.13 + v.phase) * shake;
+      oy += Math.cos(now * 0.17 + v.phase) * shake * 0.6;
+      this.fuseSparks(v, dt, fuse);
+    } else {
+      v.fusePhase = 0;
+      v.sparkAcc = 0;
+    }
+    if (v.flash.tint !== flashTint) v.flash.tint = flashTint;
+
+    // A negative age is the delay of a crowd appearing: not visible yet.
+    const waiting = v.age < 0;
+    if (v.root.visible === waiting) {
+      v.root.visible = !waiting;
+      v.ring.visible = !waiting;
+    }
+    if (v.age < v.spawnMs) {
+      const s = easeOutBack(v.age / v.spawnMs);
       sx *= s;
       sy *= s;
     }
@@ -419,6 +580,17 @@ export class UnitViews {
     v.body.scale.set(k * sx, k * sy);
     v.body.rotation = rot;
     this.placeSupport(v, flash);
+  }
+
+  /** Sparks at the fuse tip: more and more of them as the blast comes closer. */
+  private fuseSparks(v: UnitView, dt: number, fuse: number): void {
+    v.sparkAcc += (dt / 1000) * (10 + 40 * fuse);
+    if (v.sparkAcc < 1) return;
+    const n = Math.min(3, Math.floor(v.sparkAcc));
+    v.sparkAcc -= n;
+    const x = v.sx + this.cell * 0.12;
+    const y = v.sy - v.topPx * 0.92 - v.lift;
+    for (let i = 0; i < n; i++) this.sink.fuseSpark(x, y, fuse);
   }
 
   private animateDeath(v: UnitView): void {
