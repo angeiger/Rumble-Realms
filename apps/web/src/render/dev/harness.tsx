@@ -1,4 +1,10 @@
 /** Development-only pages for looking at parts of the renderer in isolation. */
 export function mountHarness(root: HTMLElement, name: string): void {
-  root.textContent = `Unknown harness: ${name}`;
+  switch (name) {
+    case 'figures':
+      void import('./figuresHarness.ts').then((m) => m.mountFiguresHarness(root));
+      return;
+    default:
+      root.textContent = `Unknown harness: ${name}`;
+  }
 }
