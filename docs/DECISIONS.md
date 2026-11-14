@@ -383,3 +383,29 @@ Deshalb: 100 Zufallsmatches in `pnpm test`, 2000 in der CI, 10 000 weiterhin mit
 Weil alle Karten jede Runde wiederkommen, kann ein früher Vorsprung durch das ganze Match tragen; der
 Verlierer-Bonus (eine Karte mehr) gleicht das in der Simulation nicht immer aus. Das wird in der Balance-Runde
 von M3b gemessen (Siegquote des Siegers von Runde 1) und bei Bedarf über den Verlierer-Bonus nachgestellt.
+
+## Rückmeldung von Andreas zum M3a-Test (14.11.2026)
+
+### D-058 Angebotskarten in der Bildschirmmitte und größer (präzisiert D-043)
+
+Die drei Angebotskarten liegen im Draft mittig über dem Feld und sind größer, damit sie besser lesbar sind
+und beide Armeen sichtbar bleiben.
+
+### D-059 Deck-Tab links, Wechsel auch per Wischen
+
+Der Deck-Tab steht links vom Kampf-Tab. Zwischen den Tabs wechselt man durch Antippen oder durch Wischen.
+
+### D-060 Feldgröße später noch einmal prüfen (ergänzt D-054)
+
+Die Feldgröße wird zu einem fortgeschrittenen Zeitpunkt erneut geprüft, spätestens in der Balance-Runde von
+M3b, wenn Doppelpack, Upgrades und Beschwörungen die Armeen vergrößern.
+
+### D-061 Wieder Arbeit nach Protokoll
+
+Die einmalige Freigabe zum Vorarbeiten ohne Gate ist beendet. Es gilt wieder: ein Meilenstein nach dem anderen,
+jeder endet mit einem Gate, das Andreas testet und freigibt. Stand der Vorarbeit:
+
+- M3a: Pull Request 4, wartet nach dem Nachschliff auf das Gate.
+- M3b: Die erste Etappe (Sonderkarten, Upgrade-Gerüst, Statuseffekte, sechs Einheiten) wird noch zu Ende geführt
+  und als Zwischenstand auf dem Branch `m3b-kampfmechanik` abgelegt. Weiter geht es dort erst nach der Freigabe von M3a.
+- M4: Das Datenbank-Schema liegt als Entwurf in Pull Request 5 und wird erst zu M4 gemergt.
