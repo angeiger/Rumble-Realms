@@ -8,8 +8,17 @@ import { App } from './App.tsx';
 const root = document.getElementById('root');
 if (!root) throw new Error('Missing #root element');
 
-createRoot(root).render(
-  <StrictMode>
-    <App />
-  </StrictMode>,
-);
+// Development harnesses, e.g. /?harness=figures or /?harness=canvas (never linked in the app).
+const harness = import.meta.env.DEV
+  ? new URLSearchParams(window.location.search).get('harness')
+  : null;
+
+if (harness !== null) {
+  void import('./render/dev/harness.tsx').then((m) => m.mountHarness(root, harness));
+} else {
+  createRoot(root).render(
+    <StrictMode>
+      <App />
+    </StrictMode>,
+  );
+}

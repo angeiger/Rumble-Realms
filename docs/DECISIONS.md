@@ -213,3 +213,38 @@ für Spieler B um 180° gedreht. Jede Änderung an der Wegsuche ändert Kampferg
 
 300 Zufallsmatches laufen bei jedem `pnpm test` mit. Die 10 000 Matches aus SPEC 12 laufen als eigener Befehl
 `pnpm test:robust` (etwa 25 s) und zusätzlich in der CI.
+
+## M2 – Spielbarer Prototyp (14.11.2026)
+
+### D-034 Aufbau des Clients
+
+Drei Teile mit festem Vertrag (`apps/web/src/game/types.ts`):
+- `game/`: Die Spielsitzung führt ein lokales Match gegen einen Bot auf Basis der Engine.
+- `render/`: Die Kampfansicht zeichnet das Feld mit PixiJS. Sie liest den Kampfzustand, ändert ihn aber nie (SPEC 6.4).
+- `ui/`: React-Bildschirme. Sie bekommen nur einen unveränderlichen Schnappschuss und rufen Aktionen auf.
+
+Grund: Der Engine-Zustand ist veränderlich (D-019), React braucht aber unveränderliche Daten, um Änderungen zu erkennen.
+
+### D-035 Eine einzige Uhr
+
+Bot-Bedenkzeit, Countdown, Kampf-Ticks und die Pause am Rundenende laufen über eine einzige Funktion
+(`advance(dt)`), die die Kampfansicht einmal pro Bild aufruft. Ist die App im Hintergrund, pausiert das Spiel.
+Grund: kein Durcheinander mehrerer Zeitgeber, und der Ablauf lässt sich ohne Browser testen.
+
+### D-036 Lokales Match in M2
+
+- Der Mensch ist immer Spieler A und sieht seine Hälfte unten. Die Ansicht kann auch für Spieler B drehen (für M5).
+- Spieler-Deck: das Startdeck aus SPEC 7.1 (Bogenschütze, Ritter, Skelette, Heiler), alle Karten Level 1.
+- Gegner: Bot „Leicht“ (wählt zufällig, Level 1) mit einem von mehreren festen Decks aus dem Kartenpool von Arena 1.
+- Der Match-Seed wird im Browser zufällig erzeugt. Es wird noch nichts gespeichert (Konten kommen mit M4).
+
+### D-037 Platzhalter-Figuren
+
+Jede Einheit ist eine mit PixiJS gezeichnete Vektorfigur (SPEC 11). Die Figur selbst ist statisch; Stehen, Laufen,
+Angriff und Tod entstehen durch Bewegungen der ganzen Figur (Wippen, Strecken, Ausfallschritt, Umkippen).
+Die Teamfarbe steckt in der Kleidung und im Ring unter der Figur, der zusätzlich ein Symbol je Team trägt.
+
+### D-038 Playwright
+
+Ende-zu-Ende-Tests laufen mit Chromium im mobilen Hochformat gegen den gebauten Stand auf Port 4173,
+damit sie den Entwicklungsserver auf 5173 nicht stören. WebGL läuft im Test-Browser per Software-Renderer.
