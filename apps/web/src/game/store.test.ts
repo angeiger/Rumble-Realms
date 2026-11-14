@@ -1,4 +1,6 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useDeckStore } from './deckStore.ts';
+import { START_DECK } from './config.ts';
 import { useGameStore } from './store.ts';
 
 describe('game store', () => {
@@ -25,8 +27,7 @@ describe('game store', () => {
     for (let i = 0; i < 30; i++) {
       const snap = useGameStore.getState().snapshot;
       if (snap?.turn === 0) {
-        useGameStore.getState().select(0);
-        useGameStore.getState().confirm();
+        useGameStore.getState().play(0);
         break;
       }
       s.session?.advance(250);
@@ -35,6 +36,25 @@ describe('game store', () => {
     expect(now.snapshot).toBe(now.session?.getSnapshot());
     now.setSpeed(2);
     expect(useGameStore.getState().snapshot?.speed).toBe(2);
+  });
+
+  it('startMatch takes deck and levels from the deck store', () => {
+    useDeckStore.setState({ deck: ['assassin', 'tnt', 'knight', 'archer'], levels: { tnt: 3 } });
+    try {
+      useGameStore.getState().startMatch();
+      const me = useGameStore.getState().snapshot?.players[0];
+      expect(me?.deck).toEqual(['assassin', 'tnt', 'knight', 'archer']);
+      expect(me?.levels).toEqual({ assassin: 1, tnt: 3, knight: 1, archer: 1 });
+    } finally {
+      useDeckStore.setState({ deck: [...START_DECK], levels: {} });
+    }
+  });
+
+  it('keeps the tab and goes back to the battle tab on backToTitle', () => {
+    useGameStore.getState().setTab('deck');
+    expect(useGameStore.getState().tab).toBe('deck');
+    useGameStore.getState().backToTitle();
+    expect(useGameStore.getState().tab).toBe('battle');
   });
 
   it('backToTitle detaches and clears', () => {

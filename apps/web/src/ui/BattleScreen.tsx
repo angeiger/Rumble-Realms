@@ -7,8 +7,7 @@ import { BattleView } from './BattleView.tsx';
 export function BattleScreen(): ReactElement | null {
   const session = useGameStore((s) => s.session);
   const snapshot = useGameStore((s) => s.snapshot);
-  const select = useGameStore((s) => s.select);
-  const confirm = useGameStore((s) => s.confirm);
+  const play = useGameStore((s) => s.play);
   const setSpeed = useGameStore((s) => s.setSpeed);
   const backToTitle = useGameStore((s) => s.backToTitle);
   const startMatch = useGameStore((s) => s.startMatch);
@@ -16,7 +15,7 @@ export function BattleScreen(): ReactElement | null {
   return (
     <BattleView
       snapshot={snapshot}
-      actions={{ select, confirm, setSpeed, leave: backToTitle, playAgain: startMatch }}
+      actions={{ play, setSpeed, leave: backToTitle, playAgain: startMatch }}
       field={<BattleCanvas session={session} />}
     />
   );

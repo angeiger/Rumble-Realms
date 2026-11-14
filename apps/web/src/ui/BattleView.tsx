@@ -10,8 +10,7 @@ import { CloseIcon } from './icons.tsx';
 import { ResultView } from './ResultView.tsx';
 
 export interface BattleActions {
-  select: (slot: number) => void;
-  confirm: () => void;
+  play: (slot: number) => void;
   setSpeed: (speed: BattleSpeed) => void;
   leave: () => void;
   playAgain: () => void;
@@ -20,7 +19,7 @@ export interface BattleActions {
 export interface BattleViewProps {
   snapshot: SessionSnapshot;
   actions: BattleActions;
-  /** The field (the canvas); fills the space between header and footer. */
+  /** The field (the canvas); fills the whole screen, header and cards lie over it (D-043). */
   field: ReactNode;
 }
 
@@ -49,21 +48,6 @@ export function LastPickHint({ snapshot }: { snapshot: SessionSnapshot }): React
             : t('hint.forfeited', { count: pick.forfeited })}
         </span>
       )}
-    </div>
-  );
-}
-
-export function CountdownOverlay({ value }: { value: number }): ReactElement {
-  return (
-    <div className="countdown" aria-live="assertive">
-      <span
-        key={value}
-        className={`countdown__value${value === 0 ? ' countdown__value--go' : ''}`}
-        data-testid="countdown"
-        data-value={value}
-      >
-        {value === 0 ? t('countdown.fight') : value}
-      </span>
     </div>
   );
 }
@@ -101,6 +85,18 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
   const winner = snapshot.roundResult?.result.winner;
   const lostLife = (p: 0 | 1): boolean => showLoss && winner !== p;
   const level = (card: CardId): number => snapshot.players[me].levels[card] ?? 1;
+  const livesPill = (
+    <div className="lives-pill">
+      <Hearts
+        lives={snapshot.lives[me]}
+        breaking={lostLife(me)}
+        size={16}
+        testId="lives-me"
+        label={t('battle.livesOf', { name: t('battle.you'), lives: snapshot.lives[me] })}
+      />
+      <span className="battle__name battle__name--me">{t('battle.you')}</span>
+    </div>
+  );
 
   return (
     <main
@@ -109,6 +105,12 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
       data-phase={phase}
       data-round={snapshot.round}
     >
+      <div className="battle__field">
+        <div className="battle__canvas">{field}</div>
+        <LastPickHint snapshot={snapshot} />
+        {phase === 'roundEnd' && <RoundBanner snapshot={snapshot} />}
+      </div>
+
       <header className="battle__header">
         <div className="battle__who">
           <span className="battle__name">{oppName}</span>
@@ -116,7 +118,7 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
             <Hearts
               lives={snapshot.lives[opp]}
               breaking={lostLife(opp)}
-              size={20}
+              size={16}
               testId="lives-opponent"
               label={t('battle.livesOf', { name: oppName, lives: snapshot.lives[opp] })}
             />
@@ -147,37 +149,17 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
         </button>
       </header>
 
-      <div className="battle__field">
-        <div className="battle__canvas">{field}</div>
-        <LastPickHint snapshot={snapshot} />
-        {phase === 'countdown' && snapshot.countdown !== null && (
-          <CountdownOverlay value={snapshot.countdown} />
+      <div className="battle__bottom" data-draft={inDraft}>
+        {inDraft ? (
+          <DraftBar
+            snapshot={snapshot}
+            onPlay={actions.play}
+            onInfo={setDetail}
+            trailing={livesPill}
+          />
+        ) : (
+          <div className="draft__status draft__status--end">{livesPill}</div>
         )}
-        {phase === 'roundEnd' && <RoundBanner snapshot={snapshot} />}
-      </div>
-
-      <footer className="battle__footer">
-        <Hearts
-          lives={snapshot.lives[me]}
-          breaking={lostLife(me)}
-          size={20}
-          testId="lives-me"
-          label={t('battle.livesOf', { name: t('battle.you'), lives: snapshot.lives[me] })}
-        />
-        <span className="battle__name battle__name--me">{t('battle.you')}</span>
-      </footer>
-
-      <div className={`draft-wrap${inDraft ? ' draft-wrap--open' : ''}`} aria-hidden={!inDraft}>
-        <div className="draft-wrap__inner">
-          {inDraft && (
-            <DraftBar
-              snapshot={snapshot}
-              onSelect={actions.select}
-              onConfirm={actions.confirm}
-              onInfo={setDetail}
-            />
-          )}
-        </div>
       </div>
 
       {detail !== null && (

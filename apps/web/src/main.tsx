@@ -5,6 +5,7 @@ import '@fontsource-variable/nunito/index.css';
 import './styles.css';
 import './ui/base.css';
 import './ui/title.css';
+import './ui/menu.css';
 import './ui/cards.css';
 import './ui/battle.css';
 import { App } from './App.tsx';

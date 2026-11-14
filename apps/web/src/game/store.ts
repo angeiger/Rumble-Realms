@@ -1,18 +1,22 @@
 /** App state outside React: current screen and the running game session. */
 import { BOT_PROFILES } from '@rumble-realms/engine';
 import { create } from 'zustand';
+import { useDeckStore } from './deckStore.ts';
 import { createLocalSession } from './session.ts';
 import type { BattleSpeed, GameSession, SessionSnapshot } from './types.ts';
 
 export type Screen = 'title' | 'battle';
+/** Tab of the menu screens (outside the battle). */
+export type Tab = 'battle' | 'deck';
 
 export interface GameStore {
   screen: Screen;
+  tab: Tab;
   session: GameSession | null;
   snapshot: SessionSnapshot | null;
   startMatch: () => void;
-  select: (slot: number) => void;
-  confirm: () => void;
+  play: (slot: number) => void;
+  setTab: (tab: Tab) => void;
   setSpeed: (speed: BattleSpeed) => void;
   backToTitle: () => void;
 }
@@ -43,6 +47,7 @@ function detach(): void {
 
 export const useGameStore = create<GameStore>()((set, get) => ({
   screen: 'title',
+  tab: 'battle',
   session: null,
   snapshot: null,
 
@@ -51,18 +56,25 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     const bots = BOT_PROFILES.filter((p) => p.level === 'easy');
     const bot = bots[randomIndex(bots.length)] ?? (bots[0] as (typeof bots)[number]);
     // The human's name stays empty: the UI shows its own i18n text for "you".
-    const session = createLocalSession({ seed: randomSeed(), bot, playerName: '' });
+    const { deck, levels } = useDeckStore.getState();
+    const session = createLocalSession({
+      seed: randomSeed(),
+      bot,
+      playerName: '',
+      playerDeck: deck,
+      playerLevels: levels,
+    });
     unsubscribe = session.subscribe(() => {
       if (get().session === session) set({ snapshot: session.getSnapshot() });
     });
     set({ screen: 'battle', session, snapshot: session.getSnapshot() });
   },
-  select: (slot) => get().session?.select(slot),
-  confirm: () => get().session?.confirm(),
+  play: (slot) => get().session?.play(slot),
+  setTab: (tab) => set({ tab }),
   setSpeed: (speed) => get().session?.setSpeed(speed),
   backToTitle() {
     detach();
-    set({ screen: 'title', session: null, snapshot: null });
+    set({ screen: 'title', tab: 'battle', session: null, snapshot: null });
   },
 }));
 

@@ -6,7 +6,7 @@
 import { DESTROY_RENDERER } from './destroy.ts';
 import type { BattleEvent, BattleState, PlayerIndex } from '@rumble-realms/engine';
 import { Application, Container, Graphics } from 'pixi.js';
-import type { GameSession } from '../game/types.ts';
+import type { GameSession, SessionPhase } from '../game/types.ts';
 import { CANVAS_BACKGROUND, drawBackdrop } from './backdrop.ts';
 import { Effects, NUMBER_FONT } from './effects.ts';
 import { computeLayout, fieldToScreen, type FieldLayout, type Point } from './layout.ts';
@@ -89,6 +89,8 @@ class Scene implements BattleRenderer {
   private me: PlayerIndex;
   private battle: BattleState;
   private now = 0;
+  private phase: SessionPhase;
+  private readonly reducedMotion: boolean;
   private destroyed = false;
   private readonly a: Point = { x: 0, y: 0 };
   private readonly b: Point = { x: 0, y: 0 };
@@ -122,6 +124,10 @@ class Scene implements BattleRenderer {
     );
 
     this.me = session.getSnapshot().me;
+    this.phase = session.getSnapshot().phase;
+    this.reducedMotion =
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.battle = session.battle;
     this.layout = computeLayout(app.screen.width, app.screen.height);
     this.relayout();
@@ -179,7 +185,13 @@ class Scene implements BattleRenderer {
     if (this.destroyed) return;
     this.now += dt;
 
-    const me = this.session.getSnapshot().me;
+    const snapshot = this.session.getSnapshot();
+    if (snapshot.phase !== this.phase) {
+      // Smoke over the middle of the field while the session is in its `intro` phase (D-045).
+      if (snapshot.phase === 'intro') this.effects.introSmoke(this.reducedMotion);
+      this.phase = snapshot.phase;
+    }
+    const me = snapshot.me;
     if (me !== this.me) {
       this.me = me;
       this.resetField();

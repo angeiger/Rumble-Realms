@@ -7,12 +7,23 @@
 }
 
 .battle__header {
-  flex: none;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 4;
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: calc(6px + env(safe-area-inset-top)) calc(10px + env(safe-area-inset-right)) 6px
-    calc(12px + env(safe-area-inset-left));
+  padding: calc(4px + env(safe-area-inset-top)) calc(8px + env(safe-area-inset-right)) 14px
+    calc(10px + env(safe-area-inset-left));
+  /* Half-transparent scrim: the field stays visible below. */
+  background: linear-gradient(180deg, rgb(9 13 36 / 0.78) 0%, rgb(9 13 36 / 0.55) 60%, transparent);
+  pointer-events: none;
+}
+
+.battle__header > * {
+  pointer-events: auto;
 }
 
 .battle__who {
@@ -33,7 +44,7 @@
   min-width: 0;
   overflow: hidden;
   font-family: var(--font-display);
-  font-size: 1.15rem;
+  font-size: 1rem;
   line-height: 1.1;
   white-space: nowrap;
   text-overflow: ellipsis;
@@ -58,13 +69,13 @@
 
 .chip--round {
   flex: none;
-  padding: 5px 8px;
+  padding: 4px 8px;
   border: 3px solid var(--outline);
   border-radius: 12px;
   background: var(--cream);
   color: var(--outline);
   font-family: var(--font-display);
-  font-size: 0.95rem;
+  font-size: 0.9rem;
   font-weight: 400;
   white-space: nowrap;
 }
@@ -116,13 +127,11 @@
   }
 }
 
-/* The field takes all remaining space; the canvas is positioned inside, so it can never push the layout. */
+/* The field always fills the whole screen (D-043); header and cards lie over it. */
 .battle__field {
-  position: relative;
-  flex: 1 1 0;
-  min-height: 0;
+  position: absolute;
+  inset: 0;
   overflow: hidden;
-  border-block: 4px solid var(--outline);
   background: #4d9a45;
 }
 
@@ -136,40 +145,37 @@
   height: 100%;
 }
 
-.battle__footer {
+/* Bottom stack over the field: status line, offer cards, own lives. */
+.battle__bottom {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 4;
+  padding-bottom: env(safe-area-inset-bottom);
+  pointer-events: none;
+}
+
+.battle__bottom[data-draft='true'] {
+  background: linear-gradient(0deg, rgb(9 13 36 / 0.82) 0%, rgb(9 13 36 / 0.6) 70%, transparent);
+}
+
+.battle__bottom > * {
+  pointer-events: auto;
+}
+
+.lives-pill {
   flex: none;
   display: flex;
   align-items: center;
   gap: 8px;
-  padding: 5px calc(12px + env(safe-area-inset-right)) 5px calc(12px + env(safe-area-inset-left));
-}
-
-/* Draft bar slides away when the battle starts; the field grows (SPEC 10). */
-.draft-wrap {
-  flex: none;
-  display: grid;
-  grid-template-rows: 0fr;
-  transition: grid-template-rows 0.45s var(--ease-spring);
-}
-
-.draft-wrap--open {
-  grid-template-rows: 1fr;
-}
-
-.draft-wrap__inner {
-  min-height: 0;
-  overflow: hidden;
-}
-
-.battle:not(:has(.draft-wrap--open)) .draft-wrap {
-  padding-bottom: env(safe-area-inset-bottom);
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: rgb(9 13 36 / 0.55);
 }
 
 .draft {
-  padding: 8px calc(10px + env(safe-area-inset-right)) calc(8px + env(safe-area-inset-bottom))
-    calc(10px + env(safe-area-inset-left));
-  border-top: 4px solid var(--outline);
-  background: #0f1f55;
+  padding: 22px calc(10px + env(safe-area-inset-right)) 8px calc(10px + env(safe-area-inset-left));
 }
 
 .draft__status {
@@ -177,37 +183,90 @@
   align-items: center;
   justify-content: space-between;
   gap: 10px;
-  min-height: 48px;
+  min-height: 34px;
   margin-bottom: 6px;
+}
+
+.draft__status--end {
+  justify-content: flex-start;
+  margin: 0;
+  padding: 0 calc(10px + env(safe-area-inset-right)) 8px calc(10px + env(safe-area-inset-left));
 }
 
 .draft__text {
   min-width: 0;
+  overflow: hidden;
   font-family: var(--font-display);
-  font-size: 1.05rem;
+  font-size: 1rem;
   line-height: 1.15;
+  white-space: nowrap;
+  text-overflow: ellipsis;
   text-shadow: 0 2px 0 var(--outline);
 }
 
 .draft__cards {
-  display: flex;
-  align-items: flex-end;
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
-  /* Room for the lifted selected card (+ its extra row). */
-  height: 168px;
-  padding: 0 2px;
+  padding: 0 2px 4px;
 }
 
-.draft__cards .card {
-  align-self: flex-end;
+.draft__slot {
+  grid-row: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.draft__slot > .card {
+  animation: card-in 0.3s var(--ease-spring) backwards;
+}
+
+.draft__slot:nth-child(2) > .card {
+  animation-delay: 0.05s;
+}
+
+.draft__slot:nth-child(3) > .card {
+  animation-delay: 0.1s;
+}
+
+/* The played card flashes and flies up (feedback for the single tap). */
+.draft__slot--ghost {
+  z-index: 3;
+  pointer-events: none;
+}
+
+.draft__slot--ghost > .card {
+  animation: card-played 0.38s ease-in forwards;
+}
+
+@keyframes card-in {
+  from {
+    opacity: 0;
+    transform: translateY(70px);
+  }
+}
+
+@keyframes card-played {
+  0% {
+    filter: brightness(1);
+  }
+  25% {
+    filter: brightness(1.6);
+    transform: translateY(-6px) scale(1.08);
+  }
+  100% {
+    opacity: 0;
+    transform: translateY(-70px) scale(1.15);
+  }
 }
 
 /* Hint about the last pick at the top edge of the field. */
 .pick-hint {
   position: absolute;
-  top: 8px;
+  top: calc(64px + env(safe-area-inset-top));
   left: 0;
   right: 0;
+  z-index: 3;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -257,46 +316,6 @@
   }
 }
 
-/* Countdown */
-.countdown {
-  position: absolute;
-  inset: 0;
-  z-index: 5;
-  display: grid;
-  place-items: center;
-  pointer-events: none;
-}
-
-.countdown__value {
-  font-family: var(--font-display);
-  font-size: min(34vw, 9rem);
-  line-height: 1;
-  color: var(--gold);
-  -webkit-text-stroke: 0.12em var(--outline);
-  paint-order: stroke fill;
-  text-shadow: 0 0.08em 0 var(--outline);
-  animation: plop 0.6s var(--ease-spring);
-}
-
-.countdown__value--go {
-  font-size: min(22vw, 6rem);
-  color: var(--team-orange);
-  transform: rotate(-4deg);
-}
-
-@keyframes plop {
-  0% {
-    opacity: 0;
-    transform: scale(2.4);
-  }
-  60% {
-    opacity: 1;
-  }
-  100% {
-    transform: scale(1);
-  }
-}
-
 /* Round end banner */
 .round-banner-wrap {
   position: absolute;
@@ -304,6 +323,7 @@
   z-index: 5;
   display: grid;
   place-items: center;
+  padding-bottom: 12vh;
   pointer-events: none;
 }
 
