@@ -14,7 +14,8 @@
     "build": "pnpm -r --workspace-concurrency=1 --if-present build",
     "dev": "pnpm --filter @rumble-realms/web dev",
     "preview": "pnpm --filter @rumble-realms/web preview",
-    "sim": "pnpm --filter @rumble-realms/sim-cli start"
+    "sim": "pnpm --silent --filter @rumble-realms/sim-cli start",
+    "test:robust": "pnpm --silent --filter @rumble-realms/sim-cli start robust"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

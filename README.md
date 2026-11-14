@@ -4,7 +4,7 @@ Rumble Realms ist ein rundenbasiertes Auto-Battler-Kartenspiel für das Handy im
 
 Es läuft als Progressive Web App (PWA) im Browser und soll auf Android und iOS installierbar sein.
 
-Stand: Meilenstein M0 (Projektgerüst) – noch kein spielbares Spiel.
+Stand: Meilenstein M1 (Engine ohne Grafik) – die Spiellogik läuft auf der Kommandozeile, ein spielbares Spiel folgt mit M2.
 
 ## Voraussetzungen
 
@@ -13,17 +13,18 @@ Stand: Meilenstein M0 (Projektgerüst) – noch kein spielbares Spiel.
 
 ## Befehle
 
-| Befehl           | Wirkung                                                             |
-| ---------------- | ------------------------------------------------------------------- |
-| `pnpm install`   | Installiert alle Abhängigkeiten                                     |
-| `pnpm dev`       | Startet den Entwicklungsserver auf http://localhost:5173            |
-| `pnpm lint`      | Prüft Code (ESLint) und Formatierung (Prettier)                     |
-| `pnpm typecheck` | Prüft die Typen in allen Paketen                                    |
-| `pnpm test`      | Führt die Tests (Vitest) aller Pakete aus                           |
-| `pnpm build`     | Baut die Web-App für die Auslieferung                               |
-| `pnpm preview`   | Zeigt die gebaute App (nach `pnpm build`) auf http://localhost:5173 |
-| `pnpm sim`       | Kommandozeilen-Simulation (ab M1 mit Inhalt)                        |
-| `pnpm format`    | Formatiert alle Dateien mit Prettier                                |
+| Befehl             | Wirkung                                                             |
+| ------------------ | ------------------------------------------------------------------- |
+| `pnpm install`     | Installiert alle Abhängigkeiten                                     |
+| `pnpm dev`         | Startet den Entwicklungsserver auf http://localhost:5173            |
+| `pnpm lint`        | Prüft Code (ESLint) und Formatierung (Prettier)                     |
+| `pnpm typecheck`   | Prüft die Typen in allen Paketen                                    |
+| `pnpm test`        | Führt die Tests (Vitest) aller Pakete aus                           |
+| `pnpm build`       | Baut die Web-App für die Auslieferung                               |
+| `pnpm preview`     | Zeigt die gebaute App (nach `pnpm build`) auf http://localhost:5173 |
+| `pnpm sim`         | Kommandozeilen-Simulation, z. B. `pnpm sim match --seed 42`         |
+| `pnpm test:robust` | Spielt viele Zufallsmatches und prüft sie (`--matches N`)           |
+| `pnpm format`      | Formatiert alle Dateien mit Prettier                                |
 
 ## Aufbau
 
@@ -44,8 +45,8 @@ Stand: Meilenstein M0 (Projektgerüst) – noch kein spielbares Spiel.
 
 | #   | Meilenstein            | Stand      |
 | --- | ---------------------- | ---------- |
-| M0  | Projektgerüst          | in Abnahme |
-| M1  | Engine ohne Grafik     | offen      |
+| M0  | Projektgerüst          | fertig     |
+| M1  | Engine ohne Grafik     | in Abnahme |
 | M2  | Spielbarer Prototyp    | offen      |
 | M3  | Volle Kampfmechanik    | offen      |
 | M4  | Konten und Fortschritt | offen      |
