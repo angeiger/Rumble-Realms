@@ -269,3 +269,40 @@ Geräten sagt er nichts aus.
 
 PixiJS macht den Hauptteil des Programms aus (rund 183 kB komprimiert). Der Service Worker speichert alles
 beim ersten Besuch, danach startet die App ohne Netz. Ein Aufteilen in nachladbare Teile ist für später notiert.
+
+## Änderungswünsche von Andreas nach dem M2-Test (14.11.2026)
+
+Diese Punkte hat Andreas nach dem Test des Prototyps festgelegt. Sie gehen der Spezifikation vor, wo sie ihr
+widersprechen. Umgesetzt werden sie als erstes Arbeitspaket von M3, weil Sonderkarten, Bots und Balancing darauf aufbauen.
+Die Grundmechanik hat er ausdrücklich für gut befunden.
+
+### D-042 Aufstellung so weit hinten wie möglich (ändert SPEC 4.4, ersetzt D-026 teilweise)
+
+Alle Einheiten stehen so nah an der eigenen Grundlinie wie möglich. Die Reihenfolge nach Rolle bleibt
+(hinten Fernkampf, davor Mitte, davor vorne). Kommt eine Einheit dazu, die weiter hinten stehen soll,
+rücken die anderen nach vorne. Die genaue Regel (Spalten, Gleichstände) wird bei der Umsetzung festgelegt.
+
+### D-043 Karten liegen über dem Spielfeld (ändert SPEC 10)
+
+Das Spielfeld füllt immer den ganzen Bildschirm. Die Angebotskarten werden darüber eingeblendet statt darunter.
+
+### D-044 Ein Tippen spielt die Karte (ändert SPEC 4.3)
+
+Keine zusätzliche Bestätigung und kein Button „Ausspielen“ mehr. Die Detailansicht bleibt über langes Drücken
+bzw. den „i“-Knopf erreichbar.
+
+### D-045 Kein Countdown vor dem Kampf (ändert SPEC 4.2)
+
+Statt „3 – 2 – 1 – Kampf!“ ein kurzer Übergang, z. B. eine Rauchanimation.
+
+### D-046 Die Armee wächst von Runde zu Runde (ändert SPEC 4.1 und 4.2)
+
+Alle Karten, die ein Spieler in früheren Runden gewählt hat, erscheinen in jeder neuen Runde wieder.
+Neu gewählte Karten kommen dazu. Annahmen bis zur Umsetzung: Die Einheiten erscheinen mit vollen LP und werden
+nach D-042 neu aufgestellt; der Verlierer-Bonus bleibt. Ob das Feld dafür größer werden muss, wird per
+Simulation geprüft (Armeegröße in späten Runden, Kampfdauer, Rechenzeit) und dann mit Andreas entschieden.
+Die Änderung braucht eine neue `ENGINE_VERSION`.
+
+### D-047 Grafik später überarbeiten
+
+Die Platzhalter-Figuren bleiben vorerst. Eine Überarbeitung der Grafik ist für M6 (Feinschliff) vorgesehen.
