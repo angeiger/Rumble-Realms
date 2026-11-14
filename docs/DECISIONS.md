@@ -249,3 +249,23 @@ Die Teamfarbe steckt in der Kleidung und im Ring unter der Figur, der zusätzlic
 
 Ende-zu-Ende-Tests laufen mit Chromium im mobilen Hochformat gegen den gebauten Stand auf Port 4173,
 damit sie den Entwicklungsserver auf 5173 nicht stören. WebGL läuft im Test-Browser per Software-Renderer.
+
+### D-039 PixiJS-Renderer nie mit `destroy(true)` abbauen
+
+Es gibt zeitweise zwei PixiJS-Renderer: den Kampf-Renderer und einen kurzlebigen, der die Figurenbilder für die
+Karten erzeugt. `app.destroy(true, …)` leert zusätzlich PixiJS-interne Puffer, die sich alle Renderer teilen;
+ein noch laufender Renderer stürzt dann im nächsten Bild ab (das Spiel fror ein, wenn man direkt nach dem Laden
+auf „Spielen“ drückte). Deshalb wird überall `DESTROY_RENDERER` aus `render/destroy.ts` benutzt.
+Ein Ende-zu-Ende-Test („Sofortstart“) sichert das ab.
+
+### D-040 Ende-zu-Ende-Tests laufen in Echtzeit
+
+Der Test spielt ein ganzes Match bei doppelter Geschwindigkeit durch (etwa 2,5 Minuten). Eine künstlich
+beschleunigte Uhr wird nicht benutzt, weil der Test-Browser damit keine Bilder mehr liefert.
+Der Test-Browser rendert per Software und ist viel langsamer als ein Handy; über die Bildrate auf echten
+Geräten sagt er nichts aus.
+
+### D-041 Paketgröße
+
+PixiJS macht den Hauptteil des Programms aus (rund 183 kB komprimiert). Der Service Worker speichert alles
+beim ersten Besuch, danach startet die App ohne Netz. Ein Aufteilen in nachladbare Teile ist für später notiert.
