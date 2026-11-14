@@ -2,15 +2,17 @@
  * The deterministic battle simulation (SPEC 6). One call of `stepTick` advances the
  * field by one tick (1/20 s) in the fixed order of SPEC 6.2:
  *
- *   1. lingering effects (zones) and projectile impacts
+ *   1. status effects (burn, poison), lingering zones and projectile impacts
  *   2. target selection
  *   3. attacks and abilities
  *   4. movement
  *   5. deaths and death effects
  *   6. end of round check
  *
- * Units are always processed in ascending id order. Damage is applied immediately, but
- * units only leave the field in step 5, so fatally hit units still act in that tick.
+ * Units are always processed in ascending id order. Damage is applied immediately (only
+ * through `applyDamage` in status.ts), but units only leave the field in step 5, so fatally
+ * hit units still act in that tick. Summoned units join at the end of `units` (new, higher
+ * ids) and act from the next tick on.
  */
 import * as balance from '../data/balance.ts';
 import * as cards from '../data/cards.ts';
@@ -28,6 +30,7 @@ import type {
 import * as types from '../types.ts';
 import * as pathfinding from './pathfinding.ts';
 import * as state from './state.ts';
+import * as status from './status.ts';
 
 // Local copies of everything imported that the inner loops use. Behaviour is identical;
 // test runners that turn every imported name into a property look-up (Vitest's module
@@ -36,6 +39,7 @@ import * as state from './state.ts';
 const {
   DIAGONAL_STEP,
   FIELD,
+  FIELD_REACH_SQ,
   GRID_CELLS,
   GRID_COLS,
   MELEE_RANGE,
@@ -50,16 +54,27 @@ const { CARDS } = cards;
 const { applyBps, distSq, idiv, isqrt, rangeSq, scaleByLevel } = math;
 const { GROUND } = types;
 const { findPath, STEP_DX, STEP_DY } = pathfinding;
-const { cellIndex, isFree, occIndex } = state;
+const { cellIndex, isFree, occIndex, spawnUnit } = state;
+const {
+  applyDamage,
+  applySlow,
+  canAct,
+  dotDamage,
+  effectiveAttackInterval,
+  effectiveMoveSpeed,
+  isTargetable,
+  outgoingDamage,
+} = status;
 
 type Events = BattleEvent[] | undefined;
 
 /**
  * Work data, never part of the state: the units of each owner in ascending id order and a
  * table from id to unit, filled at the start of every `stepTick` and emptied before the
- * deaths are resolved. Units only leave the field in that last step (and none join during
- * a tick), so both stay complete until then; hit points must still be checked. They only
- * save the owner tests and the binary search and never change a result or an order.
+ * deaths are resolved. Units only leave the field in that last step, so both stay complete
+ * until then; hit points must still be checked. Units summoned during the tick are missing
+ * from both, which is fine: nobody can target them before the next tick. They only save the
+ * owner tests and the binary search and never change a result or an order.
  */
 const SIDES: [UnitState[], UnitState[]] = [[], []];
 /** Work table for the current tick: the unit per id (like `unitById`), else undefined. */
@@ -97,6 +112,7 @@ export function stepTick(b: BattleState, events?: BattleEvent[]): void {
     BY_ID_SET.push(u.id);
   }
 
+  tickStatus(b, events);
   tickZones(b, events);
   landProjectiles(b, events);
   for (let i = 0; i < count; i++) {
@@ -161,7 +177,8 @@ function canHit(def: CardDef, target: UnitState): boolean {
 
 /** Squared distance in cells within which the unit can act on its current target. */
 function reachSq(u: UnitState, atk: AttackDef): number {
-  if (atk.kind === 'ranged') return rangeSq(atk.range);
+  if (atk.kind === 'ranged') return rangeSq(u.range);
+  if (atk.kind === 'artillery') return FIELD_REACH_SQ;
   if (atk.kind === 'heal') {
     if (u.mode === 'heal') return rangeSq(atk.range);
     if (u.mode === 'follow') return rangeSq(atk.followDistance);
@@ -177,12 +194,14 @@ function withSuddenDeath(b: BattleState, amount: number): number {
   return b.tick >= SUDDEN_DEATH_TICK ? applyBps(amount, SUDDEN_DEATH_DAMAGE_BPS) : amount;
 }
 
-/** Applies final damage and returns how many hit points were actually removed. */
-function damage(target: UnitState, amount: number, events: Events): number {
-  const removed = target.hp > 0 ? Math.min(amount, target.hp) : 0;
-  target.hp -= amount;
-  if (events !== undefined) events.push({ type: 'damage', unit: target.id, amount });
-  return removed;
+/** Applies final damage (see applyDamage) and returns the hit points actually removed. */
+function damage(b: BattleState, target: UnitState, amount: number, events: Events): number {
+  return applyDamage(target, amount, b.tick, events);
+}
+
+/** Squared minimum distance to a target (artillery), 0 = none. */
+function minReachSq(atk: AttackDef): number {
+  return atk.kind === 'artillery' ? atk.minRange * atk.minRange : 0;
 }
 
 function setTarget(
@@ -199,8 +218,26 @@ function setTarget(
 }
 
 // ---------------------------------------------------------------------------
-// 1. Zones and projectiles
+// 1. Status effects, zones and projectiles
 // ---------------------------------------------------------------------------
+
+/** Damage over time of burn and poison (D-025, sudden death applies to the rate). */
+function tickStatus(b: BattleState, events: Events): void {
+  const units = b.units;
+  const tick = b.tick;
+  for (let i = 0; i < units.length; i++) {
+    const u = units[i] as UnitState;
+    if (u.hp <= 0) continue;
+    if (u.burnUntil >= tick && u.burnUntil > 0) {
+      const amount = dotDamage(withSuddenDeath(b, u.burnDps), u.burnStart, u.burnUntil, tick);
+      if (amount > 0) damage(b, u, amount, events);
+    }
+    if (u.poisonUntil >= tick && u.poisonUntil > 0) {
+      const amount = dotDamage(withSuddenDeath(b, u.poisonDps), u.poisonStart, u.poisonUntil, tick);
+      if (amount > 0) damage(b, u, amount, events);
+    }
+  }
+}
 
 function tickZones(b: BattleState, events: Events): void {
   const zones = b.zones;
@@ -216,7 +253,7 @@ function tickZones(b: BattleState, events: Events): void {
       for (const u of b.units) {
         if (u.owner === z.owner || u.hp <= 0) continue;
         if (u.layer === GROUND ? !z.hitsGround : !z.hitsAir) continue;
-        if (inRadius(u.x, u.y, z.x, z.y, z.radius)) damage(u, amount, events);
+        if (inRadius(u.x, u.y, z.x, z.y, z.radius)) damage(b, u, amount, events);
       }
     }
     if (b.tick < z.endTick) zones[kept++] = z;
@@ -233,21 +270,77 @@ function landProjectiles(b: BattleState, events: Events): void {
       projectiles[kept++] = p;
       continue;
     }
+    const def = CARDS[p.card];
+    const atk = def.attack;
+    const amount = withSuddenDeath(b, p.damage);
+    if (atk.kind === 'artillery') {
+      // Shell on a cell: hits whoever stands there now (moving targets can dodge).
+      if (events !== undefined) {
+        events.push({ type: 'impact', unit: p.sourceId, x: p.x, y: p.y, radius: atk.radius });
+      }
+      areaDamage(b, p.owner, def, p.x, p.y, atk.radius, amount, events);
+      continue;
+    }
     // Homing shot: hits if the target is still alive, otherwise it fizzles (SPEC 6.2).
     const target = byId(p.targetId);
-    if (target !== undefined && target.hp > 0) {
-      damage(target, withSuddenDeath(b, p.damage), events);
+    if (target === undefined || target.hp <= 0) continue;
+    if (atk.kind === 'ranged' && atk.splashRadius !== undefined) {
+      const radius = atk.splashRadius;
+      if (events !== undefined) {
+        events.push({ type: 'impact', unit: p.sourceId, x: target.x, y: target.y, radius });
+      }
+      areaDamage(b, p.owner, def, target.x, target.y, radius, amount, events);
+    } else {
+      damage(b, target, amount, events);
+      onHit(b, atk, target);
     }
   }
   projectiles.length = kept;
+}
+
+/** Effects of a single-target hit on the target (frost shaman's slow). */
+function onHit(b: BattleState, atk: AttackDef, target: UnitState): void {
+  if (atk.kind === 'ranged' && atk.slow !== undefined) {
+    applySlow(target, atk.slow.bps, atk.slow.durationTicks, b.tick);
+  }
+}
+
+/**
+ * Damages every living enemy of `owner` on a layer `def` can attack whose cell lies within
+ * `radius` (milli-fields) of cell (x, y), in ascending id order (D-022).
+ */
+function areaDamage(
+  b: BattleState,
+  owner: number,
+  def: CardDef,
+  x: number,
+  y: number,
+  radius: number,
+  amount: number,
+  events: Events,
+): void {
+  const units = b.units;
+  for (let i = 0; i < units.length; i++) {
+    const o = units[i] as UnitState;
+    if (o.owner === owner || o.hp <= 0 || !canHit(def, o)) continue;
+    if (inRadius(o.x, o.y, x, y, radius)) damage(b, o, amount, events);
+  }
 }
 
 // ---------------------------------------------------------------------------
 // 2. Target selection
 // ---------------------------------------------------------------------------
 
-/** Nearest attackable enemy; ties: smaller row distance, then smaller id (SPEC 6.2). */
-function nearestEnemy(u: UnitState, def: CardDef): UnitState | undefined {
+/**
+ * Nearest attackable enemy at a squared distance of at least `minSq`; ties: smaller row
+ * distance, then smaller id (SPEC 6.2). Untargetable enemies are skipped.
+ */
+function nearestEnemy(
+  u: UnitState,
+  def: CardDef,
+  tick: number,
+  minSq: number,
+): UnitState | undefined {
   const enemies = SIDES[u.owner === 0 ? 1 : 0];
   const hitsGround = def.targets.ground;
   const hitsAir = def.targets.air;
@@ -259,10 +352,11 @@ function nearestEnemy(u: UnitState, def: CardDef): UnitState | undefined {
   for (let i = 0; i < enemies.length; i++) {
     const o = enemies[i] as UnitState;
     if (o.hp <= 0 || !(o.layer === GROUND ? hitsGround : hitsAir)) continue;
+    if (o.untargetableUntil > tick) continue;
     const dx = o.x - ux;
     const dy = o.y - uy;
     const d = dx * dx + dy * dy;
-    if (best !== undefined && d > bestDist) continue;
+    if (d < minSq || (best !== undefined && d > bestDist)) continue;
     const rows = dy < 0 ? -dy : dy;
     // Here d <= bestDist: a smaller distance wins, an equal one needs fewer rows.
     if (best === undefined || d < bestDist || rows < bestRows) {
@@ -278,15 +372,20 @@ function chooseTarget(b: BattleState, u: UnitState): void {
   if (u.jumpTick >= 0) return;
   const def = CARDS[u.card];
   const current = byId(u.targetId);
-  const valid = current !== undefined && current.hp > 0;
+  const alive = current !== undefined && current.hp > 0;
   if (def.attack.kind === 'heal') {
-    const healed = u.mode === 'heal' && valid && current.hp >= current.maxHp;
-    if (valid && !healed && b.tick < u.retargetTick) return;
+    const healed = u.mode === 'heal' && alive && current.hp >= current.maxHp;
+    if (alive && !healed && b.tick < u.retargetTick) return;
     chooseHealerTarget(b, u, def);
     return;
   }
+  const minSq = minReachSq(def.attack);
+  const valid =
+    alive &&
+    isTargetable(current, b.tick) &&
+    (minSq === 0 || distSq(u.x, u.y, current.x, current.y) >= minSq);
   if (valid && b.tick < u.retargetTick) return;
-  setTarget(b, u, nearestEnemy(u, def), 'attack');
+  setTarget(b, u, nearestEnemy(u, def, b.tick, minSq), 'attack');
 }
 
 /** Healer priorities (SPEC 5.3, D-027). */
@@ -321,7 +420,7 @@ function chooseHealerTarget(b: BattleState, u: UnitState, def: CardDef): void {
       weakestDist = d;
     }
   }
-  if (!fighterLeft) setTarget(b, u, nearestEnemy(u, def), 'attack');
+  if (!fighterLeft) setTarget(b, u, nearestEnemy(u, def, b.tick, 0), 'attack');
   else if (weakest !== undefined) setTarget(b, u, weakest, 'heal');
   else if (nearestInjured !== undefined) setTarget(b, u, nearestInjured, 'heal');
   else setTarget(b, u, nearestAlly, 'follow');
@@ -331,16 +430,20 @@ function chooseHealerTarget(b: BattleState, u: UnitState, def: CardDef): void {
 // 3. Attacks and abilities
 // ---------------------------------------------------------------------------
 
-function attackInterval(u: UnitState, def: CardDef): number {
+function attackInterval(b: BattleState, u: UnitState, def: CardDef): number {
   const atk = def.attack;
   if (atk.kind === 'explode') return 0;
-  if (def.rage === undefined) return atk.intervalTicks;
-  // Berserker: the interval shrinks linearly with the missing share of hit points.
-  const missing = u.maxHp - Math.max(u.hp, 0);
-  return atk.intervalTicks - idiv(def.rage.intervalReductionTicks * missing, u.maxHp);
+  let interval = atk.intervalTicks;
+  if (def.rage !== undefined) {
+    // Berserker: the interval shrinks linearly with the missing share of hit points.
+    const missing = u.maxHp - Math.max(u.hp, 0);
+    interval -= idiv(def.rage.intervalReductionTicks * missing, u.maxHp);
+  }
+  return effectiveAttackInterval(u, interval, b.tick);
 }
 
 function act(b: BattleState, u: UnitState, events: Events): void {
+  if (!canAct(u, b.tick)) return;
   const def = CARDS[u.card];
   const atk = def.attack;
   if (u.jumpTick >= 0) {
@@ -358,19 +461,41 @@ function act(b: BattleState, u: UnitState, events: Events): void {
     }
     return;
   }
+  if (u.summonTick >= 0 && b.tick >= u.summonTick) summon(b, u, def, events);
   if (u.moveCost > 0 || u.targetId === 0 || u.mode === 'follow') return;
   if (b.tick < u.nextAttackTick) return;
   const target = byId(u.targetId);
   if (target === undefined || target.hp <= 0) return;
-  if (distSq(u.x, u.y, target.x, target.y) > reachSq(u, atk)) return;
+  const d = distSq(u.x, u.y, target.x, target.y);
+  if (d > reachSq(u, atk)) return;
 
   if (u.mode === 'heal') {
     if (atk.kind !== 'heal' || target.hp >= target.maxHp) return;
     const amount = Math.min(scaleByLevel(atk.amount, u.level), target.maxHp - target.hp);
     target.hp += amount;
     if (events !== undefined) events.push({ type: 'heal', unit: u.id, target: target.id, amount });
+  } else if (atk.kind === 'artillery') {
+    if (d < minReachSq(atk)) return;
+    const id = b.nextProjectileId++;
+    const impactTick = b.tick + atk.flightTicks;
+    b.projectiles.push({
+      id,
+      owner: u.owner,
+      sourceId: u.id,
+      targetId: target.id,
+      card: u.card,
+      up: u.up,
+      x: target.x,
+      y: target.y,
+      damage: outgoingDamage(u, scaleByLevel(atk.damage, u.level), b.tick),
+      launchTick: b.tick,
+      impactTick,
+    });
+    if (events !== undefined) {
+      events.push({ type: 'lob', id, unit: u.id, x: target.x, y: target.y, impactTick });
+    }
   } else if (atk.kind === 'ranged') {
-    const dist = isqrt(distSq(u.x, u.y, target.x, target.y) * FIELD * FIELD);
+    const dist = isqrt(d * FIELD * FIELD);
     const flight = Math.max(1, idiv(dist + atk.projectileSpeed - 1, atk.projectileSpeed));
     const id = b.nextProjectileId++;
     b.projectiles.push({
@@ -378,7 +503,11 @@ function act(b: BattleState, u: UnitState, events: Events): void {
       owner: u.owner,
       sourceId: u.id,
       targetId: target.id,
-      damage: scaleByLevel(atk.damage, u.level),
+      card: u.card,
+      up: u.up,
+      x: -1,
+      y: -1,
+      damage: outgoingDamage(u, scaleByLevel(atk.damage, u.level), b.tick),
       launchTick: b.tick,
       impactTick: b.tick + flight,
     });
@@ -388,12 +517,45 @@ function act(b: BattleState, u: UnitState, events: Events): void {
   } else {
     const base = atk.kind === 'heal' ? atk.fallbackDamage : atk.damage;
     if (events !== undefined) events.push({ type: 'attack', unit: u.id, target: target.id });
-    const removed = damage(target, withSuddenDeath(b, scaleByLevel(base, u.level)), events);
+    const amount = outgoingDamage(u, scaleByLevel(base, u.level), b.tick);
+    const removed = damage(b, target, withSuddenDeath(b, amount), events);
     if (def.rage !== undefined && u.hp > 0) {
       u.hp = Math.min(u.maxHp, u.hp + applyBps(removed, def.rage.lifestealBps));
     }
   }
-  u.nextAttackTick = b.tick + attackInterval(u, def);
+  u.nextAttackTick = b.tick + attackInterval(b, u, def);
+}
+
+/**
+ * Necromancer: summons one unit of `def.summon.card` (summoner's level, owner's upgrades of
+ * that card) on the nearest free neighbouring cell of its layer: straight neighbours first,
+ * then diagonals, in step order (mirrored for player 1). Skipped (until the next interval)
+ * while `max` summons are alive or no neighbouring cell is free.
+ */
+function summon(b: BattleState, u: UnitState, def: CardDef, events: Events): void {
+  const s = def.summon;
+  if (s === undefined) return;
+  u.summonTick = b.tick + s.intervalTicks;
+  let alive = 0;
+  const units = b.units;
+  for (let i = 0; i < units.length; i++) {
+    const o = units[i] as UnitState;
+    if (o.summonerId === u.id && o.hp > 0) alive++;
+  }
+  if (alive >= s.max) return;
+  const layer = CARDS[s.card].layer;
+  const sign = u.owner === 0 ? 1 : -1;
+  for (let i = 0; i < STEP_DX.length; i++) {
+    const nx = u.x + sign * (STEP_DX[i] as number);
+    const ny = u.y + sign * (STEP_DY[i] as number);
+    if (!isFree(b, layer, nx, ny)) continue;
+    const unit = spawnUnit(b, u.owner, s.card, u.level, nx, ny);
+    unit.summonerId = u.id;
+    if (events !== undefined) {
+      events.push({ type: 'summon', unit: unit.id, summoner: u.id, card: s.card, x: nx, y: ny });
+    }
+    return;
+  }
 }
 
 /** True if a living enemy that `u` can attack stands within `reach` (squared cells). */
@@ -466,11 +628,12 @@ function shadowJump(b: BattleState, u: UnitState, events: Events): void {
 // ---------------------------------------------------------------------------
 
 function move(b: BattleState, u: UnitState): void {
-  if (u.jumpTick >= 0) return;
+  if (u.jumpTick >= 0 || !canAct(u, b.tick)) return;
   const def = CARDS[u.card];
+  const speed = effectiveMoveSpeed(u, b.tick);
 
   if (u.moveCost > 0) {
-    u.moveProgress += def.moveSpeed;
+    u.moveProgress += speed;
     if (u.moveProgress >= u.moveCost) {
       u.moveCarry = u.moveProgress - u.moveCost;
       u.moveProgress = 0;
@@ -518,7 +681,7 @@ function move(b: BattleState, u: UnitState): void {
   u.tx = nx;
   u.ty = ny;
   u.moveCost = nx !== u.x && ny !== u.y ? DIAGONAL_STEP : FIELD;
-  u.moveProgress = carry + def.moveSpeed;
+  u.moveProgress = carry + speed;
   u.stuckTicks = 0;
 }
 
@@ -603,7 +766,7 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
     const amount = withSuddenDeath(b, scaleByLevel(atk.damage, u.level));
     for (const o of b.units) {
       if (o.owner === u.owner || o.hp <= 0 || !canHit(def, o)) continue;
-      if (inRadius(u.x, u.y, o.x, o.y, atk.radius)) damage(o, amount, events);
+      if (inRadius(u.x, u.y, o.x, o.y, atk.radius)) damage(b, o, amount, events);
     }
   }
   const cloud = def.deathCloud;

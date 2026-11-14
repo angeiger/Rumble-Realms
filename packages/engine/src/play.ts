@@ -5,6 +5,7 @@
 import { simulateToEnd } from './battle/sim.ts';
 import { CARD_IDS } from './data/cards.ts';
 import { DECK_SIZE, MAX_LEVEL, OFFER_SIZE } from './data/balance.ts';
+import { ALL_UPGRADES_MASK } from './data/upgrades.ts';
 import { applyPick, createMatch, endRound, startBattle } from './match.ts';
 import { nextInt, nextU32 } from './rng.ts';
 import type { CardId, MatchConfig, MatchState, PlayerConfig, RngState } from './types.ts';
@@ -71,10 +72,15 @@ function randomPlayer(rng: RngState): PlayerConfig {
     deck.push(pool.splice(nextInt(rng, pool.length), 1)[0] as CardId);
   const levels: Partial<Record<CardId, number>> = {};
   for (const card of deck) levels[card] = 1 + nextInt(rng, MAX_LEVEL);
-  return { deck, levels };
+  const upgrades: Partial<Record<CardId, number>> = {};
+  for (const card of deck) upgrades[card] = nextInt(rng, ALL_UPGRADES_MASK + 1);
+  return { deck, levels, upgrades };
 }
 
-/** Random seed (up to 2^53 - 1), 4 distinct cards per player and random levels 1..MAX_LEVEL. */
+/**
+ * Random seed (up to 2^53 - 1), 4 distinct cards per player, random levels 1..MAX_LEVEL and
+ * random unlocked upgrades (mask 0..7) per deck card.
+ */
 export function randomConfig(rng: RngState): MatchConfig {
   const seed = nextInt(rng, TWO_POW_21) * TWO_POW_32 + nextU32(rng);
   return { seed, players: [randomPlayer(rng), randomPlayer(rng)] };

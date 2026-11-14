@@ -185,7 +185,8 @@ describe('offers', () => {
           const cards = offer.slots.map((slot) => slot.card);
           expect(new Set(cards).size).toBe(OFFER_SIZE);
           for (const slot of offer.slots) {
-            expect(slot.kind).toBe('spawn');
+            // No upgrades are unlocked in this config, so only double packs can appear.
+            expect(['spawn', 'double']).toContain(slot.kind);
             expect(s.config.players[player].deck).toContain(slot.card);
           }
           applyPick(s, seed % OFFER_SIZE);
@@ -259,19 +260,22 @@ describe('applyPick', () => {
       const offer = getOffer(s);
       const slot = (s.picks.length * 2) % OFFER_SIZE;
       const card = offer.slots[slot]?.card as CardId;
+      const kind = offer.slots[slot]?.kind;
+      const n = CARDS[card].count * (kind === 'double' ? 2 : 1);
       const before = s.battle.units.length;
       applyPick(s, slot);
       const pick = s.lastPick;
       expect(pick).toEqual({
         player,
         slot,
+        kind,
         card,
         spawned: pick?.spawned,
         forfeited: 0,
       });
-      expect(pick?.spawned).toHaveLength(CARDS[card].count);
-      expect(s.battle.units.length).toBe(before + CARDS[card].count);
-      total += CARDS[card].count;
+      expect(pick?.spawned).toHaveLength(n);
+      expect(s.battle.units.length).toBe(before + n);
+      total += n;
       for (const id of pick?.spawned ?? []) {
         const u = s.battle.units.find((unit) => unit.id === id);
         expect(u?.owner).toBe(player);
@@ -429,6 +433,10 @@ describe('endRound', () => {
       owner: 0,
       sourceId: 1,
       targetId: 2,
+      card: 'archer',
+      up: 0,
+      x: -1,
+      y: -1,
       damage: 5,
       launchTick: 499,
       impactTick: 505,
@@ -552,22 +560,25 @@ describe('growing army (D-046, D-053)', () => {
     while (s.phase === 'draft') {
       const player = currentPlayer(s);
       const card = getOffer(s).slots[1]?.card as CardId;
+      const kind = getOffer(s).slots[1]?.kind;
+      const double = kind === 'double';
       applyPick(s, 1);
       const entry = s.army[s.army.length - 1] as ArmyEntry;
       const ids: number[] = [];
-      for (let i = 0; i < CARDS[card].count; i++) ids.push(nextId++);
+      for (let i = 0; i < CARDS[card].count * (double ? 2 : 1); i++) ids.push(nextId++);
       expect(entry).toEqual({
         player,
         card,
         level: s.config.players[player].levels[card] ?? 1,
         column: nextInt(placement, GRID_COLS),
         round: 1,
+        double,
         unitIds: ids,
       });
       // Exactly one draw of the placement stream per pick.
       expect(s.rng.placement).toEqual(placement);
       expect(s.nextUnitId).toBe(nextId);
-      expect(s.lastPick).toEqual({ player, slot: 1, card, spawned: ids, forfeited: 0 });
+      expect(s.lastPick).toEqual({ player, slot: 1, kind, card, spawned: ids, forfeited: 0 });
     }
     expect(s.army).toHaveLength(6);
   });
@@ -657,20 +668,30 @@ describe('growing army (D-046, D-053)', () => {
     for (let i = 0; i < 29; i++) {
       const unitIds = [id, id + 1, id + 2, id + 3, id + 4];
       id += 5;
-      s.army.push({ player: 0, card: 'skeleton', level: 1, column: 5, round: 1, unitIds });
+      s.army.push({
+        player: 0,
+        card: 'skeleton',
+        level: 1,
+        column: 5,
+        round: 1,
+        double: false,
+        unitIds,
+      });
     }
     s.nextUnitId = id;
     const offer = getOffer(s);
     // A front card comes after the skeletons in army order and finds no cell at all.
     const slot = offer.slots.findIndex((x) => CARDS[x.card].zone === 'front');
     const card = offer.slots[slot]?.card as CardId;
+    const kind = offer.slots[slot]?.kind;
     applyPick(s, slot);
     expect(s.lastPick).toEqual({
       player: 0,
       slot,
+      kind,
       card,
       spawned: [],
-      forfeited: CARDS[card].count,
+      forfeited: CARDS[card].count * (kind === 'double' ? 2 : 1),
     });
     expect(s.battle.units.filter((u) => u.owner === 0)).toHaveLength(GRID_COLS * HALF_ROWS);
     expectFieldMatchesArmy(s);
@@ -686,6 +707,7 @@ describe('growing army (D-046, D-053)', () => {
         level: 1,
         column: i % GRID_COLS,
         round: 1,
+        double: false,
         unitIds: [1000 + 2 * i, 1001 + 2 * i],
       });
       full.army.push({
@@ -694,6 +716,7 @@ describe('growing army (D-046, D-053)', () => {
         level: 1,
         column: i % GRID_COLS,
         round: 1,
+        double: false,
         unitIds: [2000 + 3 * i, 2001 + 3 * i, 2002 + 3 * i],
       });
     }

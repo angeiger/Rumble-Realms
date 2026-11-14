@@ -475,6 +475,11 @@ describe('events (D-020)', () => {
       for (const e of events) {
         if (e.type === 'death') died.add(e.unit);
         if (e.type === 'jump') jumped.add(e.unit);
+        // Summoned in this tick: count as present (area damage may already hit them).
+        if (e.type === 'summon') {
+          const u = b.units.find((x) => x.id === e.unit) ?? { id: e.unit, card: e.card };
+          before.set(e.unit, { ...(u as (typeof b.units)[number]) });
+        }
       }
       for (const e of events) {
         seen.add(e.type);
@@ -521,6 +526,22 @@ describe('events (D-020)', () => {
           case 'zone':
             expect(e.endTick).toBe(tick + 60);
             break;
+          case 'lob': {
+            const u = before.get(e.unit)!;
+            expect(u.card).toBe('beetle');
+            expect(e.impactTick).toBe(tick + 30);
+            break;
+          }
+          case 'impact':
+            expect(e.radius).toBeGreaterThan(0);
+            expect(e.x >= 0 && e.y >= 0).toBe(true);
+            break;
+          case 'summon': {
+            expect(before.get(e.summoner)!.card).toBe('necromancer');
+            expect(e.card).toBe('skeleton');
+            expect(e.unit).toBeGreaterThan(e.summoner);
+            break;
+          }
         }
       }
     }
@@ -530,7 +551,19 @@ describe('events (D-020)', () => {
     const seen = new Set<BattleEvent['type']>();
     for (let seed = 0; seed < 60; seed++) checkEvents(randomBattle(seed), seen);
     expect([...seen].sort()).toEqual(
-      ['attack', 'damage', 'death', 'explosion', 'heal', 'jump', 'shot', 'zone'].sort(),
+      [
+        'attack',
+        'damage',
+        'death',
+        'explosion',
+        'heal',
+        'impact',
+        'jump',
+        'lob',
+        'shot',
+        'summon',
+        'zone',
+      ].sort(),
     );
   });
 
@@ -572,7 +605,7 @@ describe('determinism (SPEC 6.1)', () => {
     }
   });
 
-  it('uses random fields that contain all ten units', () => {
+  it('uses random fields that contain all 16 units', () => {
     // Guard for the generator used above: otherwise some units would never be covered.
     const cards = new Set<CardId>();
     for (let seed = 0; seed < 100; seed++)

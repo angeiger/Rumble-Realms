@@ -1,5 +1,5 @@
 /**
- * Card definitions for the first ten base units (SPEC 5.2, level 1).
+ * Card definitions of all 16 base units (SPEC 5.2, level 1), in the order of the table.
  * Values are pre-converted to engine units (SPEC 2.5, D-018 ff.):
  * - intervalTicks = seconds * 20
  * - moveSpeed     = fields per second * 50 (milli-fields per tick)
@@ -19,6 +19,12 @@ export const CARD_IDS = [
   'assassin',
   'berserker',
   'shroomling',
+  'pyromancer',
+  'necromancer',
+  'beetle',
+  'golem',
+  'frost_shaman',
+  'whelp',
 ] as const;
 
 export type CardId = (typeof CARD_IDS)[number];
@@ -208,5 +214,122 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     arena: 2,
     // Spore cloud on death: r 1 field, 15 damage/s for 3 s.
     deathCloud: { radius: 1000, damagePerSecond: 15, durationTicks: 60 }, // r 1, 3 s
+  },
+  pyromancer: {
+    id: 'pyromancer',
+    count: 1,
+    role: 'mage',
+    zone: 'back',
+    layer: GROUND,
+    hp: 280,
+    moveSpeed: 45, // 0,9 field/s
+    targets: { ground: true, air: true },
+    attack: {
+      kind: 'ranged',
+      damage: 70,
+      intervalTicks: 36, // 1,8 s
+      range: 4,
+      projectileSpeed: 500, // assumption: 10 fields/s
+      splashRadius: 1000, // r 1 field
+    },
+    rarity: 'rare',
+    arena: 2,
+  },
+  necromancer: {
+    id: 'necromancer',
+    count: 1,
+    role: 'summoner',
+    zone: 'back',
+    layer: GROUND,
+    hp: 300,
+    moveSpeed: 40, // 0,8 field/s
+    targets: { ground: true, air: true },
+    attack: {
+      kind: 'ranged',
+      damage: 25,
+      intervalTicks: 24, // 1,2 s
+      range: 3,
+      projectileSpeed: 500, // assumption: 10 fields/s
+    },
+    rarity: 'epic',
+    arena: 2,
+    summon: { card: 'skeleton', intervalTicks: 80, max: 4 }, // every 4 s, at most 4 alive
+  },
+  beetle: {
+    id: 'beetle',
+    count: 1,
+    role: 'artillery',
+    zone: 'back',
+    layer: GROUND,
+    hp: 350,
+    moveSpeed: 20, // 0,4 field/s
+    targets: { ground: true, air: false },
+    attack: {
+      kind: 'artillery',
+      damage: 160,
+      radius: 1500, // r 1,5 fields
+      intervalTicks: 100, // 5,0 s
+      minRange: 2,
+      flightTicks: 30, // 1,5 s
+    },
+    rarity: 'epic',
+    arena: 3,
+  },
+  golem: {
+    id: 'golem',
+    count: 1,
+    role: 'tank',
+    zone: 'front',
+    layer: GROUND,
+    hp: 1600,
+    moveSpeed: 25, // 0,5 field/s
+    targets: { ground: true, air: false },
+    attack: {
+      kind: 'melee',
+      damage: 90,
+      intervalTicks: 40, // 2,0 s
+    },
+    rarity: 'epic',
+    arena: 3,
+  },
+  frost_shaman: {
+    id: 'frost_shaman',
+    count: 1,
+    role: 'support',
+    zone: 'back',
+    layer: GROUND,
+    hp: 260,
+    moveSpeed: 45, // 0,9 field/s
+    targets: { ground: true, air: true },
+    attack: {
+      kind: 'ranged',
+      damage: 35,
+      intervalTicks: 30, // 1,5 s
+      range: 5,
+      projectileSpeed: 500, // assumption: 10 fields/s
+      slow: { bps: 3000, durationTicks: 40 }, // 30 % slower for 2 s
+    },
+    rarity: 'rare',
+    arena: 4,
+  },
+  whelp: {
+    id: 'whelp',
+    count: 1,
+    role: 'flyer',
+    zone: 'mid',
+    layer: AIR,
+    hp: 550,
+    moveSpeed: 55, // 1,1 field/s
+    targets: { ground: true, air: true },
+    attack: {
+      kind: 'ranged',
+      damage: 55,
+      intervalTicks: 32, // 1,6 s
+      range: 2,
+      projectileSpeed: 600, // assumption: 12 fields/s
+      splashRadius: 1000, // r 1 field
+    },
+    rarity: 'epic',
+    arena: 5,
   },
 };

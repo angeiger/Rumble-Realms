@@ -110,7 +110,8 @@ export function layoutArmy(entries: readonly ArmyEntry[], player: PlayerIndex): 
 
 /**
  * Puts the whole army of both players onto the field (D-053): removes all units of the
- * field and spawns every army unit with full hit points on its layout cell, keeping its id.
+ * field and spawns every army unit with full hit points on its layout cell, keeping its id,
+ * with the stats of the currently active upgrades.
  * `battle.units` ends up sorted by id and `battle.nextUnitId` equals `state.nextUnitId`.
  * Only allowed before the battle has started. Returns the ids that found no cell, ascending.
  */
@@ -126,6 +127,8 @@ export function rebuildField(state: MatchState): number[] {
 
   b.units = [];
   b.occ.fill(0);
+  // Units take the stats of the upgrades active right now (spawnUnit reads b.upgrades).
+  b.upgrades = [{ ...state.activeUpgrades[0] }, { ...state.activeUpgrades[1] }];
   for (const cell of cells) {
     const entry = entryOf.get(cell.id) as ArmyEntry;
     spawnUnit(b, entry.player, entry.card, entry.level, cell.x, cell.y, cell.id);

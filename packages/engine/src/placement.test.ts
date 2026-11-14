@@ -22,7 +22,7 @@ function army(cards: [PlayerIndex, CardId, number][], firstId = 1): ArmyEntry[] 
   return cards.map(([player, card, column]) => {
     const unitIds: number[] = [];
     for (let i = 0; i < CARDS[card].count; i++) unitIds.push(id++);
-    return { player, card, level: 1, column, round: 1, unitIds };
+    return { player, card, level: 1, column, round: 1, double: false, unitIds };
   });
 }
 

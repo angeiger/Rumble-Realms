@@ -29,16 +29,29 @@ function checkField(b: BattleState): void {
   expect(occupied).toBe(b.units.length);
 }
 
-/** Army ids are unique and ascending; every unit on the field belongs to the army. */
+/**
+ * Army ids are unique (an upgrade may append ids to older cards); every unit on the field
+ * belongs to the army or was summoned in this battle by a unit of its owner.
+ */
 function checkArmy(s: MatchState): void {
   const ids = s.army.flatMap((e) => e.unitIds);
-  for (let i = 1; i < ids.length; i++) expect(ids[i]).toBeGreaterThan(ids[i - 1] as number);
-  expect(s.nextUnitId).toBeGreaterThan(ids[ids.length - 1] ?? 0);
+  expect(new Set(ids).size).toBe(ids.length);
+  const maxArmyId = Math.max(0, ...ids);
+  expect(s.nextUnitId).toBeGreaterThan(maxArmyId);
   const owner = new Map<number, number>();
   for (const e of s.army) for (const id of e.unitIds) owner.set(id, e.player);
-  for (const u of s.battle.units) expect(owner.get(u.id)).toBe(u.owner);
-  // Every round adds the cards of its draft to those of all earlier rounds.
-  expect(s.army.filter((e) => e.round === s.round)).toHaveLength(s.draft.order.length);
+  for (const u of s.battle.units) {
+    if (u.summonerId > 0) {
+      expect(u.id).toBeGreaterThan(maxArmyId);
+      expect(owner.get(u.summonerId) ?? u.owner).toBe(u.owner);
+    } else {
+      expect(owner.get(u.id)).toBe(u.owner);
+    }
+  }
+  // Every round adds the cards of its draft (minus upgrade cards) to those of earlier rounds.
+  expect(s.army.filter((e) => e.round === s.round).length).toBeLessThanOrEqual(
+    s.draft.order.length,
+  );
 }
 
 describe('robustness (SPEC 12)', () => {

@@ -2,7 +2,9 @@ import { describe, expect, it } from 'vitest';
 import raw from './golden/replay.json';
 import { GOLDEN_CONFIG, createGoldenReplay } from './golden.ts';
 import type { GoldenReplay } from './golden.ts';
+import { simulateToEnd } from './battle/sim.ts';
 import { hashState } from './hash.ts';
+import { applyPick, createMatch, endRound, startBattle } from './match.ts';
 import { replayMatch } from './play.ts';
 import { ENGINE_VERSION } from './version.ts';
 
@@ -26,6 +28,26 @@ describe('golden replay', () => {
     expect(new Set(cards).size).toBe(8);
     const levels = new Set(replay.config.players.flatMap((p) => Object.values(p.levels)));
     expect(levels.size).toBeGreaterThanOrEqual(3);
+  });
+
+  it('contains double packs, upgrade cards and all six M3b units', () => {
+    const state = createMatch(replay.config);
+    const kinds = new Set<string>();
+    let i = 0;
+    while (state.phase !== 'finished') {
+      if (state.phase === 'draft') {
+        applyPick(state, replay.picks[i++] as number);
+        kinds.add(state.lastPick?.kind ?? '');
+      } else {
+        simulateToEnd(startBattle(state));
+        endRound(state);
+      }
+    }
+    expect([...kinds].sort()).toEqual(['double', 'spawn', 'upgrade']);
+    const played = new Set(state.army.map((e) => e.card));
+    for (const card of ['pyromancer', 'necromancer', 'beetle', 'golem', 'frost_shaman', 'whelp']) {
+      expect(played.has(card as never), card).toBe(true);
+    }
   });
 
   it('replays to the stored hashes', () => {

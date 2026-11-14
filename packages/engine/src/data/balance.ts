@@ -36,6 +36,8 @@ export const FORMATION_ROW_WEIGHT = 4;
 // --- Combat ---
 /** Melee reaches the 8 neighbouring cells (SPEC 6.2). */
 export const MELEE_RANGE = 1;
+/** Squared distance between two opposite corners: "reaches the whole field" (artillery). */
+export const FIELD_REACH_SQ = (GRID_COLS - 1) * (GRID_COLS - 1) + (GRID_ROWS - 1) * (GRID_ROWS - 1);
 
 // --- Match ---
 export const START_LIVES = 4;

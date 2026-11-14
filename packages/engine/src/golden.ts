@@ -18,23 +18,29 @@ export interface GoldenReplay {
   winner: Winner;
 }
 
-/** Two decks of four cards each; together 8 of the 10 cards (all special mechanics), mixed levels. */
+/**
+ * Two decks of four cards each: the six M3b units plus skeletons and TNT, mixed levels and
+ * unlocked upgrades. With these picks the match contains double packs and four upgrade
+ * cards (golden.test.ts checks that).
+ */
 export const GOLDEN_CONFIG: MatchConfig = {
   seed: 20261114,
   players: [
     {
-      deck: ['berserker', 'healer', 'tnt', 'bat'],
-      levels: { berserker: 3, healer: 2, tnt: 1, bat: 5 },
+      deck: ['necromancer', 'beetle', 'skeleton', 'tnt'],
+      levels: { necromancer: 3, beetle: 2, skeleton: 1, tnt: 4 },
+      upgrades: { skeleton: 7, tnt: 7, necromancer: 7 },
     },
     {
-      deck: ['assassin', 'shroomling', 'musketeer', 'knight'],
-      levels: { assassin: 4, shroomling: 2, musketeer: 5, knight: 1 },
+      deck: ['pyromancer', 'frost_shaman', 'whelp', 'golem'],
+      levels: { pyromancer: 2, frost_shaman: 5, whelp: 1, golem: 3 },
+      upgrades: { whelp: 7, golem: 7 },
     },
   ],
 };
 
 /** Seed of the random picks of the golden match. */
-export const GOLDEN_PICK_SEED = 7;
+export const GOLDEN_PICK_SEED = 10;
 
 /** Plays the golden match with the current engine and records everything the test compares. */
 export function createGoldenReplay(): GoldenReplay {

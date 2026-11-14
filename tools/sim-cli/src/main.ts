@@ -1,14 +1,17 @@
 /**
- * Command line simulation for the Rumble Realms engine (M1, growing armies since M3a).
+ * Command line simulation for the Rumble Realms engine (M1, growing armies since M3a,
+ * special cards and upgrades since M3b).
  * No dependencies: arguments are parsed by hand. Node APIs and timing are allowed here.
  */
 import {
+  ALL_UPGRADES_MASK,
   CARD_IDS,
   DECK_SIZE,
   ENGINE_VERSION,
   MAX_LEVEL,
   TICKS_PER_SECOND,
   TIME_LIMIT_TICKS,
+  UPGRADES,
   applyPick,
   createGoldenReplay,
   createMatch,
@@ -26,7 +29,9 @@ import type {
   CardId,
   MatchConfig,
   MatchState,
+  OfferSlot,
   PlayerConfig,
+  UpgradeIndex,
   Winner,
 } from '@rumble-realms/engine';
 
@@ -50,6 +55,8 @@ Commands:
             --deck-b a,b,c,d  deck of player B
             --level-a N     level 1..${MAX_LEVEL} of all cards of A (default 1)
             --level-b N     level 1..${MAX_LEVEL} of all cards of B (default 1)
+            --upgrades-a M  unlocked upgrades of all cards of A, bit mask 0..${ALL_UPGRADES_MASK} (default 0)
+            --upgrades-b M  unlocked upgrades of all cards of B, bit mask 0..${ALL_UPGRADES_MASK} (default 0)
             --verbose       also show event counts per round
   robust  Play many random matches and check them; prints statistics per round
             --matches N     number of matches (default ${DEFAULT_ROBUST_MATCHES})
@@ -116,10 +123,48 @@ function parseDeck(options: Options, name: string): CardId[] {
   return deck;
 }
 
-function player(deck: CardId[], level: number): PlayerConfig {
+function player(deck: CardId[], level: number, upgrades: number): PlayerConfig {
   const levels: Partial<Record<CardId, number>> = {};
   for (const card of deck) levels[card] = level;
-  return { deck, levels };
+  if (upgrades === 0) return { deck, levels };
+  const unlocked: Partial<Record<CardId, number>> = {};
+  for (const card of deck) unlocked[card] = upgrades;
+  return { deck, levels, upgrades: unlocked };
+}
+
+/** "rattle_gang" for "skeleton.rattle_gang". */
+function upgradeName(card: CardId, index: UpgradeIndex): string {
+  const id = UPGRADES[card][index].id;
+  return id.slice(id.indexOf('.') + 1);
+}
+
+function slotText(slot: OfferSlot): string {
+  if (slot.kind === 'double') return `double pack ${slot.card}`;
+  if (slot.kind === 'upgrade') {
+    return `upgrade ${slot.card} #${slot.upgrade + 1} ${upgradeName(slot.card, slot.upgrade)}`;
+  }
+  return slot.card;
+}
+
+/** Active upgrades of one player, e.g. "skeleton.rattle_gang, tnt.short_fuse" or "none". */
+function activeText(state: MatchState, side: 0 | 1): string {
+  const names: string[] = [];
+  for (const card of CARD_IDS) {
+    const mask = state.activeUpgrades[side][card] ?? 0;
+    for (let i = 0; i < 3; i++) {
+      if ((mask & (1 << i)) !== 0) names.push(UPGRADES[card][i as UpgradeIndex].id);
+    }
+  }
+  return names.length === 0 ? 'none' : names.join(', ');
+}
+
+function countActive(state: MatchState, side: 0 | 1): number {
+  let n = 0;
+  for (const card of CARD_IDS) {
+    const mask = state.activeUpgrades[side][card] ?? 0;
+    for (let i = 0; i < 3; i++) if ((mask & (1 << i)) !== 0) n++;
+  }
+  return n;
 }
 
 // ---------------------------------------------------------------------------
@@ -131,7 +176,12 @@ function winnerName(w: Winner): string {
 }
 
 function deckText(p: PlayerConfig): string {
-  return p.deck.map((card) => `${card} (L${p.levels[card] ?? 1})`).join(', ');
+  return p.deck
+    .map((card) => {
+      const up = p.upgrades?.[card] ?? 0;
+      return `${card} (L${p.levels[card] ?? 1}${up > 0 ? `, upgrades ${up}` : ''})`;
+    })
+    .join(', ');
 }
 
 /** Units per side on the field and in the army (D-046); call before the battle starts. */
@@ -156,15 +206,23 @@ function armyText(count: ArmyCount, side: 0 | 1): string {
 function runMatch(args: string[]): void {
   const options = parseOptions(
     args,
-    ['--seed', '--deck-a', '--deck-b', '--level-a', '--level-b'],
+    ['--seed', '--deck-a', '--deck-b', '--level-a', '--level-b', '--upgrades-a', '--upgrades-b'],
     ['--verbose'],
   );
   const seed = intOption(options, '--seed', DEFAULT_SEED, 0, Number.MAX_SAFE_INTEGER);
   const cfg: MatchConfig = {
     seed,
     players: [
-      player(parseDeck(options, '--deck-a'), intOption(options, '--level-a', 1, 1, MAX_LEVEL)),
-      player(parseDeck(options, '--deck-b'), intOption(options, '--level-b', 1, 1, MAX_LEVEL)),
+      player(
+        parseDeck(options, '--deck-a'),
+        intOption(options, '--level-a', 1, 1, MAX_LEVEL),
+        intOption(options, '--upgrades-a', 0, 0, ALL_UPGRADES_MASK),
+      ),
+      player(
+        parseDeck(options, '--deck-b'),
+        intOption(options, '--level-b', 1, 1, MAX_LEVEL),
+        intOption(options, '--upgrades-b', 0, 0, ALL_UPGRADES_MASK),
+      ),
     ],
   };
   const verbose = options.has('--verbose');
@@ -184,14 +242,20 @@ function runMatch(args: string[]): void {
         draftLines.push(`  Draft order: ${order}`);
       }
       const offer = state.draft.offer;
-      const offered = offer === null ? '' : offer.slots.map((s) => s.card).join(' | ');
-      applyPick(state, picker(state));
+      const offered = offer === null ? '' : offer.slots.map(slotText).join(' | ');
+      const slot = picker(state);
+      const chosen = offer?.slots[slot];
+      applyPick(state, slot);
       const pick = state.lastPick;
-      if (pick !== null) {
+      if (pick !== null && chosen !== undefined) {
         const lost = pick.forfeited > 0 ? `, ${pick.forfeited} forfeited` : '';
+        const units =
+          pick.kind === 'upgrade'
+            ? `+${pick.spawned.length} units`
+            : `${pick.spawned.length} units`;
         draftLines.push(
-          `  ${NAMES[pick.player]} picks ${pick.card} (slot ${pick.slot} of: ${offered})` +
-            ` -> ${pick.spawned.length} units${lost}`,
+          `  ${NAMES[pick.player]} picks ${slotText(chosen)} (slot ${pick.slot} of: ${offered})` +
+            ` -> ${units}${lost}`,
         );
       }
       continue;
@@ -230,6 +294,7 @@ function runMatch(args: string[]): void {
         `remaining HP A ${result.hp[0]} / B ${result.hp[1]}`,
     );
     console.log(`  Lives: A ${state.lives[0]} / B ${state.lives[1]}`);
+    console.log(`  Active upgrades: A ${activeText(state, 0)} / B ${activeText(state, 1)}`);
   }
 
   console.log(`\nWinner: ${winnerName(state.winner as Winner)}`);
@@ -255,6 +320,8 @@ function runRobust(args: string[]): number {
   let timeouts = 0;
   let drawRounds = 0;
   const wins = { a: 0, b: 0, draw: 0 };
+  const pickKinds = { spawn: 0, double: 0, upgrade: 0 };
+  let activeAtEnd = 0;
   const started = performance.now();
 
   for (let i = 0; i < matches; i++) {
@@ -276,6 +343,7 @@ function runRobust(args: string[]): number {
           const slot = picker(state);
           picks.push(slot);
           applyPick(state, slot);
+          if (state.lastPick !== null) pickKinds[state.lastPick.kind]++;
           continue;
         }
         const count = countArmy(state);
@@ -283,7 +351,8 @@ function runRobust(args: string[]): number {
         if (result.ticks > TIME_LIMIT_TICKS) {
           return fail(`battle lasted ${result.ticks} ticks (limit ${TIME_LIMIT_TICKS})`);
         }
-        addRound(perRound, state.round, count, result.ticks, result.reason === 'timeout');
+        const summoned = state.battle.nextUnitId - state.nextUnitId;
+        addRound(perRound, state.round, count, result.ticks, result.reason === 'timeout', summoned);
         rounds++;
         totalTicks += result.ticks;
         maxTicks = Math.max(maxTicks, result.ticks);
@@ -291,6 +360,7 @@ function runRobust(args: string[]): number {
         if (result.winner === 'draw') drawRounds++;
         endRound(state);
       }
+      activeAtEnd += countActive(state, 0) + countActive(state, 1);
       if (state.winner === 0) wins.a++;
       else if (state.winner === 1) wins.b++;
       else wins.draw++;
@@ -313,6 +383,14 @@ function runRobust(args: string[]): number {
     `Match wins: A ${wins.a} (${pct(wins.a, matches)}), B ${wins.b} (${pct(wins.b, matches)}), ` +
       `draw ${wins.draw} (${pct(wins.draw, matches)})`,
   );
+  const allPicks = pickKinds.spawn + pickKinds.double + pickKinds.upgrade;
+  console.log(
+    `Picks: ${allPicks}, special cards ${pct(pickKinds.double + pickKinds.upgrade, allPicks)} ` +
+      `(double packs ${pct(pickKinds.double, allPicks)}, upgrades ${pct(pickKinds.upgrade, allPicks)})`,
+  );
+  console.log(
+    `Active upgrades per player at match end: mean ${(activeAtEnd / (2 * matches)).toFixed(2)}`,
+  );
   console.log(
     `Run time: ${(ms / 1000).toFixed(2)} s total, ${(ms / matches).toFixed(2)} ms per match`,
   );
@@ -331,6 +409,9 @@ interface RoundStats {
   forfeited: number;
   ticks: number;
   timeouts: number;
+  /** Units summoned during the battles (both sides). */
+  summoned: number;
+  maxSummoned: number;
 }
 
 function addRound(
@@ -339,6 +420,7 @@ function addRound(
   count: ArmyCount,
   ticks: number,
   timeout: boolean,
+  summoned: number,
 ): void {
   let s = stats[round - 1];
   if (s === undefined) {
@@ -351,6 +433,8 @@ function addRound(
         forfeited: 0,
         ticks: 0,
         timeouts: 0,
+        summoned: 0,
+        maxSummoned: 0,
       });
     }
     s = stats[round - 1] as RoundStats;
@@ -364,11 +448,16 @@ function addRound(
   }
   s.ticks += ticks;
   if (timeout) s.timeouts++;
+  s.summoned += summoned;
+  s.maxSummoned = Math.max(s.maxSummoned, summoned);
 }
 
 function printRoundStats(stats: RoundStats[]): void {
   console.log('Per round (units per side at battle start):');
-  console.log('round  battles  units mean  units max  forfeited  duration mean  time limit');
+  console.log(
+    'round  battles  units mean  units max  forfeited  duration mean  time limit' +
+      '  summons mean  summons max',
+  );
   stats.forEach((s, i) => {
     if (s.rounds === 0) return;
     const cols = [
@@ -379,6 +468,8 @@ function printRoundStats(stats: RoundStats[]): void {
       `${((100 * s.forfeited) / Math.max(1, s.armyUnits)).toFixed(2)} %`.padStart(10),
       `${(s.ticks / s.rounds / TICKS_PER_SECOND).toFixed(1)} s`.padStart(14),
       `${((100 * s.timeouts) / s.rounds).toFixed(2)} %`.padStart(11),
+      (s.summoned / s.rounds).toFixed(1).padStart(12),
+      String(s.maxSummoned).padStart(11),
     ];
     console.log(cols.join('  '));
   });
