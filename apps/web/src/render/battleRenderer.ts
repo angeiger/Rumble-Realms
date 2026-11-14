@@ -3,6 +3,7 @@
  * clock once per frame and turns battle state and events into pictures.
  * The battle state is only read (SPEC 6.4).
  */
+import { DESTROY_RENDERER } from './destroy.ts';
 import type { BattleEvent, BattleState, PlayerIndex } from '@rumble-realms/engine';
 import { Application, Container, Graphics } from 'pixi.js';
 import type { GameSession } from '../game/types.ts';
@@ -59,7 +60,7 @@ export async function createBattleRenderer(
     throw error;
   }
   if (isCancelled()) {
-    app.destroy(true, { children: true });
+    app.destroy(DESTROY_RENDERER, { children: true });
     return null;
   }
   try {
@@ -68,7 +69,7 @@ export async function createBattleRenderer(
     // The numbers fall back to a system font.
   }
   if (isCancelled()) {
-    app.destroy(true, { children: true });
+    app.destroy(DESTROY_RENDERER, { children: true });
     return null;
   }
   return new Scene(app, host, session);
@@ -287,7 +288,7 @@ class Scene implements BattleRenderer {
     this.views.destroy();
     this.effects.destroy();
     this.figureTextures.destroy();
-    this.app.destroy(true, { children: true });
+    this.app.destroy(DESTROY_RENDERER, { children: true });
     destroyEffectTextures(this.effectTextures);
   }
 }
