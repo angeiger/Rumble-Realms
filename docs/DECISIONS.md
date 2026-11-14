@@ -187,3 +187,29 @@ Sekunde genau X Schaden gefallen sind (Schaden im Tick k = ⌊X·k/20⌋ − ⌊
 
 Der Match-Seed ist eine nicht negative ganze Zahl bis 2^53 − 1. Daraus werden getrennte Zufallsströme für
 Münzwürfe, Angebote, Platzierung und Kampf abgeleitet (xoshiro128**, SPEC 6.1).
+
+### D-030 Angebote, Münzwurf und Spielende
+
+- Ein Angebot entsteht, indem das Deck gemischt wird und die ersten drei Karten genommen werden. Jedes Angebot
+  verbraucht gleich viele Zufallszahlen, die Platzierung genau eine pro Karte. So hängen Angebote nie davon ab,
+  was auf dem Feld steht.
+- Der erste Münzwurf bestimmt den Startspieler von Runde 1, jeder weitere gilt nach einer unentschiedenen Runde.
+- Nach dem letzten Kampf bleibt das Feld stehen (für die Anzeige). Danach nimmt die Engine keine Picks mehr an.
+- Die Regel „Gleichstand → kleinere Reihe“ bei der Platzierung (SPEC 4.4) greift praktisch nie, weil das Zentrum
+  in der vordersten Reihe der Zone liegt (D-026). Sie ist trotzdem eingebaut.
+
+### D-031 Tödlich getroffen heißt tot
+
+Fällt eine Einheit in einem Tick auf 0 LP oder darunter, stirbt sie am Ende dieses Ticks. Heilung oder Lebensraub
+im selben Tick retten sie nicht mehr; sie führt ihre eigene Aktion in diesem Tick aber noch aus (SPEC 6.1).
+
+### D-032 Wegsuche
+
+Die Wegsuche (A*) startet, sobald eine Einheit 20 Ticks lang keinen Schritt machen konnte (im 21. Tick).
+Unter gleich langen Wegen gilt dieselbe Richtungsreihenfolge wie beim normalen Schritt („vorwärts zuerst“),
+für Spieler B um 180° gedreht. Jede Änderung an der Wegsuche ändert Kampfergebnisse und braucht eine neue `ENGINE_VERSION`.
+
+### D-033 Robustheitstest in zwei Größen
+
+300 Zufallsmatches laufen bei jedem `pnpm test` mit. Die 10 000 Matches aus SPEC 12 laufen als eigener Befehl
+`pnpm test:robust` (etwa 25 s) und zusätzlich in der CI.
