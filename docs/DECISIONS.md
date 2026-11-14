@@ -219,6 +219,7 @@ für Spieler B um 180° gedreht. Jede Änderung an der Wegsuche ändert Kampferg
 ### D-034 Aufbau des Clients
 
 Drei Teile mit festem Vertrag (`apps/web/src/game/types.ts`):
+
 - `game/`: Die Spielsitzung führt ein lokales Match gegen einen Bot auf Basis der Engine.
 - `render/`: Die Kampfansicht zeichnet das Feld mit PixiJS. Sie liest den Kampfzustand, ändert ihn aber nie (SPEC 6.4).
 - `ui/`: React-Bildschirme. Sie bekommen nur einen unveränderlichen Schnappschuss und rufen Aktionen auf.
