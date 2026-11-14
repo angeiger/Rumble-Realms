@@ -1,5 +1,6 @@
 /**
- * Match flow: lives, rounds, draft order and offers (SPEC 4.2, 4.3, D-020).
+ * Match flow: lives, rounds, draft order, offers and the growing army (SPEC 4.2, 4.3,
+ * D-020, D-046, D-053).
  *
  * The state is mutated in place (D-019). Random numbers come from separate streams
  * (D-029): coin flips from `match`, offers from `offers`, center columns from `placement`,
@@ -8,6 +9,7 @@
 import { createBattle } from './battle/state.ts';
 import {
   DECK_SIZE,
+  GRID_COLS,
   LOSER_BONUS_PICKS,
   MAX_LEVEL,
   OFFER_SIZE,
@@ -15,7 +17,7 @@ import {
   START_LIVES,
 } from './data/balance.ts';
 import { CARDS } from './data/cards.ts';
-import { placeCard } from './placement.ts';
+import { rebuildField } from './placement.ts';
 import {
   nextInt,
   seedRng,
@@ -26,6 +28,7 @@ import {
   STREAM_PLACEMENT,
 } from './rng.ts';
 import type {
+  ArmyEntry,
   BattleState,
   CardId,
   MatchConfig,
@@ -111,7 +114,7 @@ function makeOffer(state: MatchState): Offer {
   };
 }
 
-/** Validates the config and sets up round 1 (coin flip, draft order, first offer). */
+/** Validates the config and sets up round 1 (coin flip, draft order, first offer, empty field). */
 export function createMatch(cfg: MatchConfig): MatchState {
   if (cfg === null || typeof cfg !== 'object') throw new Error('createMatch: config is missing');
   if (!Number.isSafeInteger(cfg.seed) || cfg.seed < 0) {
@@ -140,6 +143,8 @@ export function createMatch(cfg: MatchConfig): MatchState {
       offers: seedRng(seed, STREAM_OFFERS),
       placement: seedRng(seed, STREAM_PLACEMENT),
     },
+    army: [],
+    nextUnitId: 1,
     battle: createBattle(seedRng(seed, STREAM_BATTLE)),
     winner: null,
   };
@@ -176,8 +181,10 @@ export function getOffer(state: MatchState): Offer {
 }
 
 /**
- * Plays the card in `slot` of the current offer: spawns its units, records the pick and
- * moves on. After the last pick of the round the phase switches to `battle`.
+ * Plays the card in `slot` of the current offer: adds it to the army with a random center
+ * column (exactly one draw of the placement stream, D-030) and fresh unit ids, sets up the
+ * whole field again (D-052), records the pick and moves on. After the last pick of the
+ * round the phase switches to `battle`.
  */
 export function applyPick(state: MatchState, slot: number): MatchState {
   const offer = requireDraft(state, 'applyPick');
@@ -187,15 +194,17 @@ export function applyPick(state: MatchState, slot: number): MatchState {
   const player = offer.player;
   const card = (offer.slots[slot] as Offer['slots'][number]).card;
   const level = state.config.players[player].levels[card] ?? 1;
-  const placed = placeCard(
-    state.battle,
-    state.rng.placement,
-    player,
-    card,
-    level,
-    CARDS[card].count,
-  );
-  state.lastPick = { player, slot, card, spawned: placed.spawned, forfeited: placed.forfeited };
+  const column = nextInt(state.rng.placement, GRID_COLS);
+  // Never hand out an id twice, even if the field numbered units beyond the match counter.
+  let nextId = Math.max(state.nextUnitId, state.battle.nextUnitId);
+  const unitIds: number[] = [];
+  for (let i = 0; i < CARDS[card].count; i++) unitIds.push(nextId++);
+  state.nextUnitId = nextId;
+  const entry: ArmyEntry = { player, card, level, column, round: state.round, unitIds };
+  state.army.push(entry);
+  const forfeited = rebuildField(state);
+  const spawned = unitIds.filter((id) => !forfeited.includes(id));
+  state.lastPick = { player, slot, card, spawned, forfeited: unitIds.length - spawned.length };
   state.picks.push(slot);
   state.draft.pickIndex++;
   if (state.draft.pickIndex >= state.draft.order.length) {
@@ -217,8 +226,9 @@ export function startBattle(state: MatchState): BattleState {
 
 /**
  * Books the finished battle: the loser (both on a draw) loses a life. Ends the match when
- * somebody is out of lives, otherwise prepares the next round: empty field, loser bonus
- * (or a new coin flip after a draw) and the first offer.
+ * somebody is out of lives (the last field stays), otherwise prepares the next round: a new
+ * field with the whole army of both players at full hit points (D-053), loser bonus (or a
+ * new coin flip after a draw) and the first offer.
  */
 export function endRound(state: MatchState): MatchState {
   if (state.phase !== 'battle') {
@@ -243,6 +253,8 @@ export function endRound(state: MatchState): MatchState {
     lives: [lives[0], lives[1]],
   };
   state.rounds.push(outcome);
+  // Ids the battle handed out itself (e.g. summoned units, M3b) must never come back.
+  state.nextUnitId = Math.max(state.nextUnitId, state.battle.nextUnitId);
 
   if (lives[0] === 0 || lives[1] === 0) {
     state.phase = 'finished';
@@ -254,6 +266,7 @@ export function endRound(state: MatchState): MatchState {
   state.round++;
   // Continue the battle stream, so every round would get fresh battle random numbers.
   state.battle = createBattle(state.battle.rng);
+  rebuildField(state);
   if (result.winner === 'draw') {
     state.draft.order = draftOrder(coinFlip(state), PICKS_PER_ROUND, PICKS_PER_ROUND);
   } else {

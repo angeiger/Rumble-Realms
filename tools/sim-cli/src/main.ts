@@ -1,5 +1,5 @@
 /**
- * Command line simulation for the Rumble Realms engine (M1).
+ * Command line simulation for the Rumble Realms engine (M1, growing armies since M3a).
  * No dependencies: arguments are parsed by hand. Node APIs and timing are allowed here.
  */
 import {
@@ -50,11 +50,11 @@ Commands:
             --deck-b a,b,c,d  deck of player B
             --level-a N     level 1..${MAX_LEVEL} of all cards of A (default 1)
             --level-b N     level 1..${MAX_LEVEL} of all cards of B (default 1)
-            --verbose       also show units per side and event counts per round
-  robust  Play many random matches and check them
+            --verbose       also show event counts per round
+  robust  Play many random matches and check them; prints statistics per round
             --matches N     number of matches (default ${DEFAULT_ROBUST_MATCHES})
             --seed N        start seed of the random configs (default ${DEFAULT_SEED})
-  golden  Print the JSON for packages/engine/src/golden/replay-v1.json (use: pnpm --silent sim golden > file)
+  golden  Print the JSON for packages/engine/src/golden/replay.json (use: pnpm --silent sim golden > file)
 
 Default decks: ${START_DECK.join(', ')}
 Cards: ${CARD_IDS.join(', ')}
@@ -134,10 +134,23 @@ function deckText(p: PlayerConfig): string {
   return p.deck.map((card) => `${card} (L${p.levels[card] ?? 1})`).join(', ');
 }
 
-function countUnits(state: MatchState): [number, number] {
-  const n: [number, number] = [0, 0];
-  for (const u of state.battle.units) n[u.owner]++;
-  return n;
+/** Units per side on the field and in the army (D-046); call before the battle starts. */
+interface ArmyCount {
+  field: [number, number];
+  army: [number, number];
+}
+
+function countArmy(state: MatchState): ArmyCount {
+  const field: [number, number] = [0, 0];
+  const army: [number, number] = [0, 0];
+  for (const u of state.battle.units) field[u.owner]++;
+  for (const entry of state.army) army[entry.player] += entry.unitIds.length;
+  return { field, army };
+}
+
+function armyText(count: ArmyCount, side: 0 | 1): string {
+  const lost = count.army[side] - count.field[side];
+  return `${NAMES[side]} ${count.field[side]} units${lost > 0 ? ` (${lost} forfeited)` : ''}`;
 }
 
 function runMatch(args: string[]): void {
@@ -188,9 +201,14 @@ function runMatch(args: string[]): void {
     console.log(draftLines.join('\n'));
     draftLines = [];
     const battle = startBattle(state);
+    const count = countArmy(state);
+    const cards = [0, 0];
+    for (const entry of state.army) cards[entry.player]!++;
+    console.log(
+      `  Army at battle start: ${armyText(count, 0)} from ${cards[0]} cards, ` +
+        `${armyText(count, 1)} from ${cards[1]} cards`,
+    );
     if (verbose) {
-      const [a, b] = countUnits(state);
-      console.log(`  Units at battle start: A ${a}, B ${b}`);
       const counts = new Map<string, number>();
       const events: BattleEvent[] = [];
       while (battle.result === null) {
@@ -232,6 +250,7 @@ function runRobust(args: string[]): number {
 
   let rounds = 0;
   let totalTicks = 0;
+  const perRound: RoundStats[] = [];
   let maxTicks = 0;
   let timeouts = 0;
   let drawRounds = 0;
@@ -259,10 +278,12 @@ function runRobust(args: string[]): number {
           applyPick(state, slot);
           continue;
         }
+        const count = countArmy(state);
         const result = simulateToEnd(startBattle(state));
         if (result.ticks > TIME_LIMIT_TICKS) {
           return fail(`battle lasted ${result.ticks} ticks (limit ${TIME_LIMIT_TICKS})`);
         }
+        addRound(perRound, state.round, count, result.ticks, result.reason === 'timeout');
         rounds++;
         totalTicks += result.ticks;
         maxTicks = Math.max(maxTicks, result.ticks);
@@ -295,7 +316,72 @@ function runRobust(args: string[]): number {
   console.log(
     `Run time: ${(ms / 1000).toFixed(2)} s total, ${(ms / matches).toFixed(2)} ms per match`,
   );
+  console.log('');
+  printRoundStats(perRound);
   return 0;
+}
+
+/** Sums per round number (1-based), over all matches that reached that round. */
+interface RoundStats {
+  rounds: number;
+  /** Units per side at battle start, summed over both sides. */
+  units: number;
+  maxUnits: number;
+  armyUnits: number;
+  forfeited: number;
+  ticks: number;
+  timeouts: number;
+}
+
+function addRound(
+  stats: RoundStats[],
+  round: number,
+  count: ArmyCount,
+  ticks: number,
+  timeout: boolean,
+): void {
+  let s = stats[round - 1];
+  if (s === undefined) {
+    for (let i = stats.length; i < round; i++) {
+      stats.push({
+        rounds: 0,
+        units: 0,
+        maxUnits: 0,
+        armyUnits: 0,
+        forfeited: 0,
+        ticks: 0,
+        timeouts: 0,
+      });
+    }
+    s = stats[round - 1] as RoundStats;
+  }
+  s.rounds++;
+  for (const side of [0, 1] as const) {
+    s.units += count.field[side];
+    s.maxUnits = Math.max(s.maxUnits, count.field[side]);
+    s.armyUnits += count.army[side];
+    s.forfeited += count.army[side] - count.field[side];
+  }
+  s.ticks += ticks;
+  if (timeout) s.timeouts++;
+}
+
+function printRoundStats(stats: RoundStats[]): void {
+  console.log('Per round (units per side at battle start):');
+  console.log('round  battles  units mean  units max  forfeited  duration mean  time limit');
+  stats.forEach((s, i) => {
+    if (s.rounds === 0) return;
+    const cols = [
+      String(i + 1).padStart(5),
+      String(s.rounds).padStart(8),
+      (s.units / (2 * s.rounds)).toFixed(1).padStart(11),
+      String(s.maxUnits).padStart(10),
+      `${((100 * s.forfeited) / Math.max(1, s.armyUnits)).toFixed(2)} %`.padStart(10),
+      `${(s.ticks / s.rounds / TICKS_PER_SECOND).toFixed(1)} s`.padStart(14),
+      `${((100 * s.timeouts) / s.rounds).toFixed(2)} %`.padStart(11),
+    ];
+    console.log(cols.join('  '));
+  });
 }
 
 // ---------------------------------------------------------------------------

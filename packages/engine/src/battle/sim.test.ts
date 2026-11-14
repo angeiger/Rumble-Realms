@@ -379,7 +379,7 @@ describe('end of round (SPEC 4.2)', () => {
     const b = suddenDeathField(SUDDEN_DEATH_TICK);
     put(b, 0, 'tnt', 5, 10);
     const target = dummy(b, 1, 'knight', 5, 11);
-    run(b, 1);
+    run(b, 26); // the fuse burns 25 ticks (D-050)
     expect(target.maxHp - target.hp).toBe(375);
   });
 

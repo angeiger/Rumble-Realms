@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
+import { simulateToEnd } from './battle/sim.ts';
 import { cloneState } from './battle/state.ts';
-import { DECK_SIZE, HALF_ROWS, OFFER_SIZE, START_LIVES } from './data/balance.ts';
+import { invariantProblems } from './battle/testing.ts';
+import { DECK_SIZE, GRID_COLS, HALF_ROWS, OFFER_SIZE, START_LIVES } from './data/balance.ts';
 import { CARDS } from './data/cards.ts';
 import { hashState } from './hash.ts';
 import {
@@ -13,8 +15,17 @@ import {
   picksRemaining,
   startBattle,
 } from './match.ts';
-import { nextInt, seedRng, STREAM_BATTLE, STREAM_MATCH } from './rng.ts';
-import type { BattleResult, CardId, MatchConfig, MatchState, Winner } from './types.ts';
+import { layoutArmy } from './placement.ts';
+import { nextInt, seedRng, STREAM_BATTLE, STREAM_MATCH, STREAM_PLACEMENT } from './rng.ts';
+import type {
+  ArmyEntry,
+  BattleResult,
+  CardId,
+  MatchConfig,
+  MatchState,
+  PlayerIndex,
+  Winner,
+} from './types.ts';
 
 function config(seed = 42): MatchConfig {
   return {
@@ -109,6 +120,9 @@ describe('createMatch setup', () => {
     expect(s.winner).toBeNull();
     expect(s.battle.units).toEqual([]);
     expect(s.battle.rng).toEqual(seedRng(42, STREAM_BATTLE));
+    expect(s.army).toEqual([]);
+    expect(s.nextUnitId).toBe(1);
+    expect(s.battle.nextUnitId).toBe(1);
   });
 
   it('flips the coin from the match stream of the seed only', () => {
@@ -401,26 +415,35 @@ describe('endRound', () => {
     expect(s.rounds[0]?.result.hp).toEqual([0, 10]);
   });
 
-  it('starts the next round on an empty field with the continued battle stream', () => {
+  it('starts the next round on a new field with the whole army and the continued battle stream', () => {
     const s = createMatch(config());
     draftAll(s);
-    expect(s.battle.units.length).toBeGreaterThan(0);
-    // Pretend the simulation advanced the battle stream and the clock.
+    const units = s.battle.units.length;
+    expect(units).toBeGreaterThan(0);
+    // Pretend the simulation advanced the battle stream and the clock, with a shot in flight.
     s.battle.rng = [1, 2, 3, 4];
     s.battle.tick = 500;
     s.battle.started = true;
+    s.battle.projectiles.push({
+      id: 1,
+      owner: 0,
+      sourceId: 1,
+      targetId: 2,
+      damage: 5,
+      launchTick: 499,
+      impactTick: 505,
+    });
     finishBattle(s, 0);
     const old = s.battle;
     endRound(s);
     expect(s.battle).not.toBe(old);
-    expect(s.battle.units).toEqual([]);
+    expect(s.battle.units).toHaveLength(units);
     expect(s.battle.projectiles).toEqual([]);
     expect(s.battle.zones).toEqual([]);
-    expect(s.battle.occ.every((v) => v === 0)).toBe(true);
     expect(s.battle.tick).toBe(0);
     expect(s.battle.started).toBe(false);
     expect(s.battle.result).toBeNull();
-    expect(s.battle.nextUnitId).toBe(1);
+    expect(s.battle.nextUnitId).toBe(s.nextUnitId);
     expect(s.battle.rng).toEqual([1, 2, 3, 4]);
     expect(s.battle.rng).not.toBe(old.rng);
   });
@@ -439,7 +462,8 @@ describe('endRound', () => {
       expect(s.round).toBe(START_LIVES);
       expect(s.rounds.map((o) => o.round)).toEqual([1, 2, 3, 4]);
       expect(s.draft.offer).toBeNull();
-      // The final field stays for display.
+      // The final field stays for display (here it was never simulated).
+      expect(s.battle.result).not.toBeNull();
       expect(s.battle.units.length).toBeGreaterThan(0);
       expect(() => applyPick(s, 0)).toThrow(/finished/);
       expect(() => getOffer(s)).toThrow(/finished/);
@@ -495,6 +519,193 @@ describe('endRound', () => {
     expect(chosen).toHaveLength(40);
     expect(s.phase).toBe('finished');
     expect(s.winner).toBe(1);
+  });
+});
+
+describe('growing army (D-046, D-053)', () => {
+  /** Ids of all army units, ascending. */
+  function armyIds(state: MatchState): number[] {
+    return state.army.flatMap((e) => e.unitIds);
+  }
+
+  /** The field must show exactly the army laid out by D-052, at full HP. */
+  function expectFieldMatchesArmy(state: MatchState): void {
+    const b = state.battle;
+    expect(invariantProblems(b)).toEqual([]);
+    const expected = [layoutArmy(state.army, 0), layoutArmy(state.army, 1)]
+      .flatMap((l) => l.cells)
+      .sort((x, y) => x.id - y.id);
+    expect(b.units.map((u) => ({ id: u.id, x: u.x, y: u.y }))).toEqual(expected);
+    for (const u of b.units) {
+      const entry = state.army.find((e) => e.unitIds.includes(u.id)) as ArmyEntry;
+      expect([u.owner, u.card, u.level]).toEqual([entry.player, entry.card, entry.level]);
+      expect(u.hp).toBe(u.maxHp);
+      expect([u.tx, u.ty, u.moveCost, u.targetId]).toEqual([u.x, u.y, 0, 0]);
+    }
+    expect(b.nextUnitId).toBe(state.nextUnitId);
+  }
+
+  it('records every pick with its random column, round, level and fresh unit ids', () => {
+    const s = createMatch(config(11));
+    const placement = seedRng(11, STREAM_PLACEMENT);
+    let nextId = 1;
+    while (s.phase === 'draft') {
+      const player = currentPlayer(s);
+      const card = getOffer(s).slots[1]?.card as CardId;
+      applyPick(s, 1);
+      const entry = s.army[s.army.length - 1] as ArmyEntry;
+      const ids: number[] = [];
+      for (let i = 0; i < CARDS[card].count; i++) ids.push(nextId++);
+      expect(entry).toEqual({
+        player,
+        card,
+        level: s.config.players[player].levels[card] ?? 1,
+        column: nextInt(placement, GRID_COLS),
+        round: 1,
+        unitIds: ids,
+      });
+      // Exactly one draw of the placement stream per pick.
+      expect(s.rng.placement).toEqual(placement);
+      expect(s.nextUnitId).toBe(nextId);
+      expect(s.lastPick).toEqual({ player, slot: 1, card, spawned: ids, forfeited: 0 });
+    }
+    expect(s.army).toHaveLength(6);
+  });
+
+  it('lays out the whole army again after every pick', () => {
+    const s = createMatch(config(12));
+    let round = 0;
+    while (s.phase !== 'finished' && round < 4) {
+      while (s.phase === 'draft') {
+        applyPick(s, (s.picks.length * 2) % OFFER_SIZE);
+        expectFieldMatchesArmy(s);
+      }
+      finishBattle(s, round % 2 === 0 ? 0 : 1);
+      endRound(s);
+      round++;
+    }
+  });
+
+  it('starts every round with all earlier cards of both players at full HP', () => {
+    const s = createMatch(config(13));
+    draftAll(s);
+    const round1 = cloneState(s.army);
+    const before = s.battle.units.map((u) => ({ id: u.id, owner: u.owner, card: u.card }));
+    simulateToEnd(startBattle(s));
+    // Somebody died in the battle (otherwise the test would prove nothing).
+    expect(s.battle.units.length).toBeLessThan(before.length);
+    endRound(s);
+    expect(s.phase).toBe('draft');
+    // Already there when the draft of round 2 begins, with the same ids.
+    expect(s.army).toEqual(round1);
+    expectFieldMatchesArmy(s);
+    expect(s.battle.units.map((u) => ({ id: u.id, owner: u.owner, card: u.card }))).toEqual(before);
+    draftAll(s);
+    expect(s.army.slice(0, round1.length)).toEqual(round1);
+    expect(s.army.slice(round1.length).every((e) => e.round === 2)).toBe(true);
+    expect(s.army.length).toBe(round1.length + s.draft.order.length);
+    expectFieldMatchesArmy(s);
+    const ids = s.battle.units.map((u) => u.id);
+    expect(ids).toEqual(armyIds(s));
+    expect(new Set(ids).size).toBe(ids.length);
+  });
+
+  it('keeps ids unique and stable over a whole simulated match', () => {
+    const s = createMatch(config(14));
+    const ownerOf = new Map<number, PlayerIndex>();
+    while (s.phase !== 'finished') {
+      while (s.phase === 'draft') applyPick(s, s.picks.length % OFFER_SIZE);
+      expectFieldMatchesArmy(s);
+      for (const u of s.battle.units) {
+        expect(ownerOf.get(u.id) ?? u.owner).toBe(u.owner);
+        ownerOf.set(u.id, u.owner);
+      }
+      const ids = armyIds(s);
+      expect(new Set(ids).size).toBe(ids.length);
+      expect(ids).toEqual([...ids].sort((x, y) => x - y));
+      simulateToEnd(startBattle(s));
+      endRound(s);
+    }
+    expect(s.rounds.length).toBeGreaterThanOrEqual(START_LIVES);
+  });
+
+  it('never reuses ids the battle handed out itself', () => {
+    const s = createMatch(config(15));
+    draftAll(s);
+    const used = armyIds(s);
+    // Stand-in for units summoned during the battle (M3b): the field numbered up to 999.
+    s.battle.nextUnitId = 1000;
+    finishBattle(s, 1);
+    endRound(s);
+    expect(s.nextUnitId).toBe(1000);
+    expect(s.battle.nextUnitId).toBe(1000);
+    expect(s.battle.units.map((u) => u.id)).toEqual(used);
+    applyPick(s, 0);
+    const entry = s.army[s.army.length - 1] as ArmyEntry;
+    expect(entry.unitIds[0]).toBe(1000);
+    expect(s.battle.nextUnitId).toBe(s.nextUnitId);
+    expect(s.nextUnitId).toBe(1000 + entry.unitIds.length);
+    expectFieldMatchesArmy(s);
+  });
+
+  it('reports units of the picked card that find no room', () => {
+    let seed = 0;
+    while (currentPlayer(createMatch(config(seed))) !== 0) seed++;
+    const s = createMatch(config(seed));
+    // Player 0 already has 29 skeleton cards: 145 ground units for 144 cells.
+    let id = 1;
+    for (let i = 0; i < 29; i++) {
+      const unitIds = [id, id + 1, id + 2, id + 3, id + 4];
+      id += 5;
+      s.army.push({ player: 0, card: 'skeleton', level: 1, column: 5, round: 1, unitIds });
+    }
+    s.nextUnitId = id;
+    const offer = getOffer(s);
+    // A front card comes after the skeletons in army order and finds no cell at all.
+    const slot = offer.slots.findIndex((x) => CARDS[x.card].zone === 'front');
+    const card = offer.slots[slot]?.card as CardId;
+    applyPick(s, slot);
+    expect(s.lastPick).toEqual({
+      player: 0,
+      slot,
+      card,
+      spawned: [],
+      forfeited: CARDS[card].count,
+    });
+    expect(s.battle.units.filter((u) => u.owner === 0)).toHaveLength(GRID_COLS * HALF_ROWS);
+    expectFieldMatchesArmy(s);
+  });
+
+  it('draws one column per pick whatever the field looks like', () => {
+    const full = createMatch(config(16));
+    const empty = createMatch(config(16));
+    for (let i = 0; i < 40; i++) {
+      full.army.push({
+        player: 0,
+        card: 'knight',
+        level: 1,
+        column: i % GRID_COLS,
+        round: 1,
+        unitIds: [1000 + 2 * i, 1001 + 2 * i],
+      });
+      full.army.push({
+        player: 1,
+        card: 'bat',
+        level: 1,
+        column: i % GRID_COLS,
+        round: 1,
+        unitIds: [2000 + 3 * i, 2001 + 3 * i, 2002 + 3 * i],
+      });
+    }
+    full.nextUnitId = 3000;
+    while (empty.phase === 'draft') {
+      applyPick(full, 0);
+      applyPick(empty, 0);
+      expect(full.rng.placement).toEqual(empty.rng.placement);
+      expect(full.army[full.army.length - 1]?.column).toBe(
+        empty.army[empty.army.length - 1]?.column,
+      );
+    }
   });
 });
 

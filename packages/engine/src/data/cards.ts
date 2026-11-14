@@ -73,6 +73,8 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
       kind: 'explode',
       damage: 250,
       radius: 1500, // r 1,5 fields
+      triggerRange: 2, // fuse starts when a ground enemy is within 2 fields (D-050)
+      fuseTicks: 25, // 1,25 s
     },
     rarity: 'rare',
     arena: 1,
@@ -167,7 +169,7 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     },
     rarity: 'rare',
     arena: 2,
-    shadowJump: { chargeTicks: 40 }, // 2 s
+    shadowJump: { chargeTicks: 50 }, // 2,5 s (D-049)
   },
   berserker: {
     id: 'berserker',
