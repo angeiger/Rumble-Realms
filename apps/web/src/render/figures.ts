@@ -407,31 +407,366 @@ function drawShroomling(g: Graphics, t: TeamColors): void {
   g.circle(-4, -45, 3.5).fill(P.cream);
 }
 
-/** Draws the standing figure of `card` in the colours of `team` into `g`. */
-export function drawFigure(g: Graphics, card: CardId, team: Team): void {
-  const t = teamColors(team);
-  switch (card) {
-    case 'archer':
-      return drawArcher(g, t);
-    case 'knight':
-      return drawKnight(g, t);
-    case 'tnt':
-      return drawTnt(g, t);
-    case 'skeleton':
-      return drawSkeleton(g, t);
-    case 'healer':
-      return drawHealer(g, t);
-    case 'musketeer':
-      return drawMusketeer(g, t);
-    case 'bat':
-      return drawBat(g, t);
-    case 'assassin':
-      return drawAssassin(g, t);
-    case 'berserker':
-      return drawBerserker(g, t);
-    case 'shroomling':
-      return drawShroomling(g, t);
+/** Flame blob with its tip at (x, y - h); used for fire balls, hair and the dragon's breath. */
+function flame(g: Graphics, x: number, y: number, w: number, h: number, outer = P.fire): void {
+  g.moveTo(x - w, y)
+    .quadraticCurveTo(x - w * 1.1, y - h * 0.5, x - w * 0.1, y - h * 0.65)
+    .quadraticCurveTo(x - w * 0.1, y - h * 0.9, x + w * 0.2, y - h)
+    .quadraticCurveTo(x + w * 0.4, y - h * 0.6, x + w, y - h * 0.3)
+    .quadraticCurveTo(x + w * 0.9, y, x, y + w * 0.4)
+    .quadraticCurveTo(x - w * 0.8, y + w * 0.3, x - w, y)
+    .closePath();
+  done(g, outer, 4);
+  g.ellipse(x, y - h * 0.18, w * 0.5, h * 0.2).fill(P.fireLight);
+}
+
+function drawPyromancer(g: Graphics, t: TeamColors): void {
+  foot(g, -8, P.leather);
+  foot(g, 8, P.leather);
+  // Staff with fire ball (left).
+  seg(g, -33, -4, -33, -52, P.wood, 5);
+  flame(g, -33, -58, 12, 34);
+  // Robe and belt.
+  g.poly([-13, -42, 13, -42, 25, -5, -25, -5]);
+  done(g, t.main);
+  g.poly([-24, -5, 24, -5, 22, -12, -22, -12]).fill(P.gold);
+  g.rect(-14, -32, 28, 6).fill(P.leather);
+  g.circle(-33, -34, 6);
+  done(g, P.skin, 4);
+  // Flaming hair behind the head.
+  flame(g, -17, -46, 8, 24);
+  flame(g, 17, -46, 8, 24);
+  // Head.
+  g.circle(0, -53, 18);
+  done(g, P.skin);
+  eye(g, -6, -52, 3.5);
+  eye(g, 6, -52, 3.5);
+  g.ellipse(0, -44, 4, 2.5).fill(P.outline);
+  // Pointed hat with bent tip, gold band and wide brim.
+  g.poly([-15, -64, 15, -64, 9, -79, 24, -85, 8, -92, -6, -84]);
+  done(g, t.dark);
+  g.poly([-14, -69, 14, -69, 12, -75, -12, -75]).fill(P.gold);
+  g.ellipse(0, -64, 29, 7);
+  done(g, t.dark);
+}
+
+function drawNecromancer(g: Graphics, t: TeamColors): void {
+  foot(g, -8, P.necroDark);
+  foot(g, 8, P.necroDark);
+  // Staff with skull and green glow (right).
+  seg(g, 35, -4, 35, -66, P.woodDark, 5);
+  g.circle(35, -78, 17).fill({ color: P.necro, alpha: 0.35 });
+  g.circle(35, -77, 11);
+  done(g, P.bone, 4);
+  g.rect(30, -70, 10, 5).fill(P.bone);
+  g.ellipse(31, -78, 3, 3.5).fill(P.outline);
+  g.ellipse(39, -78, 3, 3.5).fill(P.outline);
+  g.circle(31, -78, 1.2).fill(P.necro);
+  g.circle(39, -78, 1.2).fill(P.necro);
+  // Robe, mantle and rope belt.
+  g.poly([-15, -42, 15, -42, 27, -4, -27, -4]);
+  done(g, t.dark);
+  g.poly([-26, -4, 26, -4, 24, -11, -24, -11]).fill(P.necro);
+  g.rect(-14, -30, 28, 5).fill(P.leather);
+  g.circle(0, -27, 4.5);
+  done(g, P.bone, 3);
+  g.ellipse(0, -41, 20, 8);
+  done(g, t.main);
+  g.circle(35, -34, 6);
+  done(g, P.bone, 4);
+  // Big hood with dark opening and green eyes.
+  g.poly([-6, -74, 12, -92, 20, -64]);
+  done(g, t.main);
+  g.circle(0, -57, 23);
+  done(g, t.main);
+  g.ellipse(0, -55, 14, 13);
+  done(g, P.necroDark, 4);
+  g.ellipse(-6, -57, 3.8, 4.8).fill(P.necro);
+  g.ellipse(6, -57, 3.8, 4.8).fill(P.necro);
+  g.moveTo(-6, -47).lineTo(6, -47).stroke({ color: P.necro, width: 2.5, cap: 'round' });
+}
+
+function drawBeetle(g: Graphics, t: TeamColors): void {
+  // Legs.
+  for (const x of [-22, -6, 12]) {
+    seg(g, x, -14, x - 4, -2, P.grayDark, 5);
   }
+  // Cannon barrel pointing up from the back, with muzzle ring and smoke.
+  seg(g, -10, -42, -16, -80, P.steelDark, 15);
+  g.ellipse(-16, -82, 11, 5);
+  done(g, P.gold, 4);
+  g.circle(-9, -88, 5).fill({ color: P.cream, alpha: 0.85 });
+  g.circle(-21, -89, 4).fill({ color: P.cream, alpha: 0.7 });
+  // Fat abdomen shell with stripe and spots.
+  g.ellipse(-8, -30, 31, 23);
+  done(g, t.main);
+  g.moveTo(-8, -52).lineTo(-8, -8).stroke({ color: P.outline, width: 4, cap: 'round' });
+  g.circle(-22, -34, 5).fill(t.light);
+  g.circle(6, -24, 5).fill(t.light);
+  g.circle(-22, -17, 3.5).fill(t.light);
+  // Head with eyes and antennae.
+  bar(g, (h) => h.moveTo(28, -42).quadraticCurveTo(30, -62, 44, -66), P.grayDark, 3);
+  bar(g, (h) => h.moveTo(22, -42).quadraticCurveTo(18, -60, 28, -72), P.grayDark, 3);
+  g.circle(27, -29, 15);
+  done(g, P.grayDark);
+  eye(g, 32, -34, 5.5);
+  eye(g, 22, -36, 4.5);
+  g.ellipse(34, -22, 5, 2.5).fill(P.outline);
+}
+
+function drawGolem(g: Graphics, t: TeamColors): void {
+  // Legs.
+  g.roundRect(-27, -28, 24, 26, 6);
+  done(g, P.stoneDark);
+  g.roundRect(3, -28, 24, 26, 6);
+  done(g, P.stoneDark);
+  // Arms with big fists.
+  seg(g, -30, -62, -42, -32, P.stoneDark, 17);
+  seg(g, 30, -62, 42, -32, P.stoneDark, 17);
+  g.poly([-48, -32, -44, -42, -34, -38, -32, -24, -43, -16, -48, -22]);
+  done(g, P.stone);
+  g.poly([48, -32, 44, -42, 34, -38, 32, -24, 43, -16, 48, -22]);
+  done(g, P.stone);
+  // Boulder body.
+  g.poly([-32, -64, -20, -76, 20, -76, 33, -64, 36, -38, 24, -24, -24, -24, -36, -38]);
+  done(g, P.stone);
+  // Team-coloured rune plate on the chest.
+  g.poly([-17, -64, 17, -64, 19, -42, 0, -32, -19, -42]);
+  done(g, t.main, 5);
+  g.moveTo(0, -58).lineTo(0, -40).stroke({ color: t.light, width: 3.5, cap: 'round' });
+  g.moveTo(-8, -52).lineTo(8, -52).stroke({ color: t.light, width: 3.5, cap: 'round' });
+  // Cracks and moss.
+  g.moveTo(-28, -50).lineTo(-23, -44).lineTo(-27, -36).stroke({ color: P.stoneDark, width: 3 });
+  g.moveTo(26, -70).lineTo(22, -62).lineTo(27, -56).stroke({ color: P.stoneDark, width: 3 });
+  // Small blocky head with glowing eyes.
+  g.poly([-15, -72, -17, -85, -8, -91, 8, -91, 17, -85, 15, -72]);
+  done(g, P.stoneLight);
+  g.roundRect(-12, -84, 10, 7, 2).fill(P.fireLight);
+  g.roundRect(2, -84, 10, 7, 2).fill(P.fireLight);
+  g.moveTo(-14, -87).lineTo(-3, -83).stroke({ color: P.outline, width: 4, cap: 'round' });
+  g.moveTo(14, -87).lineTo(3, -83).stroke({ color: P.outline, width: 4, cap: 'round' });
+}
+
+function drawFrostShaman(g: Graphics, t: TeamColors): void {
+  foot(g, -9, P.leather);
+  foot(g, 9, P.leather);
+  // Staff with ice crystal (right).
+  seg(g, 36, -4, 36, -62, P.wood, 5);
+  g.poly([36, -92, 45, -77, 36, -58, 27, -77]);
+  done(g, P.ice, 4);
+  g.poly([36, -88, 40, -78, 36, -67, 32, -78]).fill(P.iceLight);
+  g.poly([48, -66, 53, -58, 48, -50, 44, -58]);
+  done(g, P.ice, 3);
+  // Robe with fur hem and fur cloak.
+  g.poly([-15, -42, 15, -42, 27, -5, -27, -5]);
+  done(g, t.main);
+  g.ellipse(0, -7, 26, 7);
+  done(g, P.fur, 4);
+  g.ellipse(0, -40, 24, 10);
+  done(g, P.fur);
+  g.circle(36, -34, 6.5);
+  done(g, P.fur, 4);
+  // Fur hood, bone mask with horns.
+  g.poly([-18, -70, -34, -86, -10, -78]);
+  done(g, P.bone, 4);
+  g.poly([18, -70, 34, -86, 10, -78]);
+  done(g, P.bone, 4);
+  g.circle(0, -57, 24);
+  done(g, P.fur);
+  g.ellipse(0, -55, 15, 15);
+  done(g, P.bone, 4);
+  g.ellipse(-6, -58, 4, 2.8).fill(P.outline);
+  g.ellipse(6, -58, 4, 2.8).fill(P.outline);
+  g.circle(-6, -58, 1.5).fill(P.ice);
+  g.circle(6, -58, 1.5).fill(P.ice);
+  g.poly([-12, -49, 12, -49, 0, -42]).fill(t.main);
+  g.poly([-9, -78, 9, -78, 0, -71]).fill(t.main);
+}
+
+function drawWhelp(g: Graphics, t: TeamColors): void {
+  g.ellipse(0, 0, 22, 6).fill({ color: P.outline, alpha: 0.25 });
+  // Tail with spade tip.
+  bar(g, (h) => h.moveTo(-14, -34).quadraticCurveTo(-34, -30, -34, -16), t.main, 8);
+  g.poly([-34, -8, -41, -18, -27, -18]);
+  done(g, t.dark, 4);
+  // Wings.
+  const wing = [-10, -52, -25, -80, -43, -83, -38, -67, -46, -54, -35, -56, -37, -40, -20, -46];
+  for (const pts of [wing, mirror(wing)]) {
+    g.poly(pts);
+    done(g, t.dark);
+  }
+  for (const s of [-1, 1]) {
+    g.moveTo(s * 12, -52)
+      .lineTo(s * 40, -74)
+      .stroke({ color: t.light, width: 3, cap: 'round' });
+    g.moveTo(s * 12, -48)
+      .lineTo(s * 42, -56)
+      .stroke({ color: t.light, width: 3, cap: 'round' });
+  }
+  // Round body with belly.
+  g.ellipse(0, -38, 21, 19);
+  done(g, t.main);
+  g.ellipse(2, -34, 12, 13).fill(P.cream);
+  for (const y of [-31, -37, -43]) {
+    g.moveTo(-6, y).lineTo(10, y).stroke({ color: P.boneDark, width: 2.5, cap: 'round' });
+  }
+  // Head, snout, horns, eye.
+  for (const x of [-4, 10]) {
+    g.poly([x - 4, -70, x + 1, -84, x + 5, -70]);
+    done(g, P.gold, 4);
+  }
+  g.circle(2, -60, 17);
+  done(g, t.main);
+  g.ellipse(17, -56, 11, 8);
+  done(g, t.main);
+  g.circle(19, -59, 1.8).fill(P.outline);
+  eye(g, 4, -65, 5);
+  brow(g, -3, -73, 10, -70);
+  // Small flame and smoke at the snout.
+  flame(g, 36, -53, 7, 20);
+  g.circle(30, -72, 3.5).fill({ color: P.cream, alpha: 0.8 });
+  g.circle(36, -80, 4.5).fill({ color: P.cream, alpha: 0.6 });
+}
+
+function drawZombie(g: Graphics, t: TeamColors): void {
+  seg(g, -6, -22, -7, -6, P.zombie, 6);
+  seg(g, 6, -22, 7, -6, P.zombie, 6);
+  foot(g, -7, P.zombieDark, 8);
+  foot(g, 7, P.zombieDark, 8);
+  // Arms reaching forward.
+  seg(g, 11, -34, 38, -44, P.zombie, 7);
+  g.circle(40, -44, 6.5);
+  done(g, P.zombieDark, 4);
+  seg(g, 11, -28, 32, -30, P.zombie, 7);
+  g.circle(34, -30, 6);
+  done(g, P.zombieDark, 4);
+  // Ragged tunic with torn hem and visible ribs.
+  g.poly([-15, -38, 15, -38, 15, -14, 10, -9, 5, -15, 0, -8, -5, -15, -10, -9, -15, -14]);
+  done(g, t.main);
+  g.moveTo(-8, -31).lineTo(-1, -29).stroke({ color: P.boneDark, width: 3, cap: 'round' });
+  g.moveTo(-8, -24).lineTo(-1, -22).stroke({ color: P.boneDark, width: 3, cap: 'round' });
+  // Greenish skull-like head with one hanging eye.
+  g.circle(0, -55, 21);
+  done(g, P.zombie);
+  g.ellipse(-8, -57, 6.5, 7.5).fill(P.outline);
+  g.ellipse(-8, -57, 3, 3.6).fill(P.necro);
+  g.ellipse(8, -57, 5.5, 6.5).fill(P.white);
+  g.circle(8, -56, 2.5).fill(P.outline);
+  g.moveTo(8, -50).lineTo(9, -44).stroke({ color: P.red, width: 2.5, cap: 'round' });
+  g.moveTo(-9, -43).quadraticCurveTo(0, -38, 9, -43).stroke({
+    color: P.outline,
+    width: 3,
+    cap: 'round',
+  });
+  for (const x of [-4, 0, 4]) {
+    g.moveTo(x, -43).lineTo(x, -39).stroke({ color: P.outline, width: 2 });
+  }
+  // Torn headband and hair tufts.
+  g.poly([-17, -73, 17, -73, 17, -66, 8, -68, 0, -65, -8, -68, -17, -66]);
+  done(g, t.main, 4);
+  g.poly([-6, -73, -3, -84, 0, -73]);
+  done(g, P.hair, 3);
+  g.poly([4, -73, 8, -82, 11, -73]);
+  done(g, P.hair, 3);
+}
+
+function drawGhost(g: Graphics, t: TeamColors): void {
+  g.ellipse(0, 0, 20, 6).fill({ color: P.outline, alpha: 0.25 });
+  // Wispy sleeves.
+  g.poly([-20, -44, -40, -30, -34, -24, -18, -34]);
+  g.fill({ color: P.ghost, alpha: 0.75 }).stroke({ color: P.outline, width: OW, join: 'round' });
+  g.poly([20, -44, 40, -30, 34, -24, 18, -34]);
+  g.fill({ color: P.ghost, alpha: 0.75 }).stroke({ color: P.outline, width: OW, join: 'round' });
+  // Body with a wavy, tapering tail instead of legs.
+  g.poly([
+    -24, -52, -27, -34, -20, -20, -12, -28, -4, -12, 4, -26, 12, -16, 20, -24, 27, -36, 24, -52,
+  ]);
+  g.fill({ color: P.ghost, alpha: 0.78 }).stroke({ color: P.outline, width: OW, join: 'round' });
+  g.moveTo(-14, -36).lineTo(-9, -24).stroke({ color: P.white, width: 3, cap: 'round', alpha: 0.7 });
+  // Hood in team colour with dark opening and glowing eyes.
+  g.poly([-6, -76, 12, -90, 19, -66]);
+  g.fill({ color: t.main, alpha: 0.9 }).stroke({ color: P.outline, width: OW, join: 'round' });
+  g.circle(0, -57, 23);
+  g.fill({ color: t.main, alpha: 0.9 }).stroke({ color: P.outline, width: OW, join: 'round' });
+  g.ellipse(0, -55, 14, 14);
+  done(g, P.necroDark, 4);
+  g.ellipse(-6, -58, 3.8, 5).fill(P.necro);
+  g.ellipse(6, -58, 3.8, 5).fill(P.necro);
+  g.ellipse(0, -47, 4, 3).fill(P.necro);
+}
+
+function drawMiniGolem(g: Graphics, t: TeamColors): void {
+  g.roundRect(-16, -14, 13, 12, 4);
+  done(g, P.stoneDark);
+  g.roundRect(3, -14, 13, 12, 4);
+  done(g, P.stoneDark);
+  g.circle(-27, -26, 8);
+  done(g, P.stone, 5);
+  g.circle(27, -26, 8);
+  done(g, P.stone, 5);
+  g.poly([-22, -14, -26, -34, -14, -50, 6, -54, 22, -44, 26, -24, 18, -12]);
+  done(g, P.stone);
+  g.poly([-8, -56, 0, -70, 8, -56, 0, -46]);
+  done(g, t.main, 4);
+  g.poly([-14, -24, 14, -24, 12, -17, -12, -17]).fill(t.main);
+  g.roundRect(-14, -42, 10, 8, 2).fill(P.fireLight);
+  g.roundRect(4, -42, 10, 8, 2).fill(P.fireLight);
+  g.moveTo(-15, -45).lineTo(-3, -40).stroke({ color: P.outline, width: 4, cap: 'round' });
+  g.moveTo(15, -45).lineTo(3, -40).stroke({ color: P.outline, width: 4, cap: 'round' });
+  g.moveTo(16, -34).lineTo(10, -28).lineTo(14, -22).stroke({ color: P.stoneDark, width: 2.5 });
+}
+
+/** Neutral stand-in for a key that has no figure yet. */
+function drawPlaceholder(g: Graphics, t: TeamColors): void {
+  foot(g, -8, P.grayDark);
+  foot(g, 8, P.grayDark);
+  g.roundRect(-16, -62, 32, 56, 12);
+  done(g, P.steel);
+  g.circle(0, -34, 8);
+  done(g, t.main, 4);
+}
+
+/** Keys of all figures; the last ones are for units the engine may not know yet. */
+export type FigureId =
+  | CardId
+  | 'pyromancer'
+  | 'necromancer'
+  | 'beetle'
+  | 'golem'
+  | 'frost_shaman'
+  | 'whelp'
+  | 'zombie'
+  | 'ghost'
+  | 'mini_golem';
+
+const FIGURES: Record<FigureId, (g: Graphics, t: TeamColors) => void> = {
+  archer: drawArcher,
+  knight: drawKnight,
+  tnt: drawTnt,
+  skeleton: drawSkeleton,
+  healer: drawHealer,
+  musketeer: drawMusketeer,
+  bat: drawBat,
+  assassin: drawAssassin,
+  berserker: drawBerserker,
+  shroomling: drawShroomling,
+  pyromancer: drawPyromancer,
+  necromancer: drawNecromancer,
+  beetle: drawBeetle,
+  golem: drawGolem,
+  frost_shaman: drawFrostShaman,
+  whelp: drawWhelp,
+  zombie: drawZombie,
+  ghost: drawGhost,
+  mini_golem: drawMiniGolem,
+};
+
+export const FIGURE_IDS: readonly FigureId[] = Object.keys(FIGURES) as FigureId[];
+
+/** Draws the standing figure of `card` in the colours of `team` into `g`. */
+export function drawFigure(g: Graphics, card: FigureId, team: Team): void {
+  const draw = (FIGURES as Partial<Record<string, (g: Graphics, t: TeamColors) => void>>)[card];
+  (draw ?? drawPlaceholder)(g, teamColors(team));
 }
 
 /** Draws the team ring with its flag symbol that lies on the ground under a figure. */
