@@ -31,6 +31,15 @@ describe('card stats', () => {
     expect(getCardStats('tnt', 1)).toMatchObject({ interval: null, rangeKind: 'contact' });
   });
 
+  it('reads the artillery beetle: whole-field range, 5 s interval', () => {
+    expect(getCardStats('beetle', 1)).toMatchObject({
+      effect: 160,
+      interval: 5,
+      rangeKind: 'field',
+      target: 'ground',
+    });
+  });
+
   it('applies the level', () => {
     expect(getCardStats('knight', 3).hp).toBe(720);
   });

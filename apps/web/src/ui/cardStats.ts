@@ -28,7 +28,7 @@ export function speedFieldsPerSecond(moveSpeed: number): number {
 }
 
 export type EffectKind = 'damage' | 'heal';
-export type RangeKind = 'melee' | 'contact' | 'ranged';
+export type RangeKind = 'melee' | 'contact' | 'ranged' | 'field';
 export type TargetKind = 'ground' | 'groundAir' | 'allies';
 
 export interface CardStats {
@@ -40,7 +40,7 @@ export interface CardStats {
   /** Seconds between attacks; null for one-time attacks. */
   interval: number | null;
   rangeKind: RangeKind;
-  /** Fields; only meaningful for `ranged`. */
+  /** Fields; only meaningful for `ranged`. 0 for `field` (whole field). */
   range: number;
   /** Fields per second. */
   speed: number;
@@ -86,6 +86,16 @@ export function getCardStats(card: CardId, level: number): CardStats {
         rangeKind: 'ranged',
         range: a.range,
         target: 'allies',
+      };
+    case 'artillery':
+      return {
+        ...base,
+        effectKind: 'damage',
+        effect: scaleStat(a.damage, level),
+        interval: intervalSeconds(a.intervalTicks),
+        rangeKind: 'field',
+        range: 0,
+        target: 'ground',
       };
     case 'explode':
       return {

@@ -232,17 +232,35 @@ describe('BattleView', () => {
   it('shows the last pick and forfeited units', () => {
     const own = view(
       snap({
-        lastPick: { player: 0, slot: 0, card: 'skeleton', spawned: [1, 2, 3, 4, 5], forfeited: 0 },
+        lastPick: {
+          player: 0,
+          slot: 0,
+          kind: 'spawn',
+          card: 'skeleton',
+          spawned: [1, 2, 3, 4, 5],
+          forfeited: 0,
+        },
       }),
     );
     expect(own).toContain('Du spielst Skelette (5)');
     const opp = view(
-      snap({ lastPick: { player: 1, slot: 0, card: 'knight', spawned: [1], forfeited: 1 } }),
+      snap({
+        lastPick: { player: 1, slot: 0, kind: 'spawn', card: 'knight', spawned: [1], forfeited: 1 },
+      }),
     );
     expect(opp).toContain('Lady Knochenkralle spielt Ritter (2)');
     expect(opp).toContain('1 Einheit fand keinen Platz');
     const many = view(
-      snap({ lastPick: { player: 1, slot: 0, card: 'skeleton', spawned: [1, 2], forfeited: 3 } }),
+      snap({
+        lastPick: {
+          player: 1,
+          slot: 0,
+          kind: 'spawn',
+          card: 'skeleton',
+          spawned: [1, 2],
+          forfeited: 3,
+        },
+      }),
     );
     expect(many).toContain('3 Einheiten fanden keinen Platz');
   });

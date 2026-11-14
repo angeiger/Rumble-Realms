@@ -17,6 +17,7 @@ export function cardName(card: CardId): string {
 export function rangeText(s: CardStats): string {
   if (s.rangeKind === 'melee') return t('detail.rangeMelee');
   if (s.rangeKind === 'contact') return t('detail.rangeContact');
+  if (s.rangeKind === 'field') return t('detail.rangeField');
   return formatNumber(s.range);
 }
 

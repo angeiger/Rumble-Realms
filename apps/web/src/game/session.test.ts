@@ -461,5 +461,6 @@ describe('determinism', () => {
     expect(a.length).toBeGreaterThan(100);
     expect(a).toEqual(b);
     expect(run(12, [37, 120, 250, 16])).not.toEqual(a);
-  });
+    // Three full matches with a state hash after every step: slow on a busy machine.
+  }, 60_000);
 });

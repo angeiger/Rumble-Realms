@@ -102,5 +102,18 @@
   "card.berserker.name": "Berserker",
   "card.berserker.text": "Schlägt umso schneller zu, je weniger Leben er hat, und raubt Leben.",
   "card.shroomling.name": "Pilzlinge",
-  "card.shroomling.text": "Hinterlassen beim Tod eine giftige Sporenwolke."
+  "card.shroomling.text": "Hinterlassen beim Tod eine giftige Sporenwolke.",
+  "card.pyromancer.name": "Pyromantin",
+  "card.pyromancer.text": "Brennende Ziele und alle 10 s ein Meteor auf die größte Gegnergruppe.",
+  "card.necromancer.name": "Nekromant",
+  "card.necromancer.text": "Beschwört alle 4 Sekunden ein Skelett und greift selbst an.",
+  "card.beetle.name": "Bombardierkäfer",
+  "card.beetle.text": "Beschießt mit Artillerie das ganze Feld und hinterlässt Säurepfützen.",
+  "card.golem.name": "Steingolem",
+  "card.golem.text": "Sehr langsam und mit sehr viel Leben, zerfällt beim Tod in Mini-Golems.",
+  "card.frost_shaman.name": "Frostschamane",
+  "card.frost_shaman.text": "Friert Ziele durch Treffer ein und verlangsamt Gegner in der Nähe.",
+  "card.whelp.name": "Drachenjunges",
+  "card.whelp.text": "Speit Feuer in einem Kegel und wächst mit der Zeit.",
+  "detail.rangeField": "Ganzes Feld"
 }
