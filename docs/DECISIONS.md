@@ -357,3 +357,29 @@ Andreas möchte einen eigenen Tab, in dem man sein Deck aus vier Karten zusammen
   alle früheren Karten beider Spieler wieder mit vollen LP auf dem Feld, schon während des Drafts sichtbar.
 - Jede Einheit behält ihre Nummer über alle Runden. Die Verarbeitungsreihenfolge im Kampf folgt damit der
   Reihenfolge, in der die Karten gespielt wurden.
+
+### D-054 Feldgröße bleibt 12 × 24
+
+Simulation mit wachsender Armee (1000 Zufallsmatches, die zehn Grundeinheiten): Keine einzige Einheit verfiel,
+höchstens 100 Einheiten pro Seite (Runde 7) bei 144 Bodenfeldern pro Hälfte; die vorderste eigene Reihe lag
+höchstens bei Reihe 9 von 0–11. Das Feld bleibt deshalb unverändert. Mit Doppelpack, Rasselbande, Schwarm und
+Beschwörungen (M3b) wird neu gemessen.
+
+### D-055 Auslegungen zur wachsenden Armee und zur Aufstellung
+
+- Reicht eine Gruppe bis in die vorderste Reihe, verfallen alle Gruppen davor komplett.
+- Die Engine steht jetzt auf `ENGINE_VERSION = 2`; das Referenz-Match liegt in `golden/replay.json`.
+- Assassine: Das Sprungziel bleibt das gemerkte Feld, auch wenn der Gegner inzwischen tot ist.
+- Lauf-TNT: Die Lunte wird über die logischen Felder geprüft, auch mitten im Schritt.
+
+### D-056 Robustheitstest verkleinert (ändert D-033)
+
+Kämpfe dauern mit den größeren Armeen etwa siebenmal so lange zu simulieren (rund 40 ms pro Match).
+Deshalb: 100 Zufallsmatches in `pnpm test`, 2000 in der CI, 10 000 weiterhin mit `pnpm test:robust` von Hand
+(etwa 7 Minuten).
+
+### D-057 Offener Balance-Punkt: früher Vorsprung
+
+Weil alle Karten jede Runde wiederkommen, kann ein früher Vorsprung durch das ganze Match tragen; der
+Verlierer-Bonus (eine Karte mehr) gleicht das in der Simulation nicht immer aus. Das wird in der Balance-Runde
+von M3b gemessen (Siegquote des Siegers von Runde 1) und bei Bedarf über den Verlierer-Bonus nachgestellt.
