@@ -4,7 +4,7 @@ Rumble Realms ist ein rundenbasiertes Auto-Battler-Kartenspiel für das Handy im
 
 Es läuft als Progressive Web App (PWA) im Browser und soll auf Android und iOS installierbar sein.
 
-Stand: Meilenstein M1 (Engine ohne Grafik) – die Spiellogik läuft auf der Kommandozeile, ein spielbares Spiel folgt mit M2.
+Stand: Meilenstein M2 (spielbarer Prototyp) – ein lokales Spiel gegen den Bot „Leicht“ mit festem Deck.
 
 ## Voraussetzungen
 
@@ -24,6 +24,7 @@ Stand: Meilenstein M1 (Engine ohne Grafik) – die Spiellogik läuft auf der Kom
 | `pnpm preview`     | Zeigt die gebaute App (nach `pnpm build`) auf http://localhost:5173 |
 | `pnpm sim`         | Kommandozeilen-Simulation, z. B. `pnpm sim match --seed 42`         |
 | `pnpm test:robust` | Spielt viele Zufallsmatches und prüft sie (`--matches N`)           |
+| `pnpm test:e2e`    | Ende-zu-Ende-Tests im Test-Browser (baut die App, Port 4173)        |
 | `pnpm format`      | Formatiert alle Dateien mit Prettier                                |
 
 ## Aufbau
@@ -46,8 +47,8 @@ Stand: Meilenstein M1 (Engine ohne Grafik) – die Spiellogik läuft auf der Kom
 | #   | Meilenstein            | Stand      |
 | --- | ---------------------- | ---------- |
 | M0  | Projektgerüst          | fertig     |
-| M1  | Engine ohne Grafik     | in Abnahme |
-| M2  | Spielbarer Prototyp    | offen      |
+| M1  | Engine ohne Grafik     | fertig     |
+| M2  | Spielbarer Prototyp    | in Abnahme |
 | M3  | Volle Kampfmechanik    | offen      |
 | M4  | Konten und Fortschritt | offen      |
 | M5  | Online gegen Freunde   | offen      |

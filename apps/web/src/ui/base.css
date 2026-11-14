@@ -1,0 +1,242 @@
+/* Shell: centred phone-width column with a dark margin on wide screens. */
+.app-shell {
+  height: 100dvh;
+  display: flex;
+  justify-content: center;
+  background: radial-gradient(circle at 50% 30%, #1a2350 0%, #090d24 80%);
+}
+
+.app-column {
+  position: relative;
+  width: 100%;
+  max-width: var(--column-width);
+  height: 100%;
+  overflow: hidden;
+  background: var(--team-blue-dark);
+}
+
+@media (min-width: 520px) {
+  .app-column {
+    box-shadow:
+      0 0 0 4px var(--outline),
+      0 0 60px rgb(0 0 0 / 0.6);
+  }
+}
+
+/* Buttons: thick outline, pressed look with a shadow edge. */
+.btn {
+  min-height: 48px;
+  padding: 8px 22px;
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  background: var(--team-orange);
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 1.25rem;
+  line-height: 1.1;
+  text-shadow: 0 2px 0 var(--outline);
+  box-shadow:
+    0 6px 0 var(--orange-dark),
+    0 6px 0 4px var(--outline);
+  transform: translateY(-3px) rotate(-1deg);
+  transition:
+    transform 0.12s var(--ease-spring),
+    box-shadow 0.12s,
+    filter 0.2s;
+  cursor: pointer;
+}
+
+.btn:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    0 2px 0 var(--orange-dark),
+    0 2px 0 4px var(--outline);
+}
+
+.btn:disabled {
+  filter: grayscale(0.9) brightness(0.8);
+  cursor: default;
+  transform: none;
+  box-shadow: 0 3px 0 4px var(--outline);
+}
+
+.btn--big {
+  min-height: 68px;
+  padding: 10px 56px;
+  font-size: 2rem;
+  border-radius: 22px;
+}
+
+.btn--small {
+  min-height: 44px;
+  padding: 4px 16px;
+  font-size: 1.1rem;
+  border-radius: 14px;
+}
+
+.btn--blue {
+  background: var(--team-blue);
+  box-shadow:
+    0 6px 0 var(--team-blue-dark),
+    0 6px 0 4px var(--outline);
+}
+
+.btn--blue:active:not(:disabled) {
+  box-shadow:
+    0 2px 0 var(--team-blue-dark),
+    0 2px 0 4px var(--outline);
+}
+
+.btn:focus-visible,
+.icon-btn:focus-visible,
+.card:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+/* Modal and dialogs */
+.modal {
+  position: absolute;
+  inset: 0;
+  z-index: 30;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: calc(16px + env(safe-area-inset-top)) 16px calc(16px + env(safe-area-inset-bottom));
+  background: rgb(9 13 36 / 0.7);
+  animation: fade-in 0.18s ease-out;
+}
+
+.dialog {
+  position: relative;
+  width: 100%;
+  max-width: 360px;
+  padding: 20px 18px 18px;
+  border: 4px solid var(--outline);
+  border-radius: 22px;
+  background: var(--cream);
+  color: var(--outline);
+  box-shadow: 0 8px 0 var(--outline);
+  animation: pop-in 0.3s var(--ease-spring);
+}
+
+.dialog__title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.6rem;
+  text-align: center;
+}
+
+.dialog__text {
+  margin: 0 0 16px;
+  font-weight: 700;
+  text-align: center;
+}
+
+.dialog__buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+}
+
+.dialog__buttons .btn {
+  flex: 1;
+  padding-inline: 10px;
+  font-size: 1.1rem;
+}
+
+.dialog__close {
+  position: absolute;
+  top: -14px;
+  right: -10px;
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 4px solid var(--outline);
+  border-radius: 50%;
+  background: var(--team-orange);
+  color: var(--cream);
+  box-shadow: 0 3px 0 var(--outline);
+  cursor: pointer;
+}
+
+.icon-btn {
+  min-width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  padding: 0 6px;
+  border: 3px solid var(--outline);
+  border-radius: 14px;
+  background: var(--team-blue);
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+  box-shadow: 0 3px 0 var(--outline);
+  transition: transform 0.12s var(--ease-spring);
+  cursor: pointer;
+}
+
+.icon-btn:active {
+  transform: translateY(2px);
+  box-shadow: 0 1px 0 var(--outline);
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  font-weight: 800;
+  line-height: 1;
+}
+
+/* Landscape on small devices: please rotate (SPEC 15). */
+.rotate-hint {
+  display: none;
+}
+
+@media (orientation: landscape) and (max-height: 520px) {
+  .rotate-hint {
+    position: fixed;
+    inset: 0;
+    z-index: 100;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    background: var(--team-blue-dark);
+    font-family: var(--font-display);
+    font-size: 1.8rem;
+    color: var(--cream);
+    text-align: center;
+  }
+
+  .rotate-hint__icon {
+    font-size: 4rem;
+    line-height: 1;
+    color: var(--gold);
+    animation: spin 2.4s var(--ease-spring) infinite;
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes pop-in {
+  from {
+    opacity: 0;
+    transform: scale(0.8) translateY(20px);
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

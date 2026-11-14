@@ -10,6 +10,7 @@
     "lint": "eslint . && prettier --check .",
     "format": "prettier --write .",
     "typecheck": "pnpm -r --workspace-concurrency=1 --if-present typecheck",
+    "test:e2e": "pnpm --filter @rumble-realms/web test:e2e",
     "test": "pnpm -r --workspace-concurrency=1 --if-present test",
     "build": "pnpm -r --workspace-concurrency=1 --if-present build",
     "dev": "pnpm --filter @rumble-realms/web dev",

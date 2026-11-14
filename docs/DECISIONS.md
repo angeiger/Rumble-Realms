@@ -213,3 +213,106 @@ für Spieler B um 180° gedreht. Jede Änderung an der Wegsuche ändert Kampferg
 
 300 Zufallsmatches laufen bei jedem `pnpm test` mit. Die 10 000 Matches aus SPEC 12 laufen als eigener Befehl
 `pnpm test:robust` (etwa 25 s) und zusätzlich in der CI.
+
+## M2 – Spielbarer Prototyp (14.11.2026)
+
+### D-034 Aufbau des Clients
+
+Drei Teile mit festem Vertrag (`apps/web/src/game/types.ts`):
+
+- `game/`: Die Spielsitzung führt ein lokales Match gegen einen Bot auf Basis der Engine.
+- `render/`: Die Kampfansicht zeichnet das Feld mit PixiJS. Sie liest den Kampfzustand, ändert ihn aber nie (SPEC 6.4).
+- `ui/`: React-Bildschirme. Sie bekommen nur einen unveränderlichen Schnappschuss und rufen Aktionen auf.
+
+Grund: Der Engine-Zustand ist veränderlich (D-019), React braucht aber unveränderliche Daten, um Änderungen zu erkennen.
+
+### D-035 Eine einzige Uhr
+
+Bot-Bedenkzeit, Countdown, Kampf-Ticks und die Pause am Rundenende laufen über eine einzige Funktion
+(`advance(dt)`), die die Kampfansicht einmal pro Bild aufruft. Ist die App im Hintergrund, pausiert das Spiel.
+Grund: kein Durcheinander mehrerer Zeitgeber, und der Ablauf lässt sich ohne Browser testen.
+
+### D-036 Lokales Match in M2
+
+- Der Mensch ist immer Spieler A und sieht seine Hälfte unten. Die Ansicht kann auch für Spieler B drehen (für M5).
+- Spieler-Deck: das Startdeck aus SPEC 7.1 (Bogenschütze, Ritter, Skelette, Heiler), alle Karten Level 1.
+- Gegner: Bot „Leicht“ (wählt zufällig, Level 1) mit einem von mehreren festen Decks aus dem Kartenpool von Arena 1.
+- Der Match-Seed wird im Browser zufällig erzeugt. Es wird noch nichts gespeichert (Konten kommen mit M4).
+
+### D-037 Platzhalter-Figuren
+
+Jede Einheit ist eine mit PixiJS gezeichnete Vektorfigur (SPEC 11). Die Figur selbst ist statisch; Stehen, Laufen,
+Angriff und Tod entstehen durch Bewegungen der ganzen Figur (Wippen, Strecken, Ausfallschritt, Umkippen).
+Die Teamfarbe steckt in der Kleidung und im Ring unter der Figur, der zusätzlich ein Symbol je Team trägt.
+
+### D-038 Playwright
+
+Ende-zu-Ende-Tests laufen mit Chromium im mobilen Hochformat gegen den gebauten Stand auf Port 4173,
+damit sie den Entwicklungsserver auf 5173 nicht stören. WebGL läuft im Test-Browser per Software-Renderer.
+
+### D-039 PixiJS-Renderer nie mit `destroy(true)` abbauen
+
+Es gibt zeitweise zwei PixiJS-Renderer: den Kampf-Renderer und einen kurzlebigen, der die Figurenbilder für die
+Karten erzeugt. `app.destroy(true, …)` leert zusätzlich PixiJS-interne Puffer, die sich alle Renderer teilen;
+ein noch laufender Renderer stürzt dann im nächsten Bild ab (das Spiel fror ein, wenn man direkt nach dem Laden
+auf „Spielen“ drückte). Deshalb wird überall `DESTROY_RENDERER` aus `render/destroy.ts` benutzt.
+Ein Ende-zu-Ende-Test („Sofortstart“) sichert das ab.
+
+### D-040 Ende-zu-Ende-Tests laufen in Echtzeit
+
+Der Test spielt ein ganzes Match bei doppelter Geschwindigkeit durch (etwa 2,5 Minuten). Eine künstlich
+beschleunigte Uhr wird nicht benutzt, weil der Test-Browser damit keine Bilder mehr liefert.
+Der Test-Browser rendert per Software und ist viel langsamer als ein Handy; über die Bildrate auf echten
+Geräten sagt er nichts aus.
+
+### D-041 Paketgröße
+
+PixiJS macht den Hauptteil des Programms aus (rund 183 kB komprimiert). Der Service Worker speichert alles
+beim ersten Besuch, danach startet die App ohne Netz. Ein Aufteilen in nachladbare Teile ist für später notiert.
+
+## Änderungswünsche von Andreas nach dem M2-Test (14.11.2026)
+
+Diese Punkte hat Andreas nach dem Test des Prototyps festgelegt. Sie gehen der Spezifikation vor, wo sie ihr
+widersprechen. Umgesetzt werden sie als erstes Arbeitspaket von M3, weil Sonderkarten, Bots und Balancing darauf aufbauen.
+Die Grundmechanik hat er ausdrücklich für gut befunden.
+
+### D-042 Aufstellung so weit hinten wie möglich (ändert SPEC 4.4, ersetzt D-026 teilweise)
+
+Alle Einheiten stehen so nah an der eigenen Grundlinie wie möglich. Die Reihenfolge nach Rolle bleibt
+(hinten Fernkampf, davor Mitte, davor vorne). Kommt eine Einheit dazu, die weiter hinten stehen soll,
+rücken die anderen nach vorne. Die genaue Regel (Spalten, Gleichstände) wird bei der Umsetzung festgelegt.
+
+### D-043 Karten liegen über dem Spielfeld (ändert SPEC 10)
+
+Das Spielfeld füllt immer den ganzen Bildschirm. Die Angebotskarten werden darüber eingeblendet statt darunter.
+
+### D-044 Ein Tippen spielt die Karte (ändert SPEC 4.3)
+
+Keine zusätzliche Bestätigung und kein Button „Ausspielen“ mehr. Die Detailansicht bleibt über langes Drücken
+bzw. den „i“-Knopf erreichbar.
+
+### D-045 Kein Countdown vor dem Kampf (ändert SPEC 4.2)
+
+Statt „3 – 2 – 1 – Kampf!“ ein kurzer Übergang, z. B. eine Rauchanimation.
+
+### D-046 Die Armee wächst von Runde zu Runde (ändert SPEC 4.1 und 4.2)
+
+Alle Karten, die ein Spieler in früheren Runden gewählt hat, erscheinen in jeder neuen Runde wieder.
+Neu gewählte Karten kommen dazu. Annahmen bis zur Umsetzung: Die Einheiten erscheinen mit vollen LP und werden
+nach D-042 neu aufgestellt; der Verlierer-Bonus bleibt. Ob das Feld dafür größer werden muss, wird per
+Simulation geprüft (Armeegröße in späten Runden, Kampfdauer, Rechenzeit) und dann mit Andreas entschieden.
+Die Änderung braucht eine neue `ENGINE_VERSION`.
+
+### D-047 Grafik später überarbeiten
+
+Die Platzhalter-Figuren bleiben vorerst. Eine Überarbeitung der Grafik ist für M6 (Feinschliff) vorgesehen.
+
+### D-048 Deck-Tab schon in M3, Fortschritt wie geplant in M4
+
+Andreas möchte einen eigenen Tab, in dem man sein Deck aus vier Karten zusammenstellt und Karten levelt.
+
+- **M3:** Deck-Tab mit freier Wahl von vier der verfügbaren Karten; das Deck wird im Browser gespeichert.
+  Das Kartenlevel lässt sich dort vorläufig frei einstellen (Testmodus, ohne Kosten), damit alle Einheiten und
+  Level ausprobiert werden können.
+- **M4:** Sammlung, Kopien, Gold, Level-Up und Upgrades mit Kosten, serverseitig abgesichert (SPEC 7 und 14).
+  Der freie Testmodus entfällt dann.

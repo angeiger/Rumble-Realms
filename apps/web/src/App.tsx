@@ -1,17 +1,22 @@
-import { ENGINE_VERSION } from '@rumble-realms/engine';
+import { useGameStore } from './game/store.ts';
 import { t } from './i18n/index.ts';
+import { BattleScreen } from './ui/BattleScreen.tsx';
+import { TitleScreen } from './ui/TitleScreen.tsx';
 
 export function App() {
+  const screen = useGameStore((s) => s.screen);
+  const startMatch = useGameStore((s) => s.startMatch);
   return (
-    <main className="title-screen">
-      <div className="title-center">
-        <h1 className="logo">{t('app.title')}</h1>
-        <p className="hint">{t('title.underConstruction')}</p>
+    <div className="app-shell">
+      <div className="app-column">
+        {screen === 'title' ? <TitleScreen onPlay={startMatch} /> : <BattleScreen />}
       </div>
-      <footer className="version">
-        {t('title.engineVersion', { version: ENGINE_VERSION })}
-        {__BUILD_ID__ ? ` · ${t('title.buildId', { id: __BUILD_ID__ })}` : ''}
-      </footer>
-    </main>
+      <div className="rotate-hint" role="alert">
+        <span className="rotate-hint__icon" aria-hidden="true">
+          ⟳
+        </span>
+        <span>{t('rotate.hint')}</span>
+      </div>
+    </div>
   );
 }

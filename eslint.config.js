@@ -39,7 +39,17 @@ export const engineDeterminismConfig = {
 };
 
 export default tseslint.config(
-  { ignores: ['**/dist/**', '**/node_modules/**', '**/coverage/**', '**/dev-dist/**'] },
+  {
+    ignores: [
+      '**/dist/**',
+      '**/node_modules/**',
+      '**/coverage/**',
+      '**/dev-dist/**',
+      '**/playwright-report/**',
+      '**/test-results/**',
+      '**/blob-report/**',
+    ],
+  },
   js.configs.recommended,
   tseslint.configs.recommended,
   engineDeterminismConfig,
@@ -48,7 +58,12 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    files: ['apps/web/*.ts', 'apps/web/scripts/**/*.mjs', 'tools/**/*.{ts,mjs}'],
+    files: [
+      'apps/web/*.ts',
+      'apps/web/e2e/**/*.ts',
+      'apps/web/scripts/**/*.mjs',
+      'tools/**/*.{ts,mjs}',
+    ],
     languageOptions: { globals: globals.node },
   },
   {

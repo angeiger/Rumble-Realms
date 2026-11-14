@@ -6,3 +6,7 @@ pnpm-lock.yaml
 docs/SPEC.md
 CLAUDE.md
 .claude/
+test-results
+playwright-report
+blob-report
+playwright/.cache
