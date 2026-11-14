@@ -1,0 +1,39 @@
+{
+  "engineVersion": 1,
+  "config": {
+    "seed": 20261114,
+    "players": [
+      {
+        "deck": ["berserker", "healer", "tnt", "bat"],
+        "levels": {
+          "berserker": 3,
+          "healer": 2,
+          "tnt": 1,
+          "bat": 5
+        }
+      },
+      {
+        "deck": ["assassin", "shroomling", "musketeer", "knight"],
+        "levels": {
+          "assassin": 4,
+          "shroomling": 2,
+          "musketeer": 5,
+          "knight": 1
+        }
+      }
+    ]
+  },
+  "picks": [
+    2, 0, 2, 1, 1, 2, 0, 2, 0, 1, 0, 1, 1, 1, 0, 2, 1, 2, 2, 0, 0, 0, 2, 0, 2, 0, 1, 0, 2, 0, 2, 1,
+    0, 2
+  ],
+  "roundHashes": [
+    "3f2f17070473ffa8",
+    "074156b1c1752dc6",
+    "6f1fc5a91cd3ac11",
+    "112b87f4415991e9",
+    "976bcb598449d141"
+  ],
+  "finalHash": "2266e884b26a04ff",
+  "winner": 1
+}

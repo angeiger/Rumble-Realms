@@ -11,3 +11,5 @@ export * from './data/cards.ts';
 export * from './data/balance.ts';
 export * from './battle/state.ts';
 export * from './battle/sim.ts';
+export * from './play.ts';
+export * from './golden.ts';
