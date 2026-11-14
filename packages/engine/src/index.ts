@@ -3,6 +3,7 @@ export { ENGINE_VERSION } from './version.ts';
 export type * from './types.ts';
 export { AIR, GROUND } from './types.ts';
 
+export * from './math.ts';
 export * from './rng.ts';
 export * from './hash.ts';
 export * from './match.ts';

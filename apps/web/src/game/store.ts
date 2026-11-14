@@ -65,3 +65,12 @@ export const useGameStore = create<GameStore>()((set, get) => ({
     set({ screen: 'title', session: null, snapshot: null });
   },
 }));
+
+declare global {
+  interface Window {
+    /** Development only: the store for scripted browser checks (screenshots, E2E). */
+    __rr?: typeof useGameStore;
+  }
+}
+
+if (import.meta.env.DEV && typeof window !== 'undefined') window.__rr = useGameStore;

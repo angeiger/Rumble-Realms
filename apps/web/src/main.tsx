@@ -3,6 +3,10 @@ import { createRoot } from 'react-dom/client';
 import '@fontsource/lilita-one/400.css';
 import '@fontsource-variable/nunito/index.css';
 import './styles.css';
+import './ui/base.css';
+import './ui/title.css';
+import './ui/cards.css';
+import './ui/battle.css';
 import { App } from './App.tsx';
 
 const root = document.getElementById('root');
