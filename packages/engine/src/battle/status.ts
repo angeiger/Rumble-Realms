@@ -32,6 +32,12 @@ export function applyStun(u: UnitState, ticks: number, tick: number): void {
   u.stunUntil = Math.max(u.stunUntil, tick + ticks);
 }
 
+/** Freeze: a stun that the renderer shows as a block of ice. */
+export function applyFreeze(u: UnitState, ticks: number, tick: number): void {
+  applyStun(u, ticks, tick);
+  u.frozenUntil = Math.max(u.frozenUntil, tick + ticks);
+}
+
 /** Burn with `dps` damage per second; the first damage falls in the next tick. */
 export function applyBurn(u: UnitState, dps: number, ticks: number, tick: number): void {
   u.burnDps = u.burnUntil > tick ? Math.max(u.burnDps, dps) : dps;

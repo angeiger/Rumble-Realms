@@ -72,6 +72,7 @@ const {
   applyBurn,
   applyDamageBonus,
   applyPoison,
+  applyFreeze,
   applyStun,
   outgoingDamage,
   setInvulnerable,
@@ -486,7 +487,14 @@ function landProjectiles(b: BattleState, events: Events): void {
     if (atk.kind === 'artillery') {
       // Shell on a cell: hits whoever stands there now (moving targets can dodge).
       if (events !== undefined) {
-        events.push({ type: 'impact', unit: p.sourceId, x: p.x, y: p.y, radius: atk.radius });
+        events.push({
+          type: 'impact',
+          kind: 'shell',
+          unit: p.sourceId,
+          x: p.x,
+          y: p.y,
+          radius: atk.radius,
+        });
       }
       areaDamage(b, p, def, p.x, p.y, atk.radius, amount, events);
       if (p.card === ACID.card && (p.up & ACID.bit) !== 0) {
@@ -505,9 +513,18 @@ function landProjectiles(b: BattleState, events: Events): void {
           startTick: b.tick,
           endTick,
           contagiousDps: 0,
+          kind: 'acid',
         });
         if (events !== undefined) {
-          events.push({ type: 'zone', id, x: p.x, y: p.y, radius: ACID_RADIUS, endTick });
+          events.push({
+            type: 'zone',
+            kind: 'acid',
+            id,
+            x: p.x,
+            y: p.y,
+            radius: ACID_RADIUS,
+            endTick,
+          });
         }
       }
       continue;
@@ -518,7 +535,14 @@ function landProjectiles(b: BattleState, events: Events): void {
     if (atk.kind === 'ranged' && atk.splashRadius !== undefined) {
       const radius = atk.splashRadius;
       if (events !== undefined) {
-        events.push({ type: 'impact', unit: p.sourceId, x: target.x, y: target.y, radius });
+        events.push({
+          type: 'impact',
+          kind: 'splash',
+          unit: p.sourceId,
+          x: target.x,
+          y: target.y,
+          radius,
+        });
       }
       areaDamage(b, p, def, target.x, target.y, radius, amount, events);
     } else {
@@ -548,7 +572,7 @@ function onHit(b: BattleState, p: ProjectileState, atk: AttackDef, target: UnitS
     const source = byId(p.sourceId);
     if (source !== undefined) {
       source.hits++;
-      if (source.hits % ICE_BLOCK_NTH === 0) applyStun(target, ICE_BLOCK_TICKS, b.tick);
+      if (source.hits % ICE_BLOCK_NTH === 0) applyFreeze(target, ICE_BLOCK_TICKS, b.tick);
     }
   }
 }
@@ -925,7 +949,14 @@ function ability(b: BattleState, u: UnitState, def: CardDef, events: Events): vo
       outgoingDamage(u, scaleByLevel(EARTHQUAKE_DAMAGE, u.level), b.tick),
     );
     if (events !== undefined) {
-      events.push({ type: 'impact', unit: u.id, x: u.x, y: u.y, radius: EARTHQUAKE_RADIUS });
+      events.push({
+        type: 'impact',
+        kind: 'quake',
+        unit: u.id,
+        x: u.x,
+        y: u.y,
+        radius: EARTHQUAKE_RADIUS,
+      });
     }
     for (const o of b.units) {
       if (o.owner === u.owner || o.hp <= 0 || !canHit(def, o)) continue;
@@ -936,11 +967,18 @@ function ability(b: BattleState, u: UnitState, def: CardDef, events: Events): vo
   } else if (unitHas(u, FROST_NOVA)) {
     u.abilityTick = b.tick + FROST_NOVA_INTERVAL;
     if (events !== undefined) {
-      events.push({ type: 'impact', unit: u.id, x: u.x, y: u.y, radius: FROST_NOVA_RADIUS });
+      events.push({
+        type: 'impact',
+        kind: 'nova',
+        unit: u.id,
+        x: u.x,
+        y: u.y,
+        radius: FROST_NOVA_RADIUS,
+      });
     }
     for (const o of b.units) {
       if (o.owner === u.owner || o.hp <= 0 || !canHit(def, o)) continue;
-      if (inRadius(o.x, o.y, u.x, u.y, FROST_NOVA_RADIUS)) applyStun(o, FROST_NOVA_TICKS, b.tick);
+      if (inRadius(o.x, o.y, u.x, u.y, FROST_NOVA_RADIUS)) applyFreeze(o, FROST_NOVA_TICKS, b.tick);
     }
   } else if (unitHas(u, GROWTH)) {
     // Wachstum: +15 % damage per stack (additive), at most 3 stacks.
@@ -980,7 +1018,7 @@ function meteor(b: BattleState, u: UnitState, def: CardDef, events: Events): voi
   const x = center.x;
   const y = center.y;
   if (events !== undefined)
-    events.push({ type: 'impact', unit: u.id, x, y, radius: METEOR_RADIUS });
+    events.push({ type: 'impact', kind: 'meteor', unit: u.id, x, y, radius: METEOR_RADIUS });
   const amount = withSuddenDeath(
     b,
     outgoingDamage(u, scaleByLevel(METEOR_DAMAGE, u.level), b.tick),
@@ -1474,6 +1512,7 @@ function revive(b: BattleState, dead: UnitState, events: Events): void {
     if (r === undefined) return;
     h.reviveLeft--;
     r.reviveLeft = 0;
+    r.variant = 'revived';
     r.hp = Math.max(1, applyBps(r.maxHp, REVIVE_HP_BPS));
     return;
   }
@@ -1520,6 +1559,7 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
       const d = spawnNear(b, u.owner, u.card, u.level, u.tx, u.ty, u.id, events);
       if (d === undefined) break;
       d.up &= ~DAUGHTER_TNT.bit;
+      d.variant = 'daughter';
       d.maxHp = Math.max(1, applyBps(d.maxHp, DAUGHTER_HP_BPS));
       d.hp = d.maxHp;
       d.powerBps = applyBps(d.powerBps, DAUGHTER_DAMAGE_BPS);
@@ -1532,6 +1572,7 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
       const g = spawnNear(b, u.owner, u.card, u.level, u.tx, u.ty, u.id, events);
       if (g === undefined) break;
       g.up &= ~RUBBLE.bit;
+      g.variant = 'mini';
       scaleSpawn(g, RUBBLE_BPS);
     }
   }
@@ -1541,6 +1582,7 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
     const z = spawnNear(b, u.owner, u.card, u.level, u.tx, u.ty, u.id, events);
     if (z !== undefined) {
       z.up &= ~UNDEAD.bit;
+      z.variant = 'zombie';
       z.maxHp = Math.max(1, applyBps(z.maxHp, UNDEAD_HP_BPS));
       z.hp = z.maxHp;
       applyStun(z, UNDEAD_DELAY, b.tick);
@@ -1567,9 +1609,18 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
       endTick,
       // Ansteckend: the rate of the clouds it spreads scales with this shroomling's level.
       contagiousDps: unitHas(u, CONTAGIOUS) ? scaleByLevel(CONTAGIOUS_DPS, u.level) : 0,
+      kind: 'spores',
     });
     if (events !== undefined) {
-      events.push({ type: 'zone', id, x: u.x, y: u.y, radius: cloud.radius, endTick });
+      events.push({
+        type: 'zone',
+        kind: 'spores',
+        id,
+        x: u.x,
+        y: u.y,
+        radius: cloud.radius,
+        endTick,
+      });
     }
   }
   if (u.sporedUntil > b.tick && u.sporedDps > 0) {
@@ -1590,9 +1641,18 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
       startTick: b.tick,
       endTick,
       contagiousDps: u.sporedDps,
+      kind: 'spores',
     });
     if (events !== undefined) {
-      events.push({ type: 'zone', id, x: u.x, y: u.y, radius: CONTAGIOUS_RADIUS, endTick });
+      events.push({
+        type: 'zone',
+        kind: 'spores',
+        id,
+        x: u.x,
+        y: u.y,
+        radius: CONTAGIOUS_RADIUS,
+        endTick,
+      });
     }
   }
   if (unitHas(u, LICH) && !u.ghost) lichForm(b, u, events);

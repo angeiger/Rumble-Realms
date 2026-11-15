@@ -135,6 +135,7 @@ export function spawnUnit(
     atkSlowBps: 0,
     atkSlowUntil: 0,
     stunUntil: 0,
+    frozenUntil: 0,
     burnDps: 0,
     burnStart: 0,
     burnUntil: 0,
@@ -160,6 +161,7 @@ export function spawnUnit(
     ghost: false,
     sporedUntil: 0,
     sporedDps: 0,
+    variant: 'normal',
   };
   b.units.push(unit);
   b.occ[occIndex(layer, x, y)] = unit.id;

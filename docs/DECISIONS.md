@@ -582,3 +582,28 @@ Die hüpfenden Zahlen im Kampf werden um 50 % verkleinert.
 ### D-072 Gestaltung insgesamt später (bestätigt D-047)
 
 Am Design insgesamt soll noch einmal gearbeitet werden; das hat aus Andreas' Sicht Zeit (vorgesehen für M6).
+
+## M3b – Fortsetzung nach der Freigabe von M3a (15.11.2026)
+
+Andreas hat M3a am 15.11. freigegeben (Pull Request 4). `main` ist in den Branch `m3b-kampfmechanik` gemergt.
+
+### D-073 Upgrades im Testmodus (zu D-048, SPEC 7.3)
+
+- Bis es in M4 die echte Sammlung gibt, sind beim Spieler alle drei Upgrades jeder Karte freigeschaltet. In der
+  Detailansicht im Deck-Tab lässt sich jedes Upgrade einzeln aus- und wieder einschalten (ohne Kosten), damit man
+  Upgrades gezielt testen kann. Die Auswahl wird wie Deck und Level im Browser gespeichert.
+- Bots haben die Upgrades, die zu ihrem Kartenlevel passen (SPEC 7.3): „Leicht“ (Level 1) keine, „Mittel“ (Level 2)
+  Upgrade 1, „Schwer“ (Level 3) Upgrades 1 und 2.
+- Die Bot-Stufe wählt man auf dem Kampf-Tab; die Wahl wird im Browser gespeichert. Der Gegner ist ein zufälliges
+  Profil dieser Stufe.
+
+### D-074 Was die Engine der Darstellung zusätzlich mitteilt
+
+Die Darstellung liest den Kampfzustand und die Ereignisse, verändert aber nichts (SPEC 6.4). Damit sie die neuen
+Fähigkeiten unterscheiden kann, liefert die Engine reine Anzeige-Angaben mit, die keine Regel auswertet:
+
+- Flächentreffer (`impact`) tragen ihre Art: Käfergeschoss, Flächenschuss, Erdstoß, Frostnova, Meteor.
+- Wolken und Pfützen (`zone`) tragen ihre Art: Sporen oder Säure.
+- Jede Einheit trägt ihre Herkunft (`variant`): normal, Zombie, Tochter-TNT, Mini-Golem, wiederbelebt.
+  Riesenpilz und Geist hatten schon eigene Merker.
+- `frozenUntil` unterscheidet „in Eis eingefroren“ (Eisblock, Frostnova) von „betäubt“ (Ansturm, liegender Zombie).

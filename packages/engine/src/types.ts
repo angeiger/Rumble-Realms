@@ -171,6 +171,33 @@ export type RngState = [number, number, number, number];
 /** What a unit is currently trying to do with its target. */
 export type UnitMode = 'attack' | 'heal' | 'follow';
 
+/**
+ * How a unit came to be, for the renderer only (the simulation never reads it):
+ * - `normal`: part of the army, or a skeleton summoned by a necromancer
+ * - `zombie`: risen skeleton (Untot)
+ * - `daughter`: small TNT left by an explosion (Tochter-TNT)
+ * - `mini`: mini golem (Geröll)
+ * - `revived`: brought back by a healer (Wiederbelebung)
+ * Giants and ghosts have their own flags (`giant`, `ghost`), which the rules do read.
+ */
+export type UnitVariant = 'normal' | 'zombie' | 'daughter' | 'mini' | 'revived';
+
+/** What caused an `impact` event (renderer only). */
+export type ImpactKind =
+  /** Beetle shell landing. */
+  | 'shell'
+  /** Area hit of a homing shot (pyromancer, whelp). */
+  | 'splash'
+  /** Golem earthquake, centred on the golem. */
+  | 'quake'
+  /** Frost nova, centred on the frost shaman. */
+  | 'nova'
+  /** Pyromancer meteor. */
+  | 'meteor';
+
+/** What a lingering zone is made of (renderer only). */
+export type ZoneKind = 'spores' | 'acid';
+
 export interface UnitState {
   /** Ascending in spawn order; fixes the processing order (SPEC 6.1). Starts at 1. */
   id: number;
@@ -236,6 +263,11 @@ export interface UnitState {
   atkSlowUntil: number;
   /** Stunned or frozen (no attacks, abilities or movement) until this tick. */
   stunUntil: number;
+  /**
+   * Renderer only: the stun counts as "frozen in ice" until this tick (ice block, frost
+   * nova). The rules only read `stunUntil`.
+   */
+  frozenUntil: number;
   /** Burn: `burnDps` damage per second in the ticks burnStart < tick <= burnUntil (D-025). */
   burnDps: number;
   burnStart: number;
@@ -285,6 +317,8 @@ export interface UnitState {
    */
   sporedUntil: number;
   sporedDps: number;
+  /** Renderer only, see `UnitVariant`. */
+  variant: UnitVariant;
 }
 
 export interface ProjectileState {
@@ -326,6 +360,8 @@ export interface ZoneState {
   endTick: number;
   /** Ansteckend: units it damages count as spored; their cloud deals this per second (0 = no). */
   contagiousDps: number;
+  /** Renderer only. */
+  kind: ZoneKind;
 }
 
 export type BattleEndReason = 'elimination' | 'timeout';
@@ -368,25 +404,37 @@ export interface BattleState {
  * - `shot`: homing projectile launched (archer, musketeer, pyromancer, necromancer, frost
  *   shaman, whelp).
  * - `lob`: artillery shell launched at cell (x, y) (beetle); lands at `impactTick`.
- * - `impact`: area hit around cell (x, y) with `radius` (milli-fields), from a splash shot
- *   or an artillery shell of `unit` (the shooter, may be dead by then).
+ * - `impact`: area hit around cell (x, y) with `radius` (milli-fields) caused by `unit`
+ *   (may be dead by then); `kind` says what it was (shell, splash shot, earthquake, frost
+ *   nova, meteor).
  * - `damage`: `amount` is the hit point loss after armour and shield (0 if everything was
  *   absorbed; it may exceed the remaining hit points). None while invulnerable.
- * - `summon`: `unit` appeared on (x, y), summoned by `summoner`.
+ * - `summon`: `unit` appeared on (x, y) in mid-battle because of `summoner` (necromancer
+ *   skeleton, zombie, daughter TNT, mini golem, revived unit, lich ghost; see the unit's
+ *   `variant` and `ghost`).
+ * - `zone`: a lingering area appeared (`kind`: spore cloud or acid puddle).
  * - `breath`: whelp fire breath, a cone from (x, y) towards (tx, ty) with `range` fields.
  */
 export type BattleEvent =
   | { type: 'attack'; unit: number; target: number }
   | { type: 'shot'; id: number; unit: number; target: number; impactTick: number }
   | { type: 'lob'; id: number; unit: number; x: number; y: number; impactTick: number }
-  | { type: 'impact'; unit: number; x: number; y: number; radius: number }
+  | { type: 'impact'; kind: ImpactKind; unit: number; x: number; y: number; radius: number }
   | { type: 'summon'; unit: number; summoner: number; card: CardId; x: number; y: number }
   | { type: 'damage'; unit: number; amount: number }
   | { type: 'heal'; unit: number; target: number; amount: number }
   | { type: 'death'; unit: number }
   | { type: 'explosion'; unit: number; x: number; y: number; radius: number }
   | { type: 'jump'; unit: number; fromX: number; fromY: number; x: number; y: number }
-  | { type: 'zone'; id: number; x: number; y: number; radius: number; endTick: number }
+  | {
+      type: 'zone';
+      kind: ZoneKind;
+      id: number;
+      x: number;
+      y: number;
+      radius: number;
+      endTick: number;
+    }
   | {
       type: 'breath';
       unit: number;
