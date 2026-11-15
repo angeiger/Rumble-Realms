@@ -383,3 +383,114 @@ Deshalb: 100 Zufallsmatches in `pnpm test`, 2000 in der CI, 10 000 weiterhin mit
 Weil alle Karten jede Runde wiederkommen, kann ein früher Vorsprung durch das ganze Match tragen; der
 Verlierer-Bonus (eine Karte mehr) gleicht das in der Simulation nicht immer aus. Das wird in der Balance-Runde
 von M3b gemessen (Siegquote des Siegers von Runde 1) und bei Bedarf über den Verlierer-Bonus nachgestellt.
+
+## M3b – Volle Kampfmechanik, Zwischenstand (15.11.2026)
+
+Die Nummern D-058 bis D-062 stehen im Branch von M3a (Rückmeldung zum M3a-Test und Nachschliff).
+
+### D-063 Einmalige Ausnahme vom Gate-Protokoll am 15.11.2026
+
+Andreas hat am 15.11. erlaubt, an M3b weiterzuarbeiten, bis sich sein Nutzungslimit zurücksetzt (etwa 13:50 UTC),
+obwohl M3a noch nicht freigegeben war. Danach gilt wieder D-061: Weiter an M3b erst nach der Freigabe von M3a.
+
+### D-064 Auslegungen zu den Upgrades (SPEC 5.4)
+
+Die SPEC lässt bei vielen Upgrades Einzelheiten offen. So sind sie umgesetzt:
+
+- **Skalierung:** Brand und Gift aus Upgrades, der Rückschaden des Chitinpanzers, der Schild des Ritters und der
+  Knochenhagel skalieren mit dem Kartenlevel wie Schaden bzw. LP. Für Schaden gilt auch der Sudden Death.
+- **Inferno:** Alle Einheiten, die der Flächentreffer der Pyromantin trifft, brennen, nicht nur das Hauptziel.
+- **Eisblock:** Gezählt werden die Treffer des Schützen. Ist er beim Einschlag nicht mehr auf dem Feld, zählt der
+  Treffer nicht.
+- **Eisrüstung, Chitinpanzer, Gift, Ultraschall:** wirken bei jedem Nahkampftreffer, auch wenn ein Schild den
+  Schaden ganz aufnimmt.
+- **Hitzeschild:** Als Treffer zählen Angriffe, Schüsse, Granaten, Flächentreffer und Explosionen. Brand, Gift,
+  Wolken, Pfützen und Rückschaden zählen nicht. Während einer Unverwundbarkeit wird keine Ladung verbraucht.
+- **Unbändig:** löst nur aus, wenn der Berserker den Treffer überlebt. Ein Treffer, der allein tödlich ist, tötet
+  ihn (D-031).
+- **Wirbelwind:** trifft alle angrenzenden Gegner, auch nicht anvisierbare (wie Flächenschaden).
+- **Heilkreis:** Verbündete im Radius 2 um das geheilte Ziel bekommen je 60 %; das Ziel selbst und der Heiler
+  bekommen nichts zusätzlich. **Segen** gilt für jeden Geheilten.
+- **Wiederbelebung:** Jeder Heiler hat eine eigene Ladung pro Runde; stehen mehrere in Reichweite, ist der mit der
+  kleinsten Nummer dran. Die Wiederbelebte ist eine neue Einheit nur für diese Runde und bringt selbst keine Ladung mit.
+- **Bajonett:** Der Musketier sticht nur sein aktuelles Ziel, wenn es angrenzt. Ein Stich ist kein Schuss, der
+  **Kopfschuss** bleibt also für den ersten echten Schuss der Runde.
+- **Durchschlag:** „Dahinter“ ist das Feld einen Schritt hinter dem Ziel, in Schussrichtung vom Feld des Schützen
+  aus, auf beiden Ebenen. Beim Kopfschuss bekommt der Gegner dahinter die Hälfte des dreifachen Schadens.
+- **Salve:** Die zusätzlichen Pfeile gehen an die nächstgelegenen anderen Gegner in Reichweite.
+- **Ansturm:** Als Bewegung zählt jeder begonnene Schritt seit dem letzten Treffer.
+- **Spott:** wird jeden Tick geprüft und bindet nur Gegner, die den Ritter überhaupt angreifen können (Ebene,
+  anvisierbar, Mindestabstand der Artillerie).
+- **Untot:** Der Zombie liegt sofort auf dem Feld des Skeletts, ist aber 2 s lang betäubt, nicht anvisierbar und
+  unverwundbar. Er steht nur einmal auf und behält den Knochenhagel.
+- **Tochter-TNT, Geröll:** Beschwörungen nur für die laufende Runde (D-053 bleibt unberührt). Mini-Golems haben
+  20 % der LP und des Schadens, Tempo und Reichweite bleiben; sie zerfallen selbst nicht weiter.
+- **Seelenernte:** beachtet die Obergrenze lebender Skelette und verändert den Beschwörungstakt nicht.
+- **Meteor:** zielt auf den Gegner, um den herum (r 1,5) die meisten Gegner stehen; bei Gleichstand die kleinere Nummer.
+- **Zeitfähigkeiten** (Meteor, Erdstoß, Frostnova, Wachstum): pausieren, solange die Einheit betäubt oder
+  eingefroren ist. Die Frostnova löst zum ersten Mal bei Kampfbeginn aus.
+- **Wachstum:** +15 % Schaden pro Stufe, die Stufen addieren sich (höchstens +45 %). Die Größe ist nur Anzeige.
+- **Doppelladung:** Gibt es kein zweites gültiges Ziel, gehen beide Geschosse auf dasselbe Ziel.
+- **Schattenschritt:** Der Assassine springt nur aus dem Stand; mitten in einem Schritt wartet er dessen Ende ab.
+- **Eisrüstung:** Die Stärke steht nicht in der SPEC; Annahme 30 % für 2 s wie der Grundangriff des Frostschamanen.
+- **Riesenpilz:** Pro gespielter Karte wird der erste Pilzling (kleinste Nummer) zum Riesen, beim Doppelpack der
+  erste jeder Vierergruppe, also zwei.
+- **Ansteckend:** „Vergiftet“ ist, wer in der letzten Sekunde Schaden durch eine Sporenwolke des Pilzling-Spielers
+  bekommen hat. Stirbt er so, hinterlässt er selbst eine Sporenwolke, die wieder ansteckt (Kettenreaktion gewollt).
+  Die Stärke der Folgewolken richtet sich nach dem Level des Pilzlings, dessen Wolke die Kette begonnen hat.
+- **Lich-Form:** Der Nekromant kehrt beim ersten Tod der Runde auf seinem Feld als fliegender Geist mit 50 % LP
+  zurück (ist das Luftfeld belegt, auf dem nächsten freien). Er greift weiter an, behält seine lebenden Skelette
+  und beschwört weiter. Ein Nekromant mit Lich-Form und sein Geist werden nicht zusätzlich vom Heiler wiederbelebt.
+  In der nächsten Runde steht er wieder normal am Boden.
+- **Feueratem:** Kegel mit 45° halbem Öffnungswinkel in Richtung des Hauptziels, Länge gleich der Reichweite (+1),
+  wirkt sofort ohne Geschoss. Jeder Getroffene bekommt den vollen Schaden, auch nicht anvisierbare Gegner.
+
+### D-065 Bots „Mittel“ und „Schwer“ (SPEC 8.1)
+
+- **Mittel** bewertet jeden Platz des Angebots aus den Kartendaten (LP, Schaden pro Sekunde, Fläche, Reichweite,
+  Ziele, Anzahl), nicht aus einer Namenstabelle, und gewichtet das mit einem Konter-Faktor gegen die Armee, die der
+  Gegner in diesem Match schon gespielt hat. Das Deck des Gegners kennt er nicht. Aufrüstungen bewertet er pauschal
+  mit 30 % des Werts der betroffenen Einheiten (schon gespielte plus noch zu erwartende).
+- **Schwer** spielt für jeden Platz sechsmal den Rest der Runde auf einer Kopie des Spielstands durch: eigene und
+  gegnerische Folge-Picks zufällig, dann der Kampf. Die Kopie bekommt eigene Zufallsströme für Angebote, Aufstellung
+  und Kampf. Mit den echten Strömen würde der Bot künftige Angebote und den Kampfzufall vorab kennen.
+- Der echte Spielstand und seine Zufallsströme bleiben bei jeder Bot-Entscheidung unverändert (Test über den
+  Zustands-Hash).
+- Rechenzeit „Schwer“ in der VM: rund 70 ms pro Entscheidung, etwa 90 ms in späten Runden.
+- Bot-Decks: Mittel nutzt Karten bis Arena 2, Schwer bis Arena 3; je drei Profile.
+- Der Stärketest (40 Matches je Paarung) dauert rund 70 s und läuft nur mit `BOT_STRENGTH=1`.
+
+### D-066 Balance-Tool (SPEC 12)
+
+- Neuer Befehl `pnpm sim balance`, schreibt `docs/BALANCE.md`. Gleicher Seed ergibt dieselbe Datei.
+- **Karte gegen Karte:** ein einzelner Kampf, beide Seiten mit gleich vielen Picks derselben Karte, ohne
+  Sonderkarten und Upgrades, jeder Seed mit getauschten Seiten. Der Draft bietet dafür keinen Weg, das Tool trägt die
+  Armee deshalb direkt in den Spielstand ein.
+- **Ganze Matches:** Siegquote des Siegers von Runde 1 (D-057), Rundenzahl, Kampfdauer, Zeitlimit, Einheitenzahl pro
+  Seite und Runde, verfallene Einheiten, vorderste Reihe (D-060), Anteil der Sonderkarten, aktive Upgrades.
+- **Deck gegen Deck:** acht thematische Decks, jedes gegen jedes, Level 1 mit allen Upgrades freigeschaltet.
+- Reine Support-Karten (Heiler) verlieren im Vergleich Karte gegen Karte zwangsläufig. Für sie braucht die
+  Balance-Runde einen anderen Maßstab, z. B. die Karte zusammen mit einer festen Begleitkarte.
+
+### D-067 Stand von M3b am 15.11.2026 und offene Punkte
+
+Fertig und geprüft (Lint, Typecheck, 485 Engine-Tests, 104 Client-Tests, 1500 Zufallsmatches ohne Absturz):
+alle 48 Upgrades mit je einem gezielten Test und einem Kombinationstest pro Karte, Sonderkarten, alle 16 Einheiten,
+Bots „Mittel“ und „Schwer“, Balance-Tool. `ENGINE_VERSION` bleibt 3, bis M3b freigegeben wird; das Referenz-Match
+ist neu erzeugt.
+
+Noch offen für M3b:
+
+- **Oberfläche:** Auswahl der Bot-Stufe, Aufrüstungs- und Doppelpack-Karten im Angebot, Symbole der aktiven Upgrades
+  neben den Leben (SPEC 4.5), die sechs neuen Einheiten im Deck-Tab.
+- **Darstellung:** Effekte für die neuen Ereignisse und Zustände (Feueratem, Meteor, Erdstoß, Frostnova, Schild,
+  Brand, Gift, Einfrieren, Riesenpilz, Geist, Zombie, Wolken und Pfützen).
+- **Bot „Mittel“:** Bei zwei Testdecks gewinnt er nur 53 % bzw. 55 % gegen „Leicht“, weil er zu einseitig spielt.
+- **Balance-Runde:** großer Lauf des Balance-Tools und Anpassung der Werte. Erste Hinweise aus kleinen Stichproben:
+  Der Sieger von Runde 1 gewinnt etwa zwei Drittel der Matches (D-057); im Mittel sind am Matchende 2,0 Upgrades pro
+  Spieler aktiv (Ziel 1 bis 3, SPEC 4.3).
+- **Feldgröße und Leistung (D-060):** In 1500 Matches verfiel keine Einheit; höchstens 111 Einheiten pro Seite bei
+  Kampfbeginn. Im Kampf kamen aber bis zu 296 Beschwörungen in einer Runde dazu (Skelette, Zombies, Mini-Golems).
+  Zu prüfen ist, wie viele davon gleichzeitig leben und ob das Handy das flüssig darstellt.
+- **Zusammenführen:** Der Branch enthält den Nachschliff von M3a noch nicht. Nach der Freigabe von M3a wird `main`
+  hineingemergt.

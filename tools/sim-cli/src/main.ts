@@ -3,6 +3,7 @@
  * special cards and upgrades since M3b).
  * No dependencies: arguments are parsed by hand. Node APIs and timing are allowed here.
  */
+import { fileURLToPath } from 'node:url';
 import {
   ALL_UPGRADES_MASK,
   CARD_IDS,
@@ -24,6 +25,7 @@ import {
   startBattle,
   stepTick,
 } from '@rumble-realms/engine';
+import { DEFAULT_BALANCE_SEED, runBalance } from './balance.ts';
 import type {
   BattleEvent,
   CardId,
@@ -61,6 +63,15 @@ Commands:
   robust  Play many random matches and check them; prints statistics per round
             --matches N     number of matches (default ${DEFAULT_ROBUST_MATCHES})
             --seed N        start seed of the random configs (default ${DEFAULT_SEED})
+  balance Card against card, match statistics and deck against deck; writes a Markdown report
+            --seed N        start seed (default fixed; same seed = same file)
+            --picks N       picks of the one card per side in card duels (default 3)
+            --level N       level 1..${MAX_LEVEL} in card and deck duels (default 1)
+            --duels N       seeds per card pair, both side assignments each (default 20)
+            --matches N     random matches for the match statistics (default 300)
+            --deck-matches N  matches per deck pair (default 20)
+            --only P        cards, matches or decks (default: all)
+            --out PATH      target file (default docs/BALANCE.md)
   golden  Print the JSON for packages/engine/src/golden/replay.json (use: pnpm --silent sim golden > file)
 
 Default decks: ${START_DECK.join(', ')}
@@ -476,6 +487,38 @@ function printRoundStats(stats: RoundStats[]): void {
 }
 
 // ---------------------------------------------------------------------------
+// balance
+// ---------------------------------------------------------------------------
+
+function runBalanceCommand(args: string[]): number {
+  const options = parseOptions(
+    args,
+    ['--seed', '--picks', '--level', '--duels', '--matches', '--deck-matches', '--only', '--out'],
+    [],
+  );
+  const only = options.get('--only') ?? 'all';
+  if (only !== 'all' && only !== 'cards' && only !== 'matches' && only !== 'decks') {
+    throw new UsageError('--only must be cards, matches or decks.');
+  }
+  const out = options.get('--out');
+  return runBalance({
+    seed: intOption(options, '--seed', DEFAULT_BALANCE_SEED, 0, 1_000_000_000),
+    picks: intOption(options, '--picks', 3, 1, 30),
+    level: intOption(options, '--level', 1, 1, MAX_LEVEL),
+    duels: intOption(options, '--duels', 20, 1, 1000),
+    matches: intOption(options, '--matches', 300, 1, 1_000_000),
+    deckMatches: intOption(options, '--deck-matches', 20, 1, 10_000),
+    out: typeof out === 'string' ? out : defaultBalancePath(),
+    only,
+  });
+}
+
+/** docs/BALANCE.md in the repo root, wherever pnpm runs the script from. */
+function defaultBalancePath(): string {
+  return fileURLToPath(new URL('../../../docs/BALANCE.md', import.meta.url));
+}
+
+// ---------------------------------------------------------------------------
 // main
 // ---------------------------------------------------------------------------
 
@@ -494,6 +537,8 @@ function main(argv: string[]): number {
         return 0;
       case 'robust':
         return runRobust(rest);
+      case 'balance':
+        return runBalanceCommand(rest);
       case 'golden':
         parseOptions(rest, [], []);
         console.log(JSON.stringify(createGoldenReplay(), null, 2));
