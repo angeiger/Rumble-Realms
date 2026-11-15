@@ -607,3 +607,22 @@ Fähigkeiten unterscheiden kann, liefert die Engine reine Anzeige-Angaben mit, d
 - Jede Einheit trägt ihre Herkunft (`variant`): normal, Zombie, Tochter-TNT, Mini-Golem, wiederbelebt.
   Riesenpilz und Geist hatten schon eigene Merker.
 - `frozenUntil` unterscheidet „in Eis eingefroren“ (Eisblock, Frostnova) von „betäubt“ (Ansturm, liegender Zombie).
+
+### D-075 Aufstellung in zentrierten Reihen: Umsetzung (zu D-070)
+
+- Die Rangfolge steht als Liste in den Kartendaten (`FORMATION_RANKS`). Innerhalb eines Rangs stehen die Karten in
+  der Reihenfolge dieser Liste nebeneinander (z. B. Bogenschützen, dann Musketiere, Pyromantinnen, Nekromanten,
+  Frostschamanen, Bombardierkäfer), aus Sicht des Spielers von links nach rechts; Einheiten derselben Karte in der
+  Reihenfolge, in der sie gespielt wurden.
+- Volle Reihen (12 Einheiten) stehen hinten, der Rest steht mittig in der Reihe davor.
+- Flieger stehen auf der Luftebene über dem Rang der Heiler und werden für sich zentriert. Der Rang ist so tief wie
+  die vollere der beiden Ebenen.
+- Die Aufstellung braucht keinen Zufall mehr. Die Zufallsspalte pro Karte und der eigene Zufallsstrom für die
+  Platzierung sind entfernt; Angebote und Kampf sind davon unberührt.
+- Die Angabe „Zone“ (vorne, Mitte, hinten) aus SPEC 5.2 bleibt in den Kartendaten stehen, bestimmt aber nicht mehr
+  die Aufstellung.
+
+### D-076 Lauf-TNT hält sein Ziel: Umsetzung (zu D-071)
+
+Das Lauf-TNT wählt nur dann ein neues Ziel, wenn sein Ziel tot oder nicht mehr anvisierbar ist (Rauchbombe).
+Ein Ritter mit Spott zieht es weiterhin auf sich. Tempo 2,0 Felder/s, mit „Kurze Lunte“ 3,2 Felder/s.
