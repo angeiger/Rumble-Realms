@@ -4,6 +4,7 @@
  */
 import type { BattleState, CardId } from '@rumble-realms/engine';
 import { BitmapText, Container, Sprite, type Texture } from 'pixi.js';
+import { INTRO_MS } from '../game/config.ts';
 import type { FieldLayout } from './layout.ts';
 import { PALETTE } from './palette.ts';
 import { clamp } from './motion.ts';
@@ -11,6 +12,8 @@ import { ARROW_SIZE, BULLET_SIZE, type EffectTextures } from './textures.ts';
 import type { NumberKind, NumberSink, UnitViews } from './unitViews.ts';
 
 const MAX_PARTICLES = 450;
+/** Numbers younger than this count as "at the same time" when fanning out. */
+const FAN_WINDOW_MS = 250;
 const MAX_PROJECTILES = 64;
 const MAX_NUMBERS = 48;
 const MAX_ZONES = 24;
@@ -105,6 +108,7 @@ export class Effects implements NumberSink {
   private readonly numbers: NumberView[] = [];
   private readonly zones: ZoneView[] = [];
   private cell = 1;
+  private layout: FieldLayout | null = null;
   private shakeAmp = 0;
   /** Screen shake offset of the current frame. */
   shakeX = 0;
@@ -160,6 +164,7 @@ export class Effects implements NumberSink {
 
   setLayout(layout: FieldLayout): void {
     this.cell = layout.cell;
+    this.layout = layout;
   }
 
   /** Drops everything that is on screen (new round, new session). */
@@ -284,6 +289,39 @@ export class Effects implements NumberSink {
         0.7,
         0xdccfa6,
       );
+    }
+  }
+
+  /**
+   * Transition before the battle (D-045, about 0.9 s): dust rolls in from both sides over the
+   * middle line of the field. With `reduced` motion the clouds do not move, they only fade.
+   */
+  introSmoke(reduced: boolean): void {
+    const l = this.layout;
+    if (l === null) return;
+    const c = this.cell;
+    const midY = l.top + l.height / 2;
+    const cols = 11;
+    for (let row = 0; row < 3; row++) {
+      for (let i = 0; i < cols; i++) {
+        const u = (i + (row % 2) * 0.5) / (cols - 1);
+        const x = l.left + u * l.width;
+        const y = midY + (row - 1) * c * 0.9 + Math.sin(i * 2.1 + row) * c * 0.25;
+        // Left half drifts to the right, right half to the left: they meet in the middle.
+        const dir = u < 0.5 ? 1 : -1;
+        const speed = reduced ? 0 : dir * c * (2.2 + 1.2 * Math.abs(Math.sin(i * 1.7 + row)));
+        this.puff(
+          x,
+          y,
+          speed,
+          reduced ? 0 : -c * 0.25,
+          INTRO_MS * (0.9 + 0.1 * ((i + row) % 3)),
+          c * 2.6,
+          c * 5,
+          reduced ? 0.55 : 0.85,
+          (i + row) % 2 === 0 ? 0xd8d0b8 : 0xb7b09c,
+        );
+      }
     }
   }
 
@@ -453,13 +491,46 @@ export class Effects implements NumberSink {
     }
   }
 
+  /** A spark flying off the fuse of a burning TNT; livelier and brighter the closer the blast. */
+  fuseSpark(x: number, y: number, intensity: number): void {
+    const c = this.cell;
+    const a = Math.random() * Math.PI * 2;
+    const speed = c * (1.2 + 2.2 * Math.random()) * (0.7 + 0.6 * intensity);
+    this.spark(
+      x,
+      y,
+      Math.cos(a) * speed,
+      Math.sin(a) * speed - c * 1.2,
+      180 + 160 * Math.random(),
+      c * (0.34 + 0.26 * intensity),
+      Math.random() < 0.5 ? 0xffd23a : 0xff7a2b,
+    );
+  }
+
+  /**
+   * Many hits in the same instant (TNT blast) land on neighbouring units whose numbers
+   * would pile up: a fresh number near other fresh ones is fanned out sideways and upwards.
+   */
+  private fanOut(x: number, y: number): { dx: number; dy: number } {
+    const c = this.cell;
+    let near = 0;
+    for (const n of this.numbers) {
+      if (!n.active || n.life > FAN_WINDOW_MS) continue;
+      if (Math.abs(n.x - x) < c * 0.4 && Math.abs(n.y - y) < c * 0.3) near++;
+    }
+    if (near === 0) return { dx: 0, dy: 0 };
+    const side = near % 2 === 1 ? 1 : -1;
+    return { dx: side * Math.ceil(near / 2) * c * 0.17, dy: -(near % 3) * c * 0.11 };
+  }
+
   number(x: number, y: number, amount: number, kind: NumberKind): void {
     for (const n of this.numbers) {
       if (n.active) continue;
+      const fan = this.fanOut(x, y);
       n.active = true;
       n.life = 0;
-      n.x = x + (((amount * 13) % 7) - 3) * this.cell * 0.04;
-      n.y = y;
+      n.x = x + (((amount * 13) % 7) - 3) * this.cell * 0.04 + fan.dx;
+      n.y = y + fan.dy;
       n.text.text = kind === 'heal' ? `+${amount}` : String(amount);
       n.text.tint = NUMBER_COLORS[kind];
       n.text.visible = true;
@@ -605,7 +676,8 @@ export class Effects implements NumberSink {
       const rise = 1 - (1 - Math.min(1, t * 1.6)) * (1 - Math.min(1, t * 1.6));
       n.text.position.set(n.x, n.y - rise * c * 1.1 - t * c * 0.3);
       const pop = t < 0.15 ? 0.6 + (t / 0.15) * 0.7 : 1.3 - Math.min(0.3, (t - 0.15) * 0.6);
-      n.text.scale.set((c / 48) * pop);
+      // Half the former size (c / 48); the bitmap font stays at 36 px, so it is only scaled down.
+      n.text.scale.set((c / 96) * pop);
       n.text.alpha = t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35;
     }
   }

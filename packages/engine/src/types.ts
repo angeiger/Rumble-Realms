@@ -68,12 +68,20 @@ export interface HealAttack {
   fallbackDamage: number;
 }
 
-/** Runs to the nearest enemy and blows itself up on contact or on death (SPEC 5.3 Lauf-TNT). */
+/**
+ * Runs to the nearest ground enemy and blows itself up (SPEC 5.3 Lauf-TNT, D-050): a fuse
+ * starts once an enemy is within `triggerRange`, goes out when none is left in range, and
+ * sets the charge off after `fuseTicks`. Dying from damage sets it off at once.
+ */
 export interface ExplodeAttack {
   kind: 'explode';
   damage: number;
-  /** Milli-fields. */
+  /** Blast radius in milli-fields. */
   radius: number;
+  /** Fields (logical cells, D-022) within which an enemy lights the fuse. */
+  triggerRange: number;
+  /** Ticks from lighting the fuse to the blast. */
+  fuseTicks: number;
 }
 
 export type AttackDef = MeleeAttack | RangedAttack | HealAttack | ExplodeAttack;
@@ -97,7 +105,10 @@ export interface CardDef {
   arena: number;
   /** Berserker: attack interval shrinks linearly with missing HP; heals from damage dealt. */
   rage?: { intervalReductionTicks: number; lifestealBps: number };
-  /** Assassin: charges at battle start, then teleports next to the farthest ground enemy. */
+  /**
+   * Assassin: charges at battle start, then teleports to the cell where the ground enemy
+   * farthest from it stood at battle start (D-049).
+   */
   shadowJump?: { chargeTicks: number };
   /** Shroomling: leaves a damaging cloud on death. Radius in milli-fields. */
   deathCloud?: { radius: number; damagePerSecond: number; durationTicks: number };
@@ -151,6 +162,11 @@ export interface UnitState {
   path: number[];
   /** Assassin: tick of the pending shadow jump; -1 = none. */
   jumpTick: number;
+  /** Assassin: cell the shadow jump aims at, fixed at battle start (D-049); -1 = none. */
+  jumpX: number;
+  jumpY: number;
+  /** TNT: tick at which the burning fuse sets it off (D-050); -1 = fuse not burning. */
+  fuseTick: number;
 }
 
 export interface ProjectileState {
@@ -249,10 +265,26 @@ export interface PickInfo {
   player: PlayerIndex;
   slot: number;
   card: CardId;
-  /** Ids of the units placed on the field. */
+  /** Ids of the units of this card that got a cell on the field. */
   spawned: number[];
-  /** Units that found no free cell in the player's half (SPEC 4.4). */
+  /** Units of this card that found no free cell in the player's half (D-052). */
   forfeited: number;
+}
+
+/**
+ * One card played in this match (D-046, D-053). The whole army is set up again on the
+ * field after every pick and at the start of every round.
+ */
+export interface ArmyEntry {
+  player: PlayerIndex;
+  card: CardId;
+  level: number;
+  /** Random center column of the card, relative to the owner (0..11, D-052). */
+  column: number;
+  /** Round in which the card was played (1-based). */
+  round: number;
+  /** Unit ids reserved for this card (CARDS[card].count of them); kept for the whole match. */
+  unitIds: number[];
 }
 
 export interface RoundOutcome {
@@ -286,7 +318,17 @@ export interface MatchState {
   rounds: RoundOutcome[];
   /** Separate streams so that e.g. placement never shifts the offers (SPEC 6.1). */
   rng: { match: RngState; offers: RngState; placement: RngState };
-  /** The field: filled during the draft, simulated during the battle, replaced each round. */
+  /** Every card played so far by both players, in pick order (D-053). */
+  army: ArmyEntry[];
+  /**
+   * Next unit id to hand out, match-wide (starts at 1). Ids are never reused: at the end of
+   * a round this also covers ids the battle handed out itself (e.g. summoned units).
+   */
+  nextUnitId: number;
+  /**
+   * The field: set up from `army` during the draft, simulated during the battle, replaced
+   * at the start of each round (the last field stays after the match).
+   */
   battle: BattleState;
   /** Set when the match is over. */
   winner: Winner | null;

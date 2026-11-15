@@ -122,3 +122,46 @@ export function InfoIcon({ size = 16 }: IconProps): ReactElement {
     </svg>
   );
 }
+
+export function SwordsIcon({ size = 26 }: IconProps): ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M4 3h5l11 11-2.5 2.5L6.5 5.5 4 3Zm16 0h-5L9 9l2.5 2.5L20 3ZM5 19l3 3 3-3-3-3-3 3Zm8.5-3.5 3 3 3-3-3-3-3 3Z"
+        fill="currentColor"
+        stroke={STROKE}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+export function CardsIcon({ size = 26 }: IconProps): ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <rect
+        x="2.5"
+        y="5"
+        width="11"
+        height="15"
+        rx="2.4"
+        transform="rotate(-10 8 12)"
+        fill="currentColor"
+        stroke={STROKE}
+        strokeWidth="1.8"
+      />
+      <rect
+        x="10"
+        y="4"
+        width="11"
+        height="15"
+        rx="2.4"
+        transform="rotate(8 15.5 11.5)"
+        fill="currentColor"
+        stroke={STROKE}
+        strokeWidth="1.8"
+      />
+    </svg>
+  );
+}

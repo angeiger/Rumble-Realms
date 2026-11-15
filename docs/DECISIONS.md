@@ -316,3 +316,160 @@ Andreas möchte einen eigenen Tab, in dem man sein Deck aus vier Karten zusammen
   Level ausprobiert werden können.
 - **M4:** Sammlung, Kopien, Gold, Level-Up und Upgrades mit Kosten, serverseitig abgesichert (SPEC 7 und 14).
   Der freie Testmodus entfällt dann.
+
+### D-049 Assassine: langsamere Aufladung, Sprung zum Startfeld des Ziels (ändert SPEC 5.3, ersetzt D-028 teilweise)
+
+- Die Aufladung dauert 2,5 s statt 2 s (20 % langsamer).
+- Das Sprungziel steht schon bei Kampfbeginn fest: der Bodengegner, der dann am weitesten vom Assassinen entfernt
+  steht. Der Assassine springt zu dem Feld, auf dem dieser Gegner **bei Kampfbeginn stand**, nicht dorthin, wo er
+  sich gerade befindet. Ist das Feld belegt, landet er auf dem nächstgelegenen freien Bodenfeld.
+- Nach dem Sprung gilt die normale Zielwahl (nächster Gegner).
+
+### D-050 Lauf-TNT: Zündung mit Lunte (ändert SPEC 5.3, ersetzt D-028 teilweise)
+
+- Kommt ein Bodengegner bis auf 2 Felder heran, beginnt die Lunte zu brennen (1,25 s, halb so lang wie die
+  Aufladung des Assassinen). Das TNT läuft dabei weiter auf sein Ziel zu.
+- Ist beim Ende der Lunte noch ein Gegner im Umkreis, explodiert es. Verlässt der letzte Gegner den Umkreis vorher,
+  erlischt die Lunte und beginnt beim nächsten Mal von vorn.
+- Stirbt das TNT durch Schaden, explodiert es wie bisher sofort.
+- Das Tempo bleibt vorerst bei 1,5 Feldern/s (zweitschnellste Einheit); Feinabstimmung in der Balance-Runde.
+
+### D-051 M3 in zwei Schritten
+
+- **M3a:** die Änderungswünsche D-042 bis D-046, D-049, D-050 und der Deck-Tab (D-048). Eigenes Gate, damit
+  Andreas die geänderten Regeln früh testen kann.
+- **M3b:** Sonderkarten, alle Upgrades, die übrigen sechs Einheiten, Bots „Mittel“ und „Schwer“, Balance-Tool
+  und erste Balance-Runde.
+
+### D-052 Aufstellung im Detail (zu D-042)
+
+- Pro Spieler werden die Karten in drei Gruppen aufgestellt, von der Grundlinie aus: zuerst alle „hinten“-Einheiten,
+  davor alle „Mitte“-Einheiten, davor alle „vorne“-Einheiten. Jede Gruppe beginnt in der ersten Reihe, die die
+  Gruppe dahinter nicht benutzt.
+- Innerhalb der Gruppe sucht jede Einheit das nächste freie Feld ihrer Ebene zur Zufallsspalte ihrer Karte in der
+  ersten Reihe der Gruppe. Reihenabstand zählt dabei doppelt, die Formation wird also eher breit als tief.
+- Die Aufstellung wird nach jedem Pick für die ganze Armee neu berechnet; Einheiten früherer Picks können dabei
+  nach vorne rücken. Was nicht mehr in die eigene Hälfte passt, verfällt.
+
+### D-053 Wachsende Armee im Detail (zu D-046)
+
+- Die Engine merkt sich jede gespielte Karte des Matches samt ihrer Zufallsspalte. Zu Beginn jeder Runde stehen
+  alle früheren Karten beider Spieler wieder mit vollen LP auf dem Feld, schon während des Drafts sichtbar.
+- Jede Einheit behält ihre Nummer über alle Runden. Die Verarbeitungsreihenfolge im Kampf folgt damit der
+  Reihenfolge, in der die Karten gespielt wurden.
+
+### D-054 Feldgröße bleibt 12 × 24
+
+Simulation mit wachsender Armee (1000 Zufallsmatches, die zehn Grundeinheiten): Keine einzige Einheit verfiel,
+höchstens 100 Einheiten pro Seite (Runde 7) bei 144 Bodenfeldern pro Hälfte; die vorderste eigene Reihe lag
+höchstens bei Reihe 9 von 0–11. Das Feld bleibt deshalb unverändert. Mit Doppelpack, Rasselbande, Schwarm und
+Beschwörungen (M3b) wird neu gemessen.
+
+### D-055 Auslegungen zur wachsenden Armee und zur Aufstellung
+
+- Reicht eine Gruppe bis in die vorderste Reihe, verfallen alle Gruppen davor komplett.
+- Die Engine steht jetzt auf `ENGINE_VERSION = 2`; das Referenz-Match liegt in `golden/replay.json`.
+- Assassine: Das Sprungziel bleibt das gemerkte Feld, auch wenn der Gegner inzwischen tot ist.
+- Lauf-TNT: Die Lunte wird über die logischen Felder geprüft, auch mitten im Schritt.
+
+### D-056 Robustheitstest verkleinert (ändert D-033)
+
+Kämpfe dauern mit den größeren Armeen etwa siebenmal so lange zu simulieren (rund 40 ms pro Match).
+Deshalb: 100 Zufallsmatches in `pnpm test`, 2000 in der CI, 10 000 weiterhin mit `pnpm test:robust` von Hand
+(etwa 7 Minuten).
+
+### D-057 Offener Balance-Punkt: früher Vorsprung
+
+Weil alle Karten jede Runde wiederkommen, kann ein früher Vorsprung durch das ganze Match tragen; der
+Verlierer-Bonus (eine Karte mehr) gleicht das in der Simulation nicht immer aus. Das wird in der Balance-Runde
+von M3b gemessen (Siegquote des Siegers von Runde 1) und bei Bedarf über den Verlierer-Bonus nachgestellt.
+
+## Rückmeldung von Andreas zum M3a-Test (14.11.2026)
+
+### D-058 Angebotskarten in der Bildschirmmitte und größer (präzisiert D-043)
+
+Die drei Angebotskarten liegen im Draft mittig über dem Feld und sind größer, damit sie besser lesbar sind
+und beide Armeen sichtbar bleiben.
+
+### D-059 Deck-Tab links, Wechsel auch per Wischen
+
+Der Deck-Tab steht links vom Kampf-Tab. Zwischen den Tabs wechselt man durch Antippen oder durch Wischen.
+
+### D-060 Feldgröße später noch einmal prüfen (ergänzt D-054)
+
+Die Feldgröße wird zu einem fortgeschrittenen Zeitpunkt erneut geprüft, spätestens in der Balance-Runde von
+M3b, wenn Doppelpack, Upgrades und Beschwörungen die Armeen vergrößern.
+
+### D-061 Wieder Arbeit nach Protokoll
+
+Die einmalige Freigabe zum Vorarbeiten ohne Gate ist beendet. Es gilt wieder: ein Meilenstein nach dem anderen,
+jeder endet mit einem Gate, das Andreas testet und freigibt. Stand der Vorarbeit:
+
+- M3a: Pull Request 4, wartet nach dem Nachschliff auf das Gate.
+- M3b: Die erste Etappe (Sonderkarten, Upgrade-Gerüst, Statuseffekte, sechs Einheiten) wird noch zu Ende geführt
+  und als Zwischenstand auf dem Branch `m3b-kampfmechanik` abgelegt. Weiter geht es dort erst nach der Freigabe von M3a.
+- M4: Das Datenbank-Schema liegt als Entwurf in Pull Request 5 und wird erst zu M4 gemergt.
+
+### D-062 Nachschliff von M3a im Detail (zu D-043, D-050, D-058, D-059)
+
+- **Angebot nur im eigenen Zug:** Die drei Karten liegen mittig über der Mittellinie. Wählt der Gegner, sind sie
+  ausgeblendet; unten links steht dann nur ein kurzer Hinweis. So bleibt das Feld frei, während der Gegner aufstellt.
+- **Zweite Wertezeile:** Die Angebotskarten zeigen oben LP und Schaden bzw. Heilung, darunter Reichweite, Intervall
+  und Tempo. Lange Kartennamen bekommen automatisch eine kleinere Schrift.
+- **Ränder:** Das Feld hält Kopfzeile und Statuszeile frei (gemessen, samt Safe Areas) und ist im Draft und im Kampf
+  gleich groß. Der Kopfabstand im Layout beträgt jetzt 1,0 statt 0,6 Felder, damit Flieger in der hintersten Reihe
+  nicht unter die Kopfzeile ragen; die Felder sind dadurch rund 1,6 % kleiner. Außerhalb des Feldes liegt eine Wiese
+  mit Buschrand statt einer dunklen Fläche.
+- **Aufstellung im Draft:** Rückt die Formation nach, gleiten die Einheiten in 250 ms auf ihr neues Feld. Zu
+  Rundenbeginn erscheinen viele Einheiten gestaffelt über rund 0,4 s statt alle im selben Bild.
+- **Lunte und Sprungziel:** Das Lauf-TNT blinkt bei brennender Lunte rot-weiß, schwillt an und sprüht Funken. Beim
+  Assassinen markiert ein roter Schein das Feld, zu dem er springen wird. Beides ist reine Anzeige; die Regeln aus
+  D-049 und D-050 sind unverändert.
+- **Wischen:** Die Menüseiten liegen nebeneinander und rasten per CSS ein (`scroll-snap`). Im Kampf wird nicht
+  gewischt, offene Dialoge sperren das Wischen. Nach jedem Tab-Wechsel gleicht der Pager den aktiven Tab mit der
+  tatsächlich sichtbaren Seite ab, auch auf Browsern ohne `scrollend`-Ereignis (ältere iPhones).
+
+## Rückmeldung von Andreas zum zweiten M3a-Test (15.11.2026)
+
+Die Nummern D-063 bis D-067 stehen im Branch von M3b. Andreas ist mit M3a zufrieden (Tab-Wechsel, Lesbarkeit,
+Sicht auf beide Armeen, Animationen des Lauf-TNT). Seine Punkte:
+
+### D-068 Tab-Markierung folgt dem Wischen sofort (noch in M3a)
+
+Die Markierung in der Tab-Leiste wechselt, sobald die Seite beim Wischen zur Hälfte überschritten ist, und wartet
+nicht mehr auf das Ende der Wischbewegung. Beim Antippen bleibt alles wie bisher.
+
+### D-069 Schadens- und Heilzahlen halb so groß (noch in M3a)
+
+Die hüpfenden Zahlen im Kampf werden um 50 % verkleinert.
+
+### D-070 Aufstellung in zentrierten Reihen nach fester Rangfolge (ersetzt D-052, Umsetzung in M3b)
+
+- Die Einheiten stehen in Reihen, jede Reihe **mittig**. Kommen Einheiten dazu, wird die ganze Reihe neu zentriert:
+  drei Assassinen stehen in der Mitte der letzten Linie, mit der nächsten Karte stehen dort sechs, wieder mittig.
+  Die zufällige Spalte pro Karte entfällt.
+- Rangfolge von der Mitte des Feldes zur eigenen Grundlinie (von Andreas für die Grundkarten vorgegeben, für die
+  übrigen Karten sinngemäß ergänzt):
+  1. Skelette
+  2. Lauf-TNT, Pilzlinge
+  3. Ritter, Berserker, Steingolem
+  4. Heiler, dazu die Flieger (Fledermäuse, Drachenjunges) auf der Luftebene
+  5. alle Fernkämpfer: Bogenschütze, Musketier, Pyromantin, Nekromant, Frostschamane, Bombardierkäfer
+  6. ganz hinten immer die Assassinen
+- Annahmen für die Umsetzung: Jeder Rang belegt eigene Reihen, beginnend an der Grundlinie mit Rang 6. Ränge ohne
+  Einheiten belegen keine Reihe. Karten desselben Rangs teilen sich die Reihen, nach Karte gruppiert. Passen mehr
+  als 12 Einheiten nicht in eine Reihe, folgt eine weitere Reihe desselben Rangs davor; die unvollständige Reihe
+  steht vorne und ist ebenfalls zentriert. Bei ungerader Lücke steht die Reihe aus Sicht des Spielers eine halbe
+  Spalte links der Mitte. Was nicht mehr in die eigene Hälfte passt, verfällt wie bisher (D-055).
+- Das ist eine Regeländerung in der Engine und kommt deshalb mit M3b (dort gilt ohnehin `ENGINE_VERSION` 3).
+
+### D-071 Lauf-TNT: Ziel halten und schneller laufen (ändert D-050, Umsetzung in M3b)
+
+- Das Lauf-TNT wechselt sein Ziel zu oft. Künftig behält es sein Ziel, bis dieses stirbt, statt alle 0,5 s neu zu
+  wählen. Die Lunte hängt weiter nur davon ab, ob irgendein Gegner im Umkreis ist (D-050).
+- Tempo 2,0 statt 1,5 Felder/s (Annahme; damit die schnellste Einheit, Skelette haben 1,8). Feinabstimmung in der
+  Balance-Runde. Die Animationen bleiben, wie sie sind.
+
+### D-072 Gestaltung insgesamt später (bestätigt D-047)
+
+Am Design insgesamt soll noch einmal gearbeitet werden; das hat aus Andreas' Sicht Zeit (vorgesehen für M6).

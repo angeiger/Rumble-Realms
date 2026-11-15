@@ -1,7 +1,16 @@
 import type { CardId } from '@rumble-realms/engine';
-import { useState, type ReactNode, type ReactElement } from 'react';
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type ReactElement,
+  type ReactNode,
+  type RefObject,
+} from 'react';
 import { t } from '../i18n/index.ts';
 import type { BattleSpeed, SessionSnapshot } from '../game/types.ts';
+import { EdgeInsetsContext } from '../render/BattleCanvas.tsx';
+import { NO_EDGE_INSETS, type EdgeInsets } from '../render/layout.ts';
 import { CardDetail } from './CardDetail.tsx';
 import { cardName } from './CardView.tsx';
 import { DraftBar } from './DraftBar.tsx';
@@ -10,8 +19,7 @@ import { CloseIcon } from './icons.tsx';
 import { ResultView } from './ResultView.tsx';
 
 export interface BattleActions {
-  select: (slot: number) => void;
-  confirm: () => void;
+  play: (slot: number) => void;
   setSpeed: (speed: BattleSpeed) => void;
   leave: () => void;
   playAgain: () => void;
@@ -20,7 +28,7 @@ export interface BattleActions {
 export interface BattleViewProps {
   snapshot: SessionSnapshot;
   actions: BattleActions;
-  /** The field (the canvas); fills the space between header and footer. */
+  /** The field (the canvas); fills the whole screen, header and cards lie over it (D-043). */
   field: ReactNode;
 }
 
@@ -53,21 +61,6 @@ export function LastPickHint({ snapshot }: { snapshot: SessionSnapshot }): React
   );
 }
 
-export function CountdownOverlay({ value }: { value: number }): ReactElement {
-  return (
-    <div className="countdown" aria-live="assertive">
-      <span
-        key={value}
-        className={`countdown__value${value === 0 ? ' countdown__value--go' : ''}`}
-        data-testid="countdown"
-        data-value={value}
-      >
-        {value === 0 ? t('countdown.fight') : value}
-      </span>
-    </div>
-  );
-}
-
 export function RoundBanner({ snapshot }: { snapshot: SessionSnapshot }): ReactElement | null {
   const res = snapshot.roundResult;
   if (res === null) return null;
@@ -89,10 +82,43 @@ export function RoundBanner({ snapshot }: { snapshot: SessionSnapshot }): ReactE
   );
 }
 
+/**
+ * Measures the header (top) and a hidden probe that is as tall as the status line at the
+ * bottom including the safe area; the field keeps clear of both (D-043).
+ */
+function useEdgeInsets(): {
+  insets: EdgeInsets;
+  headerRef: RefObject<HTMLElement | null>;
+  probeRef: RefObject<HTMLDivElement | null>;
+} {
+  const headerRef = useRef<HTMLElement>(null);
+  const probeRef = useRef<HTMLDivElement>(null);
+  const [insets, setInsets] = useState<EdgeInsets>(NO_EDGE_INSETS);
+  useLayoutEffect(() => {
+    const header = headerRef.current;
+    const probe = probeRef.current;
+    if (header === null || probe === null) return;
+    const measure = (): void => {
+      // The header's scrim fades out over its last 14 px, so only part of it counts.
+      const top = Math.max(0, header.offsetHeight - 6);
+      const bottom = probe.offsetHeight;
+      setInsets((cur) => (cur.top === top && cur.bottom === bottom ? cur : { top, bottom }));
+    };
+    measure();
+    if (typeof ResizeObserver === 'undefined') return;
+    const observer = new ResizeObserver(measure);
+    observer.observe(header);
+    observer.observe(probe);
+    return () => observer.disconnect();
+  }, []);
+  return { insets, headerRef, probeRef };
+}
+
 /** Whole battle screen for one snapshot. Pure: all state of the game comes in via props. */
 export function BattleView({ snapshot, actions, field }: BattleViewProps): ReactElement {
   const [detail, setDetail] = useState<CardId | null>(null);
   const [leaving, setLeaving] = useState(false);
+  const { insets, headerRef, probeRef } = useEdgeInsets();
   const { me, phase } = snapshot;
   const opp = me === 0 ? 1 : 0;
   const oppName = snapshot.players[opp].name;
@@ -101,6 +127,18 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
   const winner = snapshot.roundResult?.result.winner;
   const lostLife = (p: 0 | 1): boolean => showLoss && winner !== p;
   const level = (card: CardId): number => snapshot.players[me].levels[card] ?? 1;
+  const livesPill = (
+    <div className="lives-pill">
+      <Hearts
+        lives={snapshot.lives[me]}
+        breaking={lostLife(me)}
+        size={16}
+        testId="lives-me"
+        label={t('battle.livesOf', { name: t('battle.you'), lives: snapshot.lives[me] })}
+      />
+      <span className="battle__name battle__name--me">{t('battle.you')}</span>
+    </div>
+  );
 
   return (
     <main
@@ -109,14 +147,24 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
       data-phase={phase}
       data-round={snapshot.round}
     >
-      <header className="battle__header">
+      <div className="battle__field">
+        <div className="battle__canvas">
+          <EdgeInsetsContext.Provider value={insets}>{field}</EdgeInsetsContext.Provider>
+        </div>
+        <LastPickHint snapshot={snapshot} />
+        {phase === 'roundEnd' && <RoundBanner snapshot={snapshot} />}
+      </div>
+
+      <div className="battle__bottom-probe" ref={probeRef} aria-hidden="true" />
+
+      <header className="battle__header" ref={headerRef}>
         <div className="battle__who">
           <span className="battle__name">{oppName}</span>
           <div className="battle__heartline">
             <Hearts
               lives={snapshot.lives[opp]}
               breaking={lostLife(opp)}
-              size={20}
+              size={16}
               testId="lives-opponent"
               label={t('battle.livesOf', { name: oppName, lives: snapshot.lives[opp] })}
             />
@@ -147,37 +195,17 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
         </button>
       </header>
 
-      <div className="battle__field">
-        <div className="battle__canvas">{field}</div>
-        <LastPickHint snapshot={snapshot} />
-        {phase === 'countdown' && snapshot.countdown !== null && (
-          <CountdownOverlay value={snapshot.countdown} />
+      <div className="battle__bottom" data-draft={inDraft}>
+        {inDraft ? (
+          <DraftBar
+            snapshot={snapshot}
+            onPlay={actions.play}
+            onInfo={setDetail}
+            trailing={livesPill}
+          />
+        ) : (
+          <div className="draft__status draft__status--end">{livesPill}</div>
         )}
-        {phase === 'roundEnd' && <RoundBanner snapshot={snapshot} />}
-      </div>
-
-      <footer className="battle__footer">
-        <Hearts
-          lives={snapshot.lives[me]}
-          breaking={lostLife(me)}
-          size={20}
-          testId="lives-me"
-          label={t('battle.livesOf', { name: t('battle.you'), lives: snapshot.lives[me] })}
-        />
-        <span className="battle__name battle__name--me">{t('battle.you')}</span>
-      </footer>
-
-      <div className={`draft-wrap${inDraft ? ' draft-wrap--open' : ''}`} aria-hidden={!inDraft}>
-        <div className="draft-wrap__inner">
-          {inDraft && (
-            <DraftBar
-              snapshot={snapshot}
-              onSelect={actions.select}
-              onConfirm={actions.confirm}
-              onInfo={setDetail}
-            />
-          )}
-        </div>
       </div>
 
       {detail !== null && (

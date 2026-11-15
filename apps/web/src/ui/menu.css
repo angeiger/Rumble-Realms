@@ -1,0 +1,285 @@
+/* Menu screens (outside the battle): content above, tab bar below. */
+.menu {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+
+/* The menu pages lie side by side; swiping snaps from one to the next with native inertia. */
+.pager {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  overflow-x: auto;
+  overflow-y: hidden;
+  overscroll-behavior-x: contain;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+
+.pager::-webkit-scrollbar {
+  display: none;
+}
+
+.pager__page {
+  flex: 0 0 100%;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  scroll-snap-align: start;
+  scroll-snap-stop: always;
+}
+
+.tabbar {
+  flex: none;
+  display: flex;
+  border-top: 4px solid var(--outline);
+  background: #0f1f55;
+  padding: 0 env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+.tabbar__item {
+  flex: 1;
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1px;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: rgb(255 246 214 / 0.6);
+  font-family: var(--font-display);
+  font-size: 0.95rem;
+  line-height: 1.1;
+  cursor: pointer;
+}
+
+.tabbar__item--active {
+  background: rgb(59 120 240 / 0.28);
+  color: var(--gold);
+  box-shadow: inset 0 4px 0 var(--gold);
+}
+
+.tabbar__item:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: -5px;
+}
+
+/* Current deck on the start tab */
+.mini-deck {
+  display: flex;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.mini-deck__card {
+  width: 68px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: 4px 2px 5px;
+  border: 3px solid var(--outline);
+  border-radius: 12px;
+  background: rgb(9 13 36 / 0.45);
+}
+
+.mini-deck__card .figure {
+  height: 40px;
+  width: auto;
+  aspect-ratio: 100 / 110;
+}
+
+.mini-deck__name {
+  max-width: 100%;
+  overflow: hidden;
+  font-size: 0.7rem;
+  font-weight: 800;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.mini-deck__level {
+  padding: 0 6px;
+  border-radius: 8px;
+  background: var(--gold);
+  color: var(--outline);
+  font-family: var(--font-display);
+  font-size: 0.7rem;
+}
+
+/* Deck tab */
+.deck-screen {
+  flex: 1 1 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: calc(14px + env(safe-area-inset-top)) calc(14px + env(safe-area-inset-right)) 0
+    calc(14px + env(safe-area-inset-left));
+  background:
+    radial-gradient(circle at 50% 0%, var(--team-blue) 0%, transparent 60%),
+    linear-gradient(180deg, var(--team-blue-dark) 0%, #122a6b 100%);
+}
+
+.deck-screen__title,
+.deck-screen__subtitle {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 400;
+  text-shadow: 0 2px 0 var(--outline);
+}
+
+.deck-screen__title {
+  margin-bottom: 10px;
+  font-size: 1.7rem;
+}
+
+.deck-screen__subtitle {
+  margin-bottom: 6px;
+  font-size: 1.2rem;
+}
+
+.deck-screen__hint {
+  min-height: 1.3em;
+  margin: 8px 0 12px;
+  font-size: 0.85rem;
+  font-weight: 800;
+  opacity: 0.85;
+}
+
+.deck-screen__hint--end {
+  margin: 10px 0 14px;
+  text-align: center;
+}
+
+.deck-slots,
+.deck-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 8px;
+}
+
+/* Only this area scrolls; it takes the rest of the screen (16 cards fit by scrolling). */
+.deck-grid-scroll {
+  flex: 1 1 0;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  margin: 0 -14px;
+  padding: 4px 14px 0;
+  touch-action: pan-x pan-y;
+}
+
+.tile {
+  --rarity: #c5ccdb;
+  --rarity-dark: #8791aa;
+  position: relative;
+  min-width: 0;
+  padding: 3px 3px 4px;
+  border: 4px solid var(--outline);
+  border-radius: 14px;
+  background: var(--cream);
+  color: var(--outline);
+  box-shadow: 0 4px 0 var(--outline);
+  cursor: pointer;
+  transition:
+    transform 0.2s var(--ease-spring),
+    box-shadow 0.2s;
+}
+
+.tile.card--rare {
+  --rarity: #ffb02e;
+  --rarity-dark: #c27a00;
+}
+
+.tile.card--epic {
+  --rarity: #b27bff;
+  --rarity-dark: #6d3fc0;
+}
+
+.tile:active {
+  transform: translateY(2px) scale(0.97);
+}
+
+.tile:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 3px;
+}
+
+.tile--selected {
+  z-index: 1;
+  transform: translateY(-4px) scale(1.04);
+  background: #fffbe8;
+  box-shadow:
+    0 0 0 4px var(--gold),
+    0 8px 0 var(--outline);
+}
+
+.tile__art {
+  position: relative;
+  height: 62px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--outline);
+  border-radius: 9px;
+  background: linear-gradient(180deg, var(--rarity) 0%, var(--rarity-dark) 100%);
+}
+
+.tile .figure {
+  height: 50px;
+  width: auto;
+  aspect-ratio: 100 / 110;
+  filter: drop-shadow(0 2px 0 rgb(20 23 46 / 0.35));
+  pointer-events: none;
+}
+
+.tile__level,
+.tile__slot,
+.tile__mark {
+  position: absolute;
+  padding: 1px 5px;
+  border: 2px solid var(--outline);
+  border-radius: 8px;
+  font-family: var(--font-display);
+  font-size: 0.66rem;
+  line-height: 1.15;
+}
+
+.tile__level {
+  left: 2px;
+  bottom: 2px;
+  background: var(--cream);
+}
+
+.tile__slot {
+  top: 2px;
+  left: 2px;
+  background: var(--team-orange);
+  color: var(--cream);
+  text-shadow: 0 1px 0 var(--outline);
+}
+
+.tile__mark {
+  top: 2px;
+  right: 2px;
+  background: var(--green);
+}
+
+.tile--in-deck:not(.tile--selected) {
+  box-shadow:
+    0 0 0 3px var(--green),
+    0 4px 0 3px var(--outline);
+}
+
+.tile__name {
+  padding-top: 3px;
+  overflow: hidden;
+  font-family: var(--font-display);
+  /* Long names get a smaller font so that all of them fit (--len = number of letters). */
+  font-size: clamp(0.5rem, calc(7.4rem / var(--len, 10)), 0.8rem);
+  line-height: 1.1;
+  text-align: center;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

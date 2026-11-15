@@ -20,6 +20,7 @@ import {
   type BattleState,
   type BotProfile,
   type CardId,
+  MAX_LEVEL,
   type MatchState,
   type PlayerIndex,
   type RoundOutcome,
@@ -27,7 +28,7 @@ import {
 } from '@rumble-realms/engine';
 import {
   BOT_THINK_MS,
-  COUNTDOWN_STEP_MS,
+  INTRO_MS,
   MAX_FRAME_MS,
   ROUND_END_MS,
   START_DECK,
@@ -50,8 +51,10 @@ export interface LocalSessionOptions {
   bot: BotProfile;
   /** Name of the human player. The UI shows its own i18n text if this is empty. */
   playerName: string;
-  /** Defaults to `START_DECK`. All cards have level 1. */
+  /** Defaults to `START_DECK`. */
   playerDeck?: CardId[];
+  /** Levels of the human's cards; missing or invalid entries count as level 1. */
+  playerLevels?: Partial<Record<CardId, number>>;
 }
 
 /** The session plus access to the engine state, for tests (not part of the contract). */
@@ -65,9 +68,19 @@ const MAX_TICKS_PER_FRAME = 10;
 const HUMAN: PlayerIndex = 0;
 const BOT: PlayerIndex = 1;
 
-function levelsOf(deck: readonly CardId[], level: number): Partial<Record<CardId, number>> {
+function levelsOf(
+  deck: readonly CardId[],
+  level: number,
+  own?: Partial<Record<CardId, number>>,
+): Partial<Record<CardId, number>> {
   const levels: Partial<Record<CardId, number>> = {};
-  for (const card of deck) levels[card] = level;
+  for (const card of deck) {
+    const wanted = own?.[card];
+    levels[card] =
+      wanted !== undefined && Number.isInteger(wanted) && wanted >= 1 && wanted <= MAX_LEVEL
+        ? wanted
+        : level;
+  }
   return levels;
 }
 
@@ -109,7 +122,7 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
       name: options.playerName,
       isBot: false,
       deck: playerDeck,
-      levels: levelsOf(playerDeck, 1),
+      levels: levelsOf(playerDeck, 1, options.playerLevels),
     },
     {
       name: options.bot.name,
@@ -130,10 +143,8 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
 
   let phase: SessionPhase = 'draft';
   let speed: BattleSpeed = 1;
-  let selectedSlot: number | null = null;
-  let countdown: number | null = null;
   let roundResult: RoundOutcome | null = null;
-  /** Time spent in the current stage: bot thinking, countdown step or round end pause. */
+  /** Time spent in the current stage: bot thinking, intro or round end pause. */
   let timerMs = 0;
   /** Real time (times speed) not yet turned into ticks. */
   let tickAccMs = 0;
@@ -160,9 +171,7 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
       turn,
       picksLeft: inDraft ? [picksRemaining(match, 0), picksRemaining(match, 1)] : [0, 0],
       offer,
-      selectedSlot: offer === null ? null : selectedSlot,
       lastPick: last === null ? null : { ...last, spawned: [...last.spawned] },
-      countdown,
       roundResult,
       winner: match.winner,
       speed,
@@ -178,12 +187,8 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
 
   function playSlot(slot: number): void {
     applyPick(match, slot);
-    selectedSlot = null;
     timerMs = 0;
-    if (match.phase === 'battle') {
-      phase = 'countdown';
-      countdown = 3;
-    }
+    if (match.phase === 'battle') phase = 'intro';
   }
 
   function humanTurn(): boolean {
@@ -206,18 +211,9 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
       return match.battle;
     },
 
-    select(slot) {
+    play(slot) {
       if (!humanTurn() || !validSlot(slot)) return;
-      if (selectedSlot === slot) {
-        playSlot(slot);
-      } else {
-        selectedSlot = slot;
-      }
-      publish();
-    },
-    confirm() {
-      if (!humanTurn() || selectedSlot === null) return;
-      playSlot(selectedSlot);
+      playSlot(slot);
       publish();
     },
     setSpeed(next) {
@@ -242,18 +238,12 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
           }
           break;
         }
-        case 'countdown': {
+        case 'intro': {
           timerMs += dt;
-          if (timerMs >= COUNTDOWN_STEP_MS) {
-            timerMs -= COUNTDOWN_STEP_MS;
-            if (countdown === 0 || countdown === null) {
-              phase = 'battle';
-              countdown = null;
-              timerMs = 0;
-              tickAccMs = 0;
-            } else {
-              countdown--;
-            }
+          if (timerMs >= INTRO_MS) {
+            phase = 'battle';
+            timerMs = 0;
+            tickAccMs = 0;
             changed = true;
           }
           break;
@@ -290,7 +280,6 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
             } else {
               phase = 'draft';
               roundResult = null;
-              selectedSlot = null;
               frame.fieldReset = true;
             }
             changed = true;

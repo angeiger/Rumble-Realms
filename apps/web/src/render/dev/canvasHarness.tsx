@@ -34,8 +34,7 @@ function Harness() {
   useEffect(() => {
     const autoPick = () => {
       if (session.getSnapshot().offer === null) return;
-      session.select(0);
-      session.confirm();
+      session.play(0);
     };
     autoPick();
     return session.subscribe(autoPick);

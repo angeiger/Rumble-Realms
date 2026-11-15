@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import raw from './golden/replay-v1.json';
+import raw from './golden/replay.json';
 import { GOLDEN_CONFIG, createGoldenReplay } from './golden.ts';
 import type { GoldenReplay } from './golden.ts';
 import { hashState } from './hash.ts';
@@ -10,7 +10,7 @@ const replay = raw as unknown as GoldenReplay;
 
 const REGENERATE =
   'Only change it deliberately: raise ENGINE_VERSION in version.ts (D-006) and regenerate the file with ' +
-  '"pnpm --silent sim golden > packages/engine/src/golden/replay-v1.json" (then run prettier on it).';
+  '"pnpm --silent sim golden > packages/engine/src/golden/replay.json" (then run prettier on it).';
 
 describe('golden replay', () => {
   it('has the engine version of the stored file', () => {

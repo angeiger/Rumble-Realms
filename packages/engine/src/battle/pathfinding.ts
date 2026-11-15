@@ -1,7 +1,11 @@
 /** A* path finding on one layer of the field (SPEC 6.2, step 4). */
-import { DIAGONAL_STEP, FIELD, GRID_CELLS, GRID_COLS, GRID_ROWS } from '../data/balance.ts';
-import { distSq } from '../math.ts';
+import * as balance from '../data/balance.ts';
+import * as math from '../math.ts';
 import type { Layer, PlayerIndex } from '../types.ts';
+
+// Local copies of the imports used in the inner loops (see the note in sim.ts).
+const { DIAGONAL_STEP, FIELD, GRID_CELLS, GRID_COLS, GRID_ROWS } = balance;
+const { distSq } = math;
 
 /**
  * Step directions seen from player 0 (forward = towards higher rows): straight steps

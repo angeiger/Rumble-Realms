@@ -1,11 +1,11 @@
 /**
- * Abilities of the ten base units (SPEC 5.2, 5.3, D-022, D-023, D-027, D-028).
+ * Abilities of the ten base units (SPEC 5.2, 5.3, D-022, D-023, D-027, D-028, D-049, D-050).
  * Knight and skeleton have no special rules; their attack timing is covered in sim.test.ts.
  */
 import { describe, expect, it } from 'vitest';
-import type { CardId } from '../types.ts';
+import type { BattleState, CardId, UnitState } from '../types.ts';
 import { AIR, GROUND } from '../types.ts';
-import { unitById } from './state.ts';
+import { occIndex, unitById } from './state.ts';
 import {
   attackTicks,
   busyCorner,
@@ -21,6 +21,23 @@ function d2(ax: number, ay: number, bx: number, by: number): number {
   return (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
 }
 
+/** Moves a standing unit to another free cell at once (test set-up only). */
+function teleport(b: BattleState, u: UnitState, x: number, y: number): void {
+  b.occ[occIndex(u.layer, u.tx, u.ty)] = 0;
+  b.occ[occIndex(u.layer, x, y)] = u.id;
+  u.x = x;
+  u.y = y;
+  u.tx = x;
+  u.ty = y;
+  u.moveCost = 0;
+  u.moveProgress = 0;
+  u.path = [];
+}
+
+// Rule values (D-049, D-050), written out on purpose instead of imported.
+const FUSE = 25; // 1.25 s
+const CHARGE = 50; // 2.5 s
+
 describe('Lauf-TNT', () => {
   it('runs to the nearest ground enemy and ignores air units', () => {
     const b = field();
@@ -31,31 +48,94 @@ describe('Lauf-TNT', () => {
     expect(tnt.targetId).toBe(knight.id);
   });
 
-  it('explodes on diagonal contact and destroys itself', () => {
+  it('lights the fuse when a ground enemy comes within 2 fields and explodes 25 ticks later', () => {
     const b = field();
     const tnt = put(b, 0, 'tnt', 5, 10);
-    const enemy = put(b, 1, 'knight', 6, 11);
-    const log = run(b, 1);
+    // Diagonal neighbour: hits back for 60 at ticks 0 and 24, the TNT (150) survives that.
+    const enemy = dummy(b, 1, 'knight', 6, 11);
+    const first = run(b, 1);
+    expect(tnt.fuseTick).toBe(FUSE);
+    expect(eventsOf(first, 'explosion')).toEqual([]);
+    const fuse = run(b, FUSE - 1); // ticks 1..24
+    expect(eventsOf(fuse, 'explosion')).toEqual([]);
+    expect(unitById(b, tnt.id)).toBeDefined();
+    const log = run(b, 1); // tick 25
     expect(eventsOf(log, 'explosion')).toEqual([
-      { type: 'explosion', unit: tnt.id, x: 5, y: 10, radius: 1500, tick: 0 },
+      { type: 'explosion', unit: tnt.id, x: 5, y: 10, radius: 1500, tick: FUSE },
     ]);
     expect(eventsOf(log, 'death').map((e) => e.unit)).toEqual([tnt.id]);
     expect(unitById(b, tnt.id)).toBeUndefined();
-    expect(enemy.hp).toBe(350);
+    expect(enemy.maxHp - enemy.hp).toBe(250);
   });
 
-  it('walks up to an enemy and explodes there', () => {
+  it.each([
+    [2, 0, true],
+    [0, 2, true],
+    [1, 1, true],
+    [-2, 0, true],
+    [2, 1, false], // distSq 5
+    [0, 3, false],
+    [2, 2, false],
+  ] as const)('an enemy at offset (%i, %i) lights the fuse: %s', (dx, dy, lit) => {
     const b = field();
-    const tnt = put(b, 0, 'tnt', 5, 5);
-    const enemy = put(b, 1, 'knight', 5, 12);
-    const log = run(b, 100);
-    expect(eventsOf(log, 'explosion').map((e) => e.unit)).toEqual([tnt.id]);
-    expect(enemy.hp).toBe(350);
+    const tnt = put(b, 0, 'tnt', 5, 10);
+    dummy(b, 1, 'knight', 5 + dx, 10 + dy);
+    run(b, 1);
+    expect(tnt.fuseTick).toBe(lit ? FUSE : -1);
+  });
+
+  it('keeps walking towards its target while the fuse burns', () => {
+    const b = field();
+    const tnt = put(b, 0, 'tnt', 5, 8);
+    const enemy = dummy(b, 1, 'knight', 5, 10); // 2 fields away: fuse at once
+    const log = run(b, FUSE + 1);
+    expect(eventsOf(log, 'explosion')).toEqual([
+      { type: 'explosion', unit: tnt.id, x: 5, y: 9, radius: 1500, tick: FUSE },
+    ]);
+    expect(enemy.maxHp - enemy.hp).toBe(250);
+  });
+
+  it('puts the fuse out when the last enemy leaves the range and starts again later', () => {
+    const b = field();
+    const tnt = put(b, 0, 'tnt', 5, 10, { maxHp: 10_000 });
+    const enemy = dummy(b, 1, 'knight', 5, 11);
+    run(b, 10);
+    expect(tnt.fuseTick).toBe(FUSE);
+    teleport(b, enemy, 5, 20);
+    run(b, 1); // tick 10: nobody in range any more
+    expect(tnt.fuseTick).toBe(-1);
+    // Both walk towards each other; the fuse starts anew once they are within 2 fields.
+    let lit = -1;
+    let boom = -1;
+    for (let t = 11; t < 200 && boom < 0; t++) {
+      const close = d2(tnt.x, tnt.y, enemy.x, enemy.y) <= 4;
+      const events = run(b, 1);
+      if (close && lit < 0) lit = t;
+      if (lit < 0) expect(tnt.fuseTick).toBe(-1);
+      else if (unitById(b, tnt.id) !== undefined) expect(tnt.fuseTick).toBe(lit + FUSE);
+      if (eventsOf(events, 'explosion').length > 0) boom = t;
+    }
+    expect(lit).toBeGreaterThan(11);
+    expect(boom).toBe(lit + FUSE);
+    expect(enemy.maxHp - enemy.hp).toBe(250);
+  });
+
+  it('keeps the fuse burning while another enemy is still in range', () => {
+    const b = field();
+    const tnt = put(b, 0, 'tnt', 5, 10, { maxHp: 10_000 });
+    const near = dummy(b, 1, 'knight', 5, 11);
+    dummy(b, 1, 'knight', 5, 12); // 2 fields away
+    run(b, 5);
+    teleport(b, near, 0, 23);
+    run(b, 1); // tick 5
+    expect(tnt.fuseTick).toBe(FUSE);
+    const log = run(b, FUSE - 5); // ticks 6..25
+    expect(eventsOf(log, 'explosion').map((e) => [e.unit, e.tick])).toEqual([[tnt.id, FUSE]]);
   });
 
   it('hits the 3 x 3 cells around it (r 1.5) and nothing farther', () => {
     const b = field();
-    put(b, 0, 'tnt', 5, 10);
+    put(b, 0, 'tnt', 5, 10, { hp: 1 }); // killed in tick 0: explodes before anybody moved
     const hit = [put(b, 1, 'knight', 5, 11), put(b, 1, 'knight', 4, 9), put(b, 1, 'knight', 6, 10)];
     const missed = [
       put(b, 1, 'knight', 5, 12), // distance 2
@@ -70,7 +150,7 @@ describe('Lauf-TNT', () => {
 
   it('spares allies and air units', () => {
     const b = field();
-    put(b, 0, 'tnt', 5, 10);
+    put(b, 0, 'tnt', 5, 10, { hp: 1 });
     const ally = put(b, 0, 'knight', 4, 9); // in the blast, not next to the enemy knight
     const allyBat = put(b, 0, 'bat', 5, 10);
     const enemyBat = put(b, 1, 'bat', 6, 10);
@@ -83,13 +163,14 @@ describe('Lauf-TNT', () => {
     expect(enemyBat.hp).toBe(48);
   });
 
-  it('is not set off by an air unit, but explodes when killed by damage', () => {
+  it('is not set off by an air unit, but explodes at once when killed by damage', () => {
     const b = field();
     const tnt = put(b, 0, 'tnt', 5, 10);
     const bat = put(b, 1, 'bat', 5, 10); // right above it
     const first = run(b, 1);
     expect(eventsOf(first, 'explosion')).toEqual([]);
     expect(tnt.targetId).toBe(0); // no ground enemy: it waits
+    expect(tnt.fuseTick).toBe(-1);
     const log = run(b, 150);
     const [death] = eventsOf(log, 'death');
     expect(death?.unit).toBe(tnt.id);
@@ -99,23 +180,37 @@ describe('Lauf-TNT', () => {
     expect(bat.hp).toBe(70); // and the blast cannot hurt the bat
   });
 
+  it('explodes at once when killed while the fuse burns', () => {
+    const b = field();
+    const tnt = put(b, 0, 'tnt', 5, 10, { hp: 70 });
+    const enemy = dummy(b, 1, 'knight', 5, 11); // 60 at ticks 0 and 24
+    const log = run(b, FUSE);
+    expect(eventsOf(log, 'explosion')).toEqual([
+      { type: 'explosion', unit: tnt.id, x: 5, y: 10, radius: 1500, tick: 24 },
+    ]);
+    expect(enemy.maxHp - enemy.hp).toBe(250);
+  });
+
   it('sets off a chain reaction in the same tick', () => {
     const b = field();
-    const enemyTnt = put(b, 1, 'tnt', 5, 12);
-    const knight = put(b, 0, 'knight', 5, 11);
-    // Next to the enemy TNT only, which has already blown up when this one acts.
-    const ownTnt = put(b, 0, 'tnt', 6, 13);
-    const far = put(b, 1, 'knight', 9, 17);
+    const ownTnt = put(b, 0, 'tnt', 5, 11, { hp: 1 });
+    const enemyTnt = put(b, 1, 'tnt', 5, 12); // in the blast of ownTnt
+    const killer = put(b, 1, 'skeleton', 4, 10); // kills ownTnt in tick 0
+    const knight = put(b, 0, 'knight', 6, 13); // hits enemyTnt (60), only in its blast
+    const far = put(b, 1, 'knight', 9, 20);
     const log = run(b, 1);
+    // Both fuses were lit in tick 0, but neither had burnt down.
     expect(eventsOf(log, 'explosion').map((e) => [e.unit, e.tick])).toEqual([
-      [enemyTnt.id, 0],
       [ownTnt.id, 0],
+      [enemyTnt.id, 0],
     ]);
-    expect(eventsOf(log, 'damage').filter((e) => e.unit === ownTnt.id)).toEqual([
-      { type: 'damage', unit: ownTnt.id, amount: 250, tick: 0 },
+    expect(eventsOf(log, 'damage').filter((e) => e.unit === enemyTnt.id)).toEqual([
+      { type: 'damage', unit: enemyTnt.id, amount: 60, tick: 0 },
+      { type: 'damage', unit: enemyTnt.id, amount: 250, tick: 0 },
     ]);
     expect(knight.hp).toBe(350);
     expect(far.hp).toBe(600);
+    expect(unitById(b, killer.id)).toBeUndefined(); // caught by the first blast
     expect(b.units.map((u) => u.id)).toEqual([knight.id, far.id]);
   });
 
@@ -123,7 +218,7 @@ describe('Lauf-TNT', () => {
     const b = field();
     put(b, 0, 'tnt', 5, 10, { level: 3 });
     const enemy = dummy(b, 1, 'knight', 5, 11);
-    run(b, 1);
+    run(b, FUSE + 1);
     expect(enemy.maxHp - enemy.hp).toBe(300);
   });
 });
@@ -277,71 +372,101 @@ describe('Heiler', () => {
 });
 
 describe('Assassine', () => {
-  it('charges for 2 s without acting, but can be attacked meanwhile', () => {
+  it('charges for 2.5 s without acting, but can be attacked meanwhile', () => {
     const b = field();
     const s = put(b, 0, 'assassin', 5, 10);
     const enemy = put(b, 1, 'knight', 5, 11);
-    const charging = run(b, 40); // ticks 0..39
+    const charging = run(b, CHARGE); // ticks 0..49
     expect(attackTicks(charging, s.id)).toEqual([]);
+    expect(eventsOf(charging, 'jump')).toEqual([]);
     expect([s.x, s.y, s.tx, s.ty]).toEqual([5, 10, 5, 10]);
-    expect(s.hp).toBe(200 - 2 * 60); // hit in ticks 0 and 24
-    // Already next to the only enemy: it stays and fights.
+    expect(s.hp).toBe(200 - 3 * 60); // hit in ticks 0, 24 and 48
+    // Its target cell is taken by that enemy; the closest free cell is its own: it stays.
     const after = run(b, 2);
     expect(eventsOf(after, 'jump')).toEqual([]);
-    expect(attackTicks(after, s.id)[0]).toBeGreaterThanOrEqual(40);
-    expect(enemy.hp).toBeLessThan(600);
+    expect(attackTicks(after, s.id)).toEqual([CHARGE + 1]);
+    expect(enemy.hp).toBe(560);
   });
 
-  it('jumps next to the farthest ground enemy after 2 s', () => {
+  it('fixes the cell of the farthest ground enemy at battle start; ties: smaller id', () => {
+    const b = field();
+    const s = put(b, 0, 'assassin', 5, 5);
+    put(b, 1, 'knight', 5, 14);
+    const left = put(b, 1, 'knight', 1, 20); // distSq 16 + 225 = 241
+    put(b, 1, 'knight', 9, 20); // the same distance, higher id
+    put(b, 1, 'bat', 0, 23); // farther, but in the air
+    run(b, 1);
+    expect([s.jumpTick, s.jumpX, s.jumpY]).toEqual([CHARGE, left.x, left.y]);
+  });
+
+  it('jumps to the start cell of its target after 2.5 s, even if the target walked away', () => {
     const b = field();
     const s = put(b, 0, 'assassin', 5, 5);
     put(b, 1, 'knight', 5, 14);
     const far = put(b, 1, 'knight', 0, 23);
-    run(b, 40);
+    run(b, CHARGE);
     expect([s.x, s.y]).toEqual([5, 5]);
+    expect([far.tx, far.ty]).not.toEqual([0, 23]); // it walked towards the assassin
     const log = run(b, 1);
-    const jumps = eventsOf(log, 'jump');
-    expect(jumps).toHaveLength(1);
-    expect(jumps[0]).toMatchObject({ unit: s.id, fromX: 5, fromY: 5, x: s.x, y: s.y, tick: 40 });
-    // Lands on a free cell right next to (the occupied cell of) that enemy.
-    expect(d2(s.x, s.y, far.tx, far.ty)).toBe(1);
-    expect(s.targetId).toBe(far.id);
+    expect(eventsOf(log, 'jump')).toEqual([
+      { type: 'jump', unit: s.id, fromX: 5, fromY: 5, x: 0, y: 23, tick: CHARGE },
+    ]);
+    expect([s.x, s.y, s.tx, s.ty]).toEqual([0, 23, 0, 23]);
+    expect(b.occ[occIndex(GROUND, 5, 5)]).toBe(0);
+    expect(b.occ[occIndex(GROUND, 0, 23)]).toBe(s.id);
+    expect([s.jumpTick, s.jumpX, s.jumpY]).toEqual([-1, -1, -1]);
   });
 
-  it('takes the nearest free cell if no neighbouring cell is free', () => {
+  it('lands on the nearest free cell if the start cell is taken; ties: closer to itself', () => {
     const b = field();
     const s = put(b, 0, 'assassin', 5, 5);
     const { knight, healers } = cornerPocket(b);
-    expect(eventsOf(run(b, 41), 'jump')).toHaveLength(1);
+    expect(eventsOf(run(b, CHARGE + 1), 'jump')).toHaveLength(1);
     expect([knight.x, knight.y]).toEqual([0, 23]);
     expect(healers.map((h) => [h.x, h.y])).toEqual([
       [1, 23],
       [0, 22],
       [1, 22],
     ]);
-    // All neighbours are taken; the closest free cells are two fields away.
-    expect(d2(s.x, s.y, 0, 23)).toBe(4);
-    expect(s.targetId).toBe(knight.id);
+    // Free cells at distSq 4 from (0,23): (2,23) and (0,21); (0,21) is closer to (5,5).
+    expect([s.x, s.y]).toEqual([0, 21]);
   });
 
-  it('does not jump without a ground enemy', () => {
+  it('chooses its target normally after the jump', () => {
+    const b = field();
+    const s = put(b, 0, 'assassin', 5, 5);
+    const { healers } = cornerPocket(b);
+    run(b, CHARGE + 1);
+    expect([s.x, s.y]).toEqual([0, 21]);
+    expect(s.targetId).toBe(0);
+    run(b, 1);
+    // Nearest enemy from (0,21) is the healer at (0,22), not the knight it aimed at.
+    expect(s.targetId).toBe(healers[1]!.id);
+  });
+
+  it('does not jump without a ground enemy at battle start', () => {
     const b = field();
     const s = put(b, 0, 'assassin', 5, 5);
     put(b, 1, 'bat', 5, 15);
+    run(b, 1);
+    expect([s.jumpTick, s.jumpX, s.jumpY]).toEqual([-1, -1, -1]);
+    put(b, 1, 'knight', 0, 23); // shows up later: too late for a jump
     const log = run(b, 100);
     expect(eventsOf(log, 'jump')).toEqual([]);
-    expect([s.x, s.y]).toEqual([5, 5]);
   });
 
   it('fights normally after the jump', () => {
     const b = field();
     const s = put(b, 0, 'assassin', 5, 5);
     const far = dummy(b, 1, 'knight', 0, 23);
-    const log = run(b, 80);
+    const log = run(b, 100);
     const ticks = attackTicks(log, s.id);
     expect(ticks.length).toBeGreaterThan(0);
-    expect(ticks[0]).toBeGreaterThan(40);
-    for (let i = 1; i < ticks.length; i++) expect(ticks[i]! - ticks[i - 1]!).toBe(18);
+    expect(ticks[0]).toBeGreaterThan(CHARGE);
+    // Its target walks, so a hit may come late, but never earlier than every 0.9 s.
+    for (let i = 1; i < ticks.length; i++)
+      expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThanOrEqual(18);
+    expect(ticks.length).toBeGreaterThanOrEqual(2);
     expect(far.maxHp - far.hp).toBe(40 * ticks.length);
   });
 });

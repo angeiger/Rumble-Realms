@@ -20,8 +20,12 @@ import type {
   Winner,
 } from '@rumble-realms/engine';
 
-/** `countdown`: "3 - 2 - 1 - Kampf!"; `roundEnd`: result banner before the next draft. */
-export type SessionPhase = 'draft' | 'countdown' | 'battle' | 'roundEnd' | 'finished';
+/**
+ * `intro`: short transition (smoke over the field, D-045) between the last pick and the battle;
+ * `roundEnd`: result banner before the next draft.
+ * Order: draft, intro, battle, roundEnd, then draft again or finished.
+ */
+export type SessionPhase = 'draft' | 'intro' | 'battle' | 'roundEnd' | 'finished';
 
 export type BattleSpeed = 1 | 2;
 
@@ -48,12 +52,8 @@ export interface SessionSnapshot {
   picksLeft: [number, number];
   /** The local player's offer while it is their turn; null otherwise. */
   offer: OfferSlot[] | null;
-  /** Highlighted slot of `offer`; null if none. */
-  selectedSlot: number | null;
   /** The most recent pick of this round (either player), for "X plays Y" hints. */
   lastPick: PickInfo | null;
-  /** Countdown only: 3, 2, 1, then 0 for "Kampf!". */
-  countdown: number | null;
   /** roundEnd and finished: the round that just ended. */
   roundResult: RoundOutcome | null;
   /** finished only. */
@@ -83,16 +83,14 @@ export interface GameSession {
   readonly battle: BattleState;
 
   /**
-   * Highlights a slot of the offer. Selecting the highlighted slot again plays it
-   * (SPEC 4.3). Ignored unless it is the local player's turn.
+   * Plays slot `slot` of the offer at once (D-044). Has no effect unless it is the local
+   * player's turn and the slot exists.
    */
-  select(slot: number): void;
-  /** Plays the highlighted slot. Ignored if nothing is highlighted. */
-  confirm(): void;
+  play(slot: number): void;
   setSpeed(speed: BattleSpeed): void;
 
   /**
-   * The only clock of the session: advances bot thinking time, countdown, battle ticks
+   * The only clock of the session: advances bot thinking time, the intro, battle ticks
    * and the round end pause by `dtMs` of real time. Called once per rendered frame.
    */
   advance(dtMs: number): FrameInfo;

@@ -12,7 +12,28 @@
  * Units are always processed in ascending id order. Damage is applied immediately, but
  * units only leave the field in step 5, so fatally hit units still act in that tick.
  */
-import {
+import * as balance from '../data/balance.ts';
+import * as cards from '../data/cards.ts';
+import * as math from '../math.ts';
+import type {
+  AttackDef,
+  BattleEvent,
+  BattleResult,
+  BattleState,
+  CardDef,
+  UnitMode,
+  UnitState,
+  Winner,
+} from '../types.ts';
+import * as types from '../types.ts';
+import * as pathfinding from './pathfinding.ts';
+import * as state from './state.ts';
+
+// Local copies of everything imported that the inner loops use. Behaviour is identical;
+// test runners that turn every imported name into a property look-up (Vitest's module
+// runner) would otherwise pay for it on each access, which slowed the simulation down
+// about threefold there.
+const {
   DIAGONAL_STEP,
   FIELD,
   GRID_CELLS,
@@ -24,24 +45,39 @@ import {
   SUDDEN_DEATH_TICK,
   TICKS_PER_SECOND,
   TIME_LIMIT_TICKS,
-} from '../data/balance.ts';
-import { CARDS } from '../data/cards.ts';
-import { applyBps, distSq, idiv, isqrt, rangeSq, scaleByLevel } from '../math.ts';
-import type {
-  AttackDef,
-  BattleEvent,
-  BattleResult,
-  BattleState,
-  CardDef,
-  UnitMode,
-  UnitState,
-  Winner,
-} from '../types.ts';
-import { GROUND } from '../types.ts';
-import { findPath, STEP_DX, STEP_DY } from './pathfinding.ts';
-import { cellIndex, isFree, occIndex, unitById } from './state.ts';
+} = balance;
+const { CARDS } = cards;
+const { applyBps, distSq, idiv, isqrt, rangeSq, scaleByLevel } = math;
+const { GROUND } = types;
+const { findPath, STEP_DX, STEP_DY } = pathfinding;
+const { cellIndex, isFree, occIndex } = state;
 
 type Events = BattleEvent[] | undefined;
+
+/**
+ * Work data, never part of the state: the units of each owner in ascending id order and a
+ * table from id to unit, filled at the start of every `stepTick` and emptied before the
+ * deaths are resolved. Units only leave the field in that last step (and none join during
+ * a tick), so both stay complete until then; hit points must still be checked. They only
+ * save the owner tests and the binary search and never change a result or an order.
+ */
+const SIDES: [UnitState[], UnitState[]] = [[], []];
+/** Work table for the current tick: the unit per id (like `unitById`), else undefined. */
+const BY_ID: (UnitState | undefined)[] = [];
+/** Ids set in BY_ID, so that it can be emptied again (even after an exception). */
+const BY_ID_SET: number[] = [];
+
+function clearWorkData(): void {
+  SIDES[0].length = 0;
+  SIDES[1].length = 0;
+  for (let i = 0; i < BY_ID_SET.length; i++) BY_ID[BY_ID_SET[i] as number] = undefined;
+  BY_ID_SET.length = 0;
+}
+
+/** The unit with this id on the field during the current tick, if any (see BY_ID). */
+function byId(id: number): UnitState | undefined {
+  return id > 0 && id < BY_ID.length ? BY_ID[id] : undefined;
+}
 
 /** Advances the battle by one tick. Pass `events` to collect what happened for rendering. */
 export function stepTick(b: BattleState, events?: BattleEvent[]): void {
@@ -49,6 +85,17 @@ export function stepTick(b: BattleState, events?: BattleEvent[]): void {
   if (!b.started) beginBattle(b);
   const units = b.units;
   const count = units.length;
+  clearWorkData();
+  const side0 = SIDES[0];
+  const side1 = SIDES[1];
+  while (BY_ID.length < b.nextUnitId) BY_ID.push(undefined);
+  for (let i = 0; i < count; i++) {
+    const u = units[i] as UnitState;
+    if (u.owner === 0) side0.push(u);
+    else side1.push(u);
+    BY_ID[u.id] = u;
+    BY_ID_SET.push(u.id);
+  }
 
   tickZones(b, events);
   landProjectiles(b, events);
@@ -61,6 +108,7 @@ export function stepTick(b: BattleState, events?: BattleEvent[]): void {
     const u = units[i] as UnitState;
     if (u.hp > 0) move(b, u);
   }
+  clearWorkData();
   resolveDeaths(b, events);
   b.tick++;
   checkEnd(b);
@@ -72,11 +120,34 @@ export function simulateToEnd(b: BattleState): BattleResult {
   return b.result;
 }
 
+/**
+ * First tick of the battle. Assassins fix their jump target (D-049): the cell of the ground
+ * enemy farthest from them right now; ties: smaller id. Without a ground enemy no jump.
+ */
 function beginBattle(b: BattleState): void {
   b.started = true;
   for (const u of b.units) {
     const jump = CARDS[u.card].shadowJump;
-    if (jump !== undefined) u.jumpTick = b.tick + jump.chargeTicks;
+    if (jump === undefined) continue;
+    let far: UnitState | undefined;
+    let farDist = -1;
+    for (const o of b.units) {
+      if (o.owner === u.owner || o.hp <= 0 || o.layer !== GROUND) continue;
+      const d = distSq(u.x, u.y, o.x, o.y);
+      if (d > farDist) {
+        far = o;
+        farDist = d;
+      }
+    }
+    if (far === undefined) {
+      u.jumpTick = -1;
+      u.jumpX = -1;
+      u.jumpY = -1;
+    } else {
+      u.jumpTick = b.tick + jump.chargeTicks;
+      u.jumpX = far.x;
+      u.jumpY = far.y;
+    }
   }
 }
 
@@ -163,7 +234,7 @@ function landProjectiles(b: BattleState, events: Events): void {
       continue;
     }
     // Homing shot: hits if the target is still alive, otherwise it fizzles (SPEC 6.2).
-    const target = unitById(b, p.targetId);
+    const target = byId(p.targetId);
     if (target !== undefined && target.hp > 0) {
       damage(target, withSuddenDeath(b, p.damage), events);
     }
@@ -176,15 +247,25 @@ function landProjectiles(b: BattleState, events: Events): void {
 // ---------------------------------------------------------------------------
 
 /** Nearest attackable enemy; ties: smaller row distance, then smaller id (SPEC 6.2). */
-function nearestEnemy(b: BattleState, u: UnitState, def: CardDef): UnitState | undefined {
+function nearestEnemy(u: UnitState, def: CardDef): UnitState | undefined {
+  const enemies = SIDES[u.owner === 0 ? 1 : 0];
+  const hitsGround = def.targets.ground;
+  const hitsAir = def.targets.air;
+  const ux = u.x;
+  const uy = u.y;
   let best: UnitState | undefined;
   let bestDist = 0;
   let bestRows = 0;
-  for (const o of b.units) {
-    if (o.owner === u.owner || o.hp <= 0 || !canHit(def, o)) continue;
-    const d = distSq(u.x, u.y, o.x, o.y);
-    const rows = Math.abs(u.y - o.y);
-    if (best === undefined || d < bestDist || (d === bestDist && rows < bestRows)) {
+  for (let i = 0; i < enemies.length; i++) {
+    const o = enemies[i] as UnitState;
+    if (o.hp <= 0 || !(o.layer === GROUND ? hitsGround : hitsAir)) continue;
+    const dx = o.x - ux;
+    const dy = o.y - uy;
+    const d = dx * dx + dy * dy;
+    if (best !== undefined && d > bestDist) continue;
+    const rows = dy < 0 ? -dy : dy;
+    // Here d <= bestDist: a smaller distance wins, an equal one needs fewer rows.
+    if (best === undefined || d < bestDist || rows < bestRows) {
       best = o;
       bestDist = d;
       bestRows = rows;
@@ -196,7 +277,7 @@ function nearestEnemy(b: BattleState, u: UnitState, def: CardDef): UnitState | u
 function chooseTarget(b: BattleState, u: UnitState): void {
   if (u.jumpTick >= 0) return;
   const def = CARDS[u.card];
-  const current = u.targetId === 0 ? undefined : unitById(b, u.targetId);
+  const current = byId(u.targetId);
   const valid = current !== undefined && current.hp > 0;
   if (def.attack.kind === 'heal') {
     const healed = u.mode === 'heal' && valid && current.hp >= current.maxHp;
@@ -205,7 +286,7 @@ function chooseTarget(b: BattleState, u: UnitState): void {
     return;
   }
   if (valid && b.tick < u.retargetTick) return;
-  setTarget(b, u, nearestEnemy(b, u, def), 'attack');
+  setTarget(b, u, nearestEnemy(u, def), 'attack');
 }
 
 /** Healer priorities (SPEC 5.3, D-027). */
@@ -219,8 +300,8 @@ function chooseHealerTarget(b: BattleState, u: UnitState, def: CardDef): void {
   let nearestInjuredDist = 0;
   let nearestAlly: UnitState | undefined;
   let nearestAllyDist = 0;
-  for (const o of b.units) {
-    if (o.owner !== u.owner || o.id === u.id || o.hp <= 0) continue;
+  for (const o of SIDES[u.owner]) {
+    if (o.id === u.id || o.hp <= 0) continue;
     if (CARDS[o.card].attack.kind !== 'heal') fighterLeft = true;
     const d = distSq(u.x, u.y, o.x, o.y);
     if (nearestAlly === undefined || d < nearestAllyDist) {
@@ -240,7 +321,7 @@ function chooseHealerTarget(b: BattleState, u: UnitState, def: CardDef): void {
       weakestDist = d;
     }
   }
-  if (!fighterLeft) setTarget(b, u, nearestEnemy(b, u, def), 'attack');
+  if (!fighterLeft) setTarget(b, u, nearestEnemy(u, def), 'attack');
   else if (weakest !== undefined) setTarget(b, u, weakest, 'heal');
   else if (nearestInjured !== undefined) setTarget(b, u, nearestInjured, 'heal');
   else setTarget(b, u, nearestAlly, 'follow');
@@ -267,13 +348,19 @@ function act(b: BattleState, u: UnitState, events: Events): void {
     return;
   }
   if (atk.kind === 'explode') {
-    // Detonates on contact, even in mid-step; the blast itself is a death effect.
-    if (enemyAdjacent(b, u, def)) u.hp = 0;
+    // Fuse (D-050): lit while an enemy is in trigger range, even in mid-step; goes out as
+    // soon as none is left. The blast itself is a death effect.
+    if (enemyWithin(u, def, rangeSq(atk.triggerRange))) {
+      if (u.fuseTick < 0) u.fuseTick = b.tick + atk.fuseTicks;
+      if (b.tick >= u.fuseTick) u.hp = 0;
+    } else {
+      u.fuseTick = -1;
+    }
     return;
   }
   if (u.moveCost > 0 || u.targetId === 0 || u.mode === 'follow') return;
   if (b.tick < u.nextAttackTick) return;
-  const target = unitById(b, u.targetId);
+  const target = byId(u.targetId);
   if (target === undefined || target.hp <= 0) return;
   if (distSq(u.x, u.y, target.x, target.y) > reachSq(u, atk)) return;
 
@@ -309,32 +396,34 @@ function act(b: BattleState, u: UnitState, events: Events): void {
   u.nextAttackTick = b.tick + attackInterval(u, def);
 }
 
-function enemyAdjacent(b: BattleState, u: UnitState, def: CardDef): boolean {
-  const reach = rangeSq(MELEE_RANGE);
-  for (const o of b.units) {
-    if (o.owner === u.owner || o.hp <= 0 || !canHit(def, o)) continue;
-    if (distSq(u.x, u.y, o.x, o.y) <= reach) return true;
+/** True if a living enemy that `u` can attack stands within `reach` (squared cells). */
+function enemyWithin(u: UnitState, def: CardDef, reach: number): boolean {
+  const enemies = SIDES[u.owner === 0 ? 1 : 0];
+  const hitsGround = def.targets.ground;
+  const hitsAir = def.targets.air;
+  for (let i = 0; i < enemies.length; i++) {
+    const o = enemies[i] as UnitState;
+    if (o.hp <= 0 || !(o.layer === GROUND ? hitsGround : hitsAir)) continue;
+    const dx = o.x - u.x;
+    const dy = o.y - u.y;
+    if (dx * dx + dy * dy <= reach) return true;
   }
   return false;
 }
 
-/** Assassin: teleport next to the farthest ground enemy (SPEC 5.3, D-028). */
+/**
+ * Assassin (D-049): teleports to the free ground cell closest to the jump target fixed at
+ * battle start; ties: closest to the assassin, then scan order (mirrored for player 1).
+ * The assassin's own cell counts as free. Afterwards it selects targets like everybody else.
+ */
 function shadowJump(b: BattleState, u: UnitState, events: Events): void {
   u.jumpTick = -1;
-  let far: UnitState | undefined;
-  let farDist = -1;
-  for (const o of b.units) {
-    if (o.owner === u.owner || o.hp <= 0 || o.layer !== GROUND) continue;
-    const d = distSq(u.x, u.y, o.x, o.y);
-    if (d > farDist) {
-      far = o;
-      farDist = d;
-    }
-  }
-  if (far === undefined) return;
+  const jx = u.jumpX;
+  const jy = u.jumpY;
+  u.jumpX = -1;
+  u.jumpY = -1;
+  if (jx < 0 || jy < 0) return;
 
-  // Free ground cell closest to that enemy; ties: closest to the assassin, then scan
-  // order (mirrored for player 1). The assassin's own cell counts as free.
   let bestX = u.x;
   let bestY = u.y;
   let bestDist = -1;
@@ -345,7 +434,7 @@ function shadowJump(b: BattleState, u: UnitState, events: Events): void {
     const y = idiv(cell, GRID_COLS);
     const occupant = b.occ[occIndex(GROUND, x, y)];
     if (occupant !== 0 && occupant !== u.id) continue;
-    const d = distSq(x, y, far.tx, far.ty);
+    const d = distSq(x, y, jx, jy);
     const own = distSq(x, y, u.x, u.y);
     if (bestDist < 0 || d < bestDist || (d === bestDist && own < bestOwn)) {
       bestX = x;
@@ -365,7 +454,11 @@ function shadowJump(b: BattleState, u: UnitState, events: Events): void {
     u.tx = bestX;
     u.ty = bestY;
   }
-  setTarget(b, u, far, 'attack');
+  // Normal target selection from the next tick on.
+  u.targetId = 0;
+  u.path = [];
+  u.mode = 'attack';
+  u.retargetTick = b.tick;
 }
 
 // ---------------------------------------------------------------------------
@@ -390,7 +483,7 @@ function move(b: BattleState, u: UnitState): void {
 
   const carry = u.moveCarry;
   u.moveCarry = 0;
-  const target = u.targetId === 0 ? undefined : unitById(b, u.targetId);
+  const target = byId(u.targetId);
   if (target === undefined || target.hp <= 0) {
     u.stuckTicks = 0;
     return;

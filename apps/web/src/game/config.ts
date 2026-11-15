@@ -7,8 +7,8 @@ export const TICK_MS = 50;
 export const MAX_FRAME_MS = 250;
 /** Bots pick after about a second, for the feel of a real opponent (SPEC 4.3). */
 export const BOT_THINK_MS = 1000;
-/** Duration of each countdown step: 3, 2, 1, "Kampf!". */
-export const COUNTDOWN_STEP_MS = 700;
+/** Transition (smoke over the field) between the last pick and the battle (D-045). */
+export const INTRO_MS = 900;
 /** How long the round result stays on screen before the next draft starts. */
 export const ROUND_END_MS = 2500;
 

@@ -28,6 +28,17 @@ export const PALETTE = {
   fire: 0xff9d1c,
   fireLight: 0xffee6a,
   mushroomStalk: 0xf3deb5,
+  stone: 0x9d978a,
+  stoneDark: 0x6d685d,
+  stoneLight: 0xc2bcad,
+  ice: 0x8fe3ff,
+  iceLight: 0xe4f9ff,
+  fur: 0xe8f1f8,
+  zombie: 0x8dbf63,
+  zombieDark: 0x5f8f42,
+  necro: 0x7dff6a,
+  necroDark: 0x1c1233,
+  ghost: 0xd6fff0,
 
   /** Harness only. */
   fieldGreen: 0x5fae52,

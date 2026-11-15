@@ -25,7 +25,10 @@ Subagenten (`.claude/agents/`):
 Regeln:
 - Delegiere alles, was nicht zu den allerschwierigsten Aufgaben gehört. Nimm das günstigste Modell, das die Aufgabe sicher schafft.
 - Nur `koordinator-opus` darf selbst Subagenten starten (maximal 2 Ebenen unter der Hauptsitzung).
-- Höchstens **2 gleichzeitig bauende oder testende** Subagenten (RAM 4–6 GB). Reine Such- oder Leseaufgaben dürfen parallel laufen.
+- Höchstens **5 Subagenten gleichzeitig**, und nur, wenn es sinnvoll ist (unabhängige Aufgaben, getrennte Dateien bzw. Worktrees).
+  Schwere Läufe (Playwright/Browser, Build, ganze Testsuite) nur so viele gleichzeitig, wie der Arbeitsspeicher hergibt:
+  Die VM bekommt dynamisch bis zu 6 GB, oft ist weniger frei. Richtwert 2 schwere Läufe; vor dem Start weiterer Agenten
+  `free -m` prüfen. Der Koordinator entscheidet nach Lage.
 - Gib Subagenten präzise Aufträge: Ziel, betroffene Dateien bzw. SPEC-Abschnitte, Abnahmekriterium.
 
 ## Nutzungslimit

@@ -9,11 +9,11 @@ import type { FieldLayout } from './layout.ts';
 import { isOwnHalf } from './layout.ts';
 
 /** Colour of the canvas outside the field. */
-export const CANVAS_BACKGROUND = 0x1b2a1d;
+export const CANVAS_BACKGROUND = 0x28592e;
 
 const GRASS_OWN = [0x77c35c, 0x6dba54] as const;
 const GRASS_ENEMY = [0x6db056, 0x64a64f] as const;
-const BORDER = 0x1f3322;
+const BORDER = 0x1d4024;
 const PATH = 0xd9b873;
 const PATH_EDGE = 0xa57c42;
 const FLOWER_COLORS = [0xfff6d6, 0xffd23a, 0xff9bb3, 0xffffff] as const;
@@ -33,6 +33,8 @@ function mulberry32(seed: number): () => number {
 export function drawBackdrop(g: Graphics, layout: FieldLayout, me: PlayerIndex): void {
   const { cell, left, top, width, height } = layout;
   if (cell <= 0) return;
+
+  drawForestEdge(g, layout);
 
   // Border: a dark frame around the field.
   const frame = cell * 0.22;
@@ -88,5 +90,36 @@ export function drawBackdrop(g: Graphics, layout: FieldLayout, me: PlayerIndex):
       color: PATH_EDGE,
       alpha: 0.55,
     });
+  }
+}
+
+/** Bushes and treetops around the field, so the canvas outside it looks like a forest edge. */
+function drawForestEdge(g: Graphics, layout: FieldLayout): void {
+  const { cell, left, top, width, height } = layout;
+  const rnd = mulberry32(777);
+  const shades = [0x1f4a26, 0x2a5c30, 0x347038] as const;
+  const blob = (x: number, y: number): void => {
+    const r = cell * (0.34 + rnd() * 0.22);
+    g.circle(x, y + r * 0.25, r).fill({ color: 0x143019, alpha: 0.5 });
+    g.circle(x, y, r).fill(shades[Math.floor(rnd() * shades.length)] as number);
+    g.circle(x - r * 0.3, y - r * 0.3, r * 0.4).fill({ color: 0x4a8a46, alpha: 0.45 });
+  };
+  const rows = Math.ceil(height / (cell * 0.8)) + 4;
+  for (let i = -2; i < rows; i++) {
+    const y = top + i * cell * 0.8 + rnd() * cell * 0.2;
+    blob(left - cell * (0.35 + rnd() * 0.35), y);
+    blob(left + width + cell * (0.35 + rnd() * 0.35), y);
+    if (i % 2 === 0) {
+      blob(left - cell * (1.0 + rnd() * 0.5), y + cell * 0.4);
+      blob(left + width + cell * (1.0 + rnd() * 0.5), y + cell * 0.4);
+    }
+  }
+  const cols = Math.ceil(width / (cell * 0.8)) + 1;
+  for (let i = 0; i < cols; i++) {
+    const x = left + i * cell * 0.8 + rnd() * cell * 0.2;
+    blob(x, top - cell * (0.45 + rnd() * 0.3));
+    blob(x + cell * 0.4, top - cell * (1.1 + rnd() * 0.5));
+    blob(x, top + height + cell * (0.45 + rnd() * 0.3));
+    blob(x + cell * 0.4, top + height + cell * (1.1 + rnd() * 0.5));
   }
 }

@@ -1,5 +1,5 @@
 /**
- * Golden replay: a fixed match whose hashes are stored in `golden/replay-v1.json`.
+ * Golden replay: a fixed match whose hashes are stored in `golden/replay.json`.
  * The file is regenerated with `pnpm sim golden` (see golden.test.ts).
  */
 import { hashState } from './hash.ts';

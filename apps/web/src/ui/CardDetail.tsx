@@ -1,4 +1,4 @@
-import { CARDS, type CardId } from '@rumble-realms/engine';
+import { CARDS, MAX_LEVEL, type CardId } from '@rumble-realms/engine';
 import type { ReactElement } from 'react';
 import { t, type MessageKey } from '../i18n/index.ts';
 import { cardName, rangeText } from './CardView.tsx';
@@ -10,10 +10,15 @@ export interface CardDetailProps {
   card: CardId;
   level: number;
   onClose: () => void;
+  /**
+   * Deck tab only (test mode, D-048): shows a "- Level N +" control; the caller stores the
+   * level and passes the new one back in `level`. In the battle there is no control.
+   */
+  onLevelChange?: (level: number) => void;
 }
 
 /** Dialog with all values of a card. Closes on tap outside or on the X. */
-export function CardDetail({ card, level, onClose }: CardDetailProps): ReactElement {
+export function CardDetail({ card, level, onClose, onLevelChange }: CardDetailProps): ReactElement {
   const def = CARDS[card];
   const s = getCardStats(card, level);
   const rows: [string, string][] = [
@@ -60,8 +65,40 @@ export function CardDetail({ card, level, onClose }: CardDetailProps): ReactElem
         <div className="detail__tags">
           <span className="tag tag--rarity">{t(`rarity.${def.rarity}` as MessageKey)}</span>
           <span className="tag">{t(`role.${def.role}` as MessageKey)}</span>
-          <span className="tag">{t('detail.level', { level })}</span>
+          {onLevelChange === undefined && (
+            <span className="tag">{t('detail.level', { level })}</span>
+          )}
         </div>
+        {onLevelChange !== undefined && (
+          <div className="level-picker" data-testid="level-picker">
+            <div className="level-picker__row">
+              <button
+                type="button"
+                className="icon-btn level-picker__btn"
+                data-testid="level-minus"
+                aria-label={t('detail.levelDown')}
+                disabled={level <= 1}
+                onClick={() => onLevelChange(level - 1)}
+              >
+                −
+              </button>
+              <span className="level-picker__value" data-testid="level-value" data-level={level}>
+                {t('detail.level', { level })}
+              </span>
+              <button
+                type="button"
+                className="icon-btn level-picker__btn"
+                data-testid="level-plus"
+                aria-label={t('detail.levelUp')}
+                disabled={level >= MAX_LEVEL}
+                onClick={() => onLevelChange(level + 1)}
+              >
+                +
+              </button>
+            </div>
+            <p className="level-picker__hint">{t('detail.levelTestMode')}</p>
+          </div>
+        )}
         <dl className="detail__stats">
           {rows.map(([label, value]) => (
             <div key={label} className="detail__row">

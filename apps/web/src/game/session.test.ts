@@ -2,7 +2,7 @@ import { BOT_PROFILES, hashState, type BotProfile, type MatchState } from '@rumb
 import { describe, expect, it } from 'vitest';
 import {
   BOT_THINK_MS,
-  COUNTDOWN_STEP_MS,
+  INTRO_MS,
   MAX_FRAME_MS,
   ROUND_END_MS,
   START_DECK,
@@ -32,8 +32,7 @@ function stepUntil(
     const snap = s.getSnapshot();
     if (done(snap)) return;
     if (snap.phase === 'draft' && snap.turn === 0) {
-      s.select(0);
-      s.select(0);
+      s.play(0);
     } else s.advance(dt);
   }
   throw new Error('stepUntil: limit reached');
@@ -57,7 +56,6 @@ describe('start', () => {
     expect(snap.players[1]).toMatchObject({ isBot: true, name: BOT.name, deck: BOT.deck });
     expect(snap.players[1].levels.tnt).toBe(1);
     expect(snap.lastPick).toBeNull();
-    expect(snap.countdown).toBeNull();
     expect(snap.roundResult).toBeNull();
     expect(snap.winner).toBeNull();
     expect(snap.speed).toBe(1);
@@ -73,7 +71,6 @@ describe('start', () => {
       expect(snap.offer?.[0]).not.toBe(h.match.draft.offer?.slots[0]);
     } else {
       expect(snap.offer).toBeNull();
-      expect(snap.selectedSlot).toBeNull();
     }
   });
 });
@@ -90,8 +87,7 @@ describe('full match', () => {
       const snap = s.getSnapshot();
       let frame: FrameInfo | null = null;
       if (snap.phase === 'draft' && snap.turn === 0) {
-        s.select(0);
-        s.select(0);
+        s.play(0);
       } else frame = s.advance(100);
       if (frame?.fieldReset) resets++;
       const now = s.getSnapshot();
@@ -125,9 +121,9 @@ describe('full match', () => {
     expect(resets).toBe(rounds - 1);
     expect(h.match.rounds).toHaveLength(rounds);
 
-    // Every round runs draft -> countdown -> battle -> roundEnd; then draft or finished.
+    // Every round runs draft -> intro -> battle -> roundEnd; then draft or finished.
     const expected: SessionPhase[] = [];
-    for (let r = 0; r < rounds; r++) expected.push('draft', 'countdown', 'battle', 'roundEnd');
+    for (let r = 0; r < rounds; r++) expected.push('draft', 'intro', 'battle', 'roundEnd');
     expected.push('finished');
     expect(phases).toEqual(expected);
 
@@ -148,9 +144,8 @@ describe('full match', () => {
     stepUntil(s, (n) => n.phase !== 'roundEnd');
     if (s.getSnapshot().phase === 'draft') {
       expect(s.battle).not.toBe(field);
-      expect(s.battle.units).toHaveLength(
-        s.getSnapshot().lastPick === null ? 0 : s.battle.units.length,
-      );
+      // Units of earlier rounds may already stand there (D-046), but no tick has run yet.
+      expect(s.battle.tick).toBe(0);
       expect(s.battle.started).toBe(false);
       expect(s.getSnapshot().roundResult).toBeNull();
     }
@@ -191,7 +186,7 @@ describe('draft', () => {
     expect(s.getSnapshot()).toBe(first);
   });
 
-  it('ignores select and confirm while the bot is due', () => {
+  it('ignores play while the bot is due', () => {
     let s: GameSession | null = null;
     for (let seed = 1; seed < 50 && s === null; seed++) {
       const c = createLocalSession(opts(seed));
@@ -199,51 +194,41 @@ describe('draft', () => {
     }
     if (s === null) throw new Error('no seed with bot start');
     const first = s.getSnapshot();
-    s.select(0);
-    s.select(0);
-    s.confirm();
+    s.play(0);
+    s.play(1);
     expect(s.getSnapshot()).toBe(first);
   });
 
-  it('select twice plays the card; confirm without selection does nothing', () => {
+  it('a single play() plays the card at once', () => {
     const h = createLocalSessionHandle(opts(3));
     toHumanTurn(h.session);
     const s = h.session;
-    const before = s.getSnapshot();
-    s.confirm();
-    expect(s.getSnapshot()).toBe(before);
     const picks = h.match.picks.length;
-    s.select(1);
-    const sel = s.getSnapshot();
-    expect(sel.selectedSlot).toBe(1);
-    expect(h.match.picks.length).toBe(picks);
-    s.select(2);
-    expect(s.getSnapshot().selectedSlot).toBe(2);
-    s.select(2);
+    s.play(2);
     expect(h.match.picks.length).toBe(picks + 1);
     expect(h.match.picks[picks]).toBe(2);
-    expect(s.getSnapshot().selectedSlot).toBeNull();
     expect(s.getSnapshot().lastPick?.player).toBe(0);
     expect(s.getSnapshot().lastPick?.slot).toBe(2);
   });
 
-  it('confirm plays the highlighted slot', () => {
+  it('a second play() right after the pick does nothing while the bot is due', () => {
     const h = createLocalSessionHandle(opts(3));
     toHumanTurn(h.session);
-    const picks = h.match.picks.length;
-    h.session.select(0);
-    h.session.confirm();
-    expect(h.match.picks.length).toBe(picks + 1);
-    expect(h.session.getSnapshot().selectedSlot).toBeNull();
-    h.session.confirm();
-    expect(h.match.picks.length).toBe(picks + 1);
+    h.session.play(0);
+    const snap = h.session.getSnapshot();
+    if (snap.turn === 1) {
+      const picks = h.match.picks.length;
+      h.session.play(0);
+      expect(h.match.picks.length).toBe(picks);
+      expect(h.session.getSnapshot()).toBe(snap);
+    }
   });
 
   it('ignores invalid slots', () => {
     const h = createLocalSessionHandle(opts(3));
     toHumanTurn(h.session);
     const before = h.session.getSnapshot();
-    for (const slot of [-1, 3, 99, 1.5, NaN, Infinity]) h.session.select(slot);
+    for (const slot of [-1, 3, 99, 1.5, NaN, Infinity]) h.session.play(slot);
     expect(h.session.getSnapshot()).toBe(before);
   });
 
@@ -255,38 +240,58 @@ describe('draft', () => {
     expect(snap.offer).not.toBe(h.match.draft.offer?.slots);
   });
 
-  it('starts the countdown after the last pick', () => {
+  it('starts the intro after the last pick', () => {
     const s = createLocalSession(opts(4));
     stepUntil(s, (n) => n.phase !== 'draft');
     const snap = s.getSnapshot();
-    expect(snap.phase).toBe('countdown');
-    expect(snap.countdown).toBe(3);
+    expect(snap.phase).toBe('intro');
     expect(snap.turn).toBeNull();
     expect(snap.offer).toBeNull();
     expect(snap.picksLeft).toEqual([0, 0]);
   });
 });
 
-describe('countdown', () => {
-  it('runs 3, 2, 1, 0 in COUNTDOWN_STEP_MS steps, then the battle', () => {
+describe('intro', () => {
+  it('lasts INTRO_MS without simulating ticks, then the battle begins', () => {
     const s = createLocalSession(opts(4));
-    stepUntil(s, (n) => n.phase === 'countdown');
-    const seen: (number | null)[] = [s.getSnapshot().countdown];
+    stepUntil(s, (n) => n.phase === 'intro');
     let elapsed = 0;
-    while (s.getSnapshot().phase === 'countdown') {
+    while (s.getSnapshot().phase === 'intro') {
       const f = s.advance(50);
       elapsed += 50;
       expect(f.ticks).toBe(0);
       expect(f.alpha).toBe(0);
       expect(f.events).toHaveLength(0);
-      const c = s.getSnapshot().countdown;
-      if (c !== seen[seen.length - 1]) seen.push(c);
     }
-    expect(seen).toEqual([3, 2, 1, 0, null]);
-    expect(elapsed).toBeGreaterThanOrEqual(4 * COUNTDOWN_STEP_MS - 50);
-    expect(elapsed).toBeLessThanOrEqual(4 * COUNTDOWN_STEP_MS + 50);
+    expect(elapsed).toBeGreaterThanOrEqual(INTRO_MS - 50);
+    expect(elapsed).toBeLessThanOrEqual(INTRO_MS + 50);
     expect(s.getSnapshot().phase).toBe('battle');
     expect(s.battle.started).toBe(false);
+  });
+
+  it('is short: well below a second and a half', () => {
+    expect(INTRO_MS).toBe(900);
+  });
+});
+
+describe('player levels', () => {
+  it('uses playerLevels for the deck cards and falls back to 1', () => {
+    const s = createLocalSession(
+      opts(1, {
+        playerDeck: ['assassin', 'tnt', 'knight', 'archer'],
+        playerLevels: { tnt: 3, knight: 5, archer: 9, assassin: 1.5, bat: 4 },
+      }),
+    );
+    const me = s.getSnapshot().players[0];
+    expect(me.deck).toEqual(['assassin', 'tnt', 'knight', 'archer']);
+    expect(me.levels).toEqual({ assassin: 1, tnt: 3, knight: 5, archer: 1 });
+  });
+
+  it('reaches the engine: units of a higher level have more hp', () => {
+    const low = createLocalSessionHandle(opts(2, { playerLevels: { knight: 1 } }));
+    const high = createLocalSessionHandle(opts(2, { playerLevels: { knight: 5 } }));
+    expect(low.match.config.players[0].levels.knight).toBe(1);
+    expect(high.match.config.players[0].levels.knight).toBe(5);
   });
 });
 
@@ -419,7 +424,7 @@ describe('snapshot and listeners', () => {
     const callsBefore = calls;
     expect(callsBefore).toBeGreaterThanOrEqual(0);
     const before = s.getSnapshot();
-    s.select(0);
+    s.play(0);
     expect(calls).toBe(callsBefore + 1);
     expect(s.getSnapshot()).not.toBe(before);
     expect(seen[seen.length - 1]).toBe(s.getSnapshot());
@@ -441,8 +446,7 @@ describe('determinism', () => {
     for (let i = 0; i < 20_000 && h.session.getSnapshot().phase !== 'finished'; i++) {
       const snap = h.session.getSnapshot();
       if (snap.phase === 'draft' && snap.turn === 0) {
-        h.session.select(i % 3);
-        h.session.select(i % 3);
+        h.session.play(i % 3);
       } else {
         h.session.advance(dts[i % dts.length] as number);
       }

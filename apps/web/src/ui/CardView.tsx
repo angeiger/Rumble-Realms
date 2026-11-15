@@ -1,6 +1,6 @@
 import type { CardId } from '@rumble-realms/engine';
 import { CARDS } from '@rumble-realms/engine';
-import { useEffect, useRef, type PointerEvent, type ReactElement } from 'react';
+import { useEffect, useRef, type CSSProperties, type PointerEvent, type ReactElement } from 'react';
 import { t, type MessageKey } from '../i18n/index.ts';
 import { formatNumber, getCardStats, type CardStats } from './cardStats.ts';
 import { FigureImage } from './FigureImage.tsx';
@@ -29,7 +29,7 @@ export function rangeText(s: CardStats): string {
 }
 
 /** Long press without a tap afterwards: `consumeClick()` tells the click handler to ignore it. */
-function useLongPress(onLongPress: () => void) {
+export function useLongPress(onLongPress: () => void) {
   const timer = useRef<number | null>(null);
   const fired = useRef(false);
   const origin = useRef({ x: 0, y: 0 });
@@ -70,34 +70,24 @@ function useLongPress(onLongPress: () => void) {
 export interface CardViewProps {
   card: CardId;
   level: number;
-  selected?: boolean;
   testId?: string;
   onTap?: () => void;
   onInfo?: () => void;
 }
 
 /** An offer card: figure, name, count, key values, frame colour by rarity. */
-export function CardView({
-  card,
-  level,
-  selected = false,
-  testId,
-  onTap,
-  onInfo,
-}: CardViewProps): ReactElement {
+export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps): ReactElement {
   const def = CARDS[card];
   const s = getCardStats(card, level);
   const press = useLongPress(() => onInfo?.());
   const name = cardName(card);
   return (
     <div
-      className={`card card--${def.rarity}${selected ? ' card--selected' : ''}`}
+      className={`card card--${def.rarity}`}
       data-testid={testId}
       data-card={card}
-      data-selected={selected}
       role="button"
       tabIndex={0}
-      aria-pressed={selected}
       aria-label={name}
       {...press.handlers}
       onClick={() => {
@@ -129,7 +119,9 @@ export function CardView({
           <InfoIcon size={18} />
         </button>
       </div>
-      <div className="card__name">{name}</div>
+      <div className="card__name" style={{ '--len': name.length } as CSSProperties}>
+        {name}
+      </div>
       <div className="card__stats">
         <span className="chip">
           <HpIcon />
@@ -139,17 +131,15 @@ export function CardView({
           {s.effectKind === 'heal' ? <HealIcon /> : <DamageIcon />}
           {formatNumber(s.effect)}
         </span>
+      </div>
+      <div className="card__stats card__stats--more">
         <span className="chip">
-          <RangeIcon />
+          {s.rangeKind !== 'contact' && <RangeIcon />}
           {rangeText(s)}
         </span>
-      </div>
-      <div className="card__more" aria-hidden={!selected}>
         <span className="chip">
           <ClockIcon />
-          {s.interval === null
-            ? t('detail.intervalOnce')
-            : t('unit.seconds', { value: formatNumber(s.interval) })}
+          {s.interval === null ? '–' : formatNumber(s.interval)}
         </span>
         <span className="chip">
           <SpeedIcon />

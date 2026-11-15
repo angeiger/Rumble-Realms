@@ -1,9 +1,13 @@
 /** Battle state basics: the field, occupancy and spawning. No simulation logic in here. */
-import { GRID_CELLS, GRID_COLS, GRID_ROWS } from '../data/balance.ts';
+import * as balance from '../data/balance.ts';
 import { CARDS } from '../data/cards.ts';
 import { scaleByLevel } from '../math.ts';
 import type { BattleState, CardId, Layer, PlayerIndex, RngState, UnitState } from '../types.ts';
 import { ENGINE_VERSION } from '../version.ts';
+
+// Local copies of the field size: isFree and occIndex run in the inner loops of the
+// simulation (see the note in sim.ts).
+const { GRID_CELLS, GRID_COLS, GRID_ROWS } = balance;
 
 /** An empty field. `rng` is the battle stream of the match (unused by the M1 units). */
 export function createBattle(rng: RngState): BattleState {
@@ -59,6 +63,9 @@ export function unitById(b: BattleState, id: number): UnitState | undefined {
 
 /**
  * Puts one unit of `card` on a free cell and returns it.
+ * Without `id` the unit gets the next free id of the field. With `id` (the army set-up,
+ * D-053) it keeps that id, which must be higher than every id on the field, so `units`
+ * stays sorted; `nextUnitId` then moves past it.
  * Throws if the cell is outside the field or already taken on the unit's layer.
  */
 export function spawnUnit(
@@ -68,14 +75,26 @@ export function spawnUnit(
   level: number,
   x: number,
   y: number,
+  id?: number,
 ): UnitState {
   const def = CARDS[card];
   if (!isFree(b, def.layer, x, y)) {
     throw new Error(`spawnUnit: cell ${x},${y} is not free for ${card}`);
   }
+  let unitId: number;
+  if (id === undefined) {
+    unitId = b.nextUnitId++;
+  } else {
+    const last = b.units.length === 0 ? 0 : (b.units[b.units.length - 1] as UnitState).id;
+    if (!Number.isSafeInteger(id) || id <= last) {
+      throw new Error(`spawnUnit: id ${id} must be an integer above ${last}`);
+    }
+    unitId = id;
+    if (b.nextUnitId <= id) b.nextUnitId = id + 1;
+  }
   const maxHp = scaleByLevel(def.hp, level);
   const unit: UnitState = {
-    id: b.nextUnitId++,
+    id: unitId,
     owner,
     card,
     level,
@@ -96,6 +115,9 @@ export function spawnUnit(
     stuckTicks: 0,
     path: [],
     jumpTick: -1,
+    jumpX: -1,
+    jumpY: -1,
+    fuseTick: -1,
   };
   b.units.push(unit);
   b.occ[occIndex(def.layer, x, y)] = unit.id;

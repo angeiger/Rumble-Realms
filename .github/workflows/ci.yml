@@ -25,7 +25,7 @@ jobs:
       - run: pnpm lint
       - run: pnpm typecheck
       - run: pnpm test
-      - run: pnpm test:robust
+      - run: pnpm test:robust --matches 2000
       - run: pnpm build
 
   e2e:
