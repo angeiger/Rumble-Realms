@@ -145,9 +145,16 @@ export interface CardDef {
   /**
    * Necromancer: every `intervalTicks` (first time `intervalTicks` after spawning) a unit of
    * `card` with the summoner's level appears on the nearest free neighbouring ground cell,
-   * as long as fewer than `max` of its summons are alive.
+   * as long as fewer than `max` of its summons are alive. A summon has `hpBps` of the hit
+   * points and `damageBps` of the damage of an army unit of `card` (D-077).
    */
-  summon?: { card: CardId; intervalTicks: number; max: number };
+  summon?: {
+    card: CardId;
+    intervalTicks: number;
+    max: number;
+    hpBps: number;
+    damageBps: number;
+  };
 }
 
 /**

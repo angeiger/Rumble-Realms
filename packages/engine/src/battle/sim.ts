@@ -1209,7 +1209,7 @@ function meleeEffects(
 
 /**
  * Necromancer: summons one unit of `def.summon.card` (summoner's level, owner's upgrades of
- * that card) on the nearest free neighbouring cell of its layer: straight neighbours first,
+ * that card, hit points and damage scaled by the summon definition) on the nearest free neighbouring cell of its layer: straight neighbours first,
  * then diagonals, in step order (mirrored for player 1). Skipped (until the next interval)
  * while `max` summons are alive or no neighbouring cell is free.
  */
@@ -1239,6 +1239,9 @@ function summonOne(b: BattleState, u: UnitState, events: Events): void {
     if (!isFree(b, layer, nx, ny)) continue;
     const unit = spawnUnit(b, u.owner, s.card, u.level, nx, ny);
     unit.summonerId = u.id;
+    unit.maxHp = Math.max(1, applyBps(unit.maxHp, s.hpBps));
+    unit.hp = unit.maxHp;
+    unit.powerBps = applyBps(unit.powerBps, s.damageBps);
     if (events !== undefined) {
       events.push({ type: 'summon', unit: unit.id, summoner: u.id, card: s.card, x: nx, y: ny });
     }
@@ -1583,8 +1586,10 @@ function deathEffects(b: BattleState, u: UnitState, events: Events): void {
     if (z !== undefined) {
       z.up &= ~UNDEAD.bit;
       z.variant = 'zombie';
-      z.maxHp = Math.max(1, applyBps(z.maxHp, UNDEAD_HP_BPS));
+      // 40 % of the hit points the skeleton had, with its damage (a summoned one is weaker).
+      z.maxHp = Math.max(1, applyBps(u.maxHp, UNDEAD_HP_BPS));
       z.hp = z.maxHp;
+      z.powerBps = u.powerBps;
       applyStun(z, UNDEAD_DELAY, b.tick);
       status.setUntargetable(z, UNDEAD_DELAY, b.tick);
       setInvulnerable(z, UNDEAD_DELAY, b.tick);

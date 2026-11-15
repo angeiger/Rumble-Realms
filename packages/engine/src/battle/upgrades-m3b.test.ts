@@ -3,6 +3,7 @@
  * purpose instead of imported. Bit i of a mask is upgrade i of the card (data/upgrades.ts).
  */
 import { describe, expect, it } from 'vitest';
+import { CARDS } from '../data/cards.ts';
 import { createMatch } from '../match.ts';
 import { rebuildField } from '../placement.ts';
 import type { BattleState, CardId, MatchState, PlayerIndex, UnitState } from '../types.ts';
@@ -20,6 +21,27 @@ import {
   type PutOptions,
   type TickLog,
 } from './testing.ts';
+
+/** Damage of a level 1 attack of `card`, from the card data (a balance round changes it). */
+function hitOf(card: CardId): number {
+  const a = CARDS[card].attack;
+  if (!('damage' in a)) throw new Error(`${card} has no damage`);
+  return a.damage;
+}
+
+/** Healing of a level 1 healer, from the card data. */
+const CLOUD = CARDS.shroomling.deathCloud!.damagePerSecond;
+const HEAL = (CARDS.healer.attack as { amount: number }).amount;
+
+/** Level scaling of SPEC 6.3: +10 % per level, rounded down. */
+function atLevel(base: number, level: number): number {
+  return Math.floor((base * (9 + level)) / 10);
+}
+
+/** `percent` % of `value`, rounded down. */
+function pct(value: number, percent: number): number {
+  return Math.floor((value * percent) / 100);
+}
 
 /** Spawns a unit with the upgrade mask `mask` of its card. */
 function up(
@@ -62,7 +84,7 @@ describe('Bogenschütze: Feuerpfeile', () => {
     run(b, 1); // shot at tick 0, 4 fields at 12 fields/s = 7 ticks
     archer.hp = 0; // dies at the end of tick 1; the arrow still lands
     const log = run(b, 7);
-    expect(hitsOn(log, target)).toEqual([30]);
+    expect(hitsOn(log, target)).toEqual([hitOf('archer')]);
     expect(target).toMatchObject({ burnDps: 8, burnStart: 7, burnUntil: 67 });
     const rest = run(b, 70);
     expect(hitsOn(rest, target).reduce((a, n) => a + n, 0)).toBe(24);
@@ -126,7 +148,7 @@ describe('Fledermäuse', () => {
     const bat = up(b, 0, 'bat', 1, 5, 5, { hp: 30 });
     post(b, 1, 'knight', 5, 6);
     run(b, 1);
-    expect(bat.hp).toBe(30 + 8); // floor(22 * 40 %)
+    expect(bat.hp).toBe(30 + pct(hitOf('bat'), 40));
   });
 
   it('combines all three upgrades (mask 7)', () => {
@@ -135,7 +157,7 @@ describe('Fledermäuse', () => {
     const bat = up(b, 0, 'bat', 7, 5, 5, { hp: 30 });
     const target = post(b, 1, 'knight', 5, 6);
     run(b, 1);
-    expect(bat.hp).toBe(38);
+    expect(bat.hp).toBe(30 + pct(hitOf('bat'), 40));
     expect(target.atkSlowBps).toBe(2500);
   });
 });
@@ -192,7 +214,7 @@ describe('Ritter: Schild', () => {
     expect(knight.shield).toBe(250);
     put(b, 1, 'knight', 5, 6);
     run(b, 1);
-    expect(knight).toMatchObject({ shield: 190, hp: 600 });
+    expect(knight).toMatchObject({ shield: 190, hp: CARDS.knight.hp });
     const b2 = field();
     expect(up(b2, 0, 'knight', 1, 5, 5, { level: 2 }).shield).toBe(275);
   });
@@ -203,7 +225,7 @@ describe('Musketier: Kopfschuss', () => {
     const b = field();
     up(b, 0, 'musketeer', 2, 5, 5);
     const target = post(b, 1, 'knight', 5, 9);
-    expect(hitsOn(run(b, 60), target)).toEqual([420, 140]);
+    expect(hitsOn(run(b, 60), target)).toEqual([3 * hitOf('musketeer'), hitOf('musketeer')]);
   });
 });
 
@@ -272,7 +294,7 @@ describe('Heiler', () => {
     const ally = post(b, 0, 'knight', 5, 7);
     ally.hp = 500_000;
     run(b, 1);
-    expect(ally).toMatchObject({ hp: 500_040, dmgBonusBps: 2000, dmgBonusUntil: 60 });
+    expect(ally).toMatchObject({ hp: 500_000 + HEAL, dmgBonusBps: 2000, dmgBonusUntil: 60 });
   });
 
   it('Heilkreis: allies within r 2 of the target get 60 % of the healing', () => {
@@ -284,7 +306,7 @@ describe('Heiler', () => {
     const diagonal = put(b, 0, 'knight', 7, 9, { hp: 100 }); // outside r 2
     for (const u of [target, near, diagonal]) applyStun(u, 1000, 0);
     run(b, 1);
-    expect([target.hp, near.hp, diagonal.hp]).toEqual([140, 124, 100]);
+    expect([target.hp, near.hp, diagonal.hp]).toEqual([100 + HEAL, 100 + pct(HEAL, 60), 100]);
   });
 
   it('combines Heilkreis and Segen', () => {
@@ -295,7 +317,7 @@ describe('Heiler', () => {
     const near = put(b, 0, 'knight', 6, 8, { hp: 100 });
     for (const u of [target, near]) applyStun(u, 1000, 0);
     run(b, 1);
-    expect(near).toMatchObject({ hp: 124, dmgBonusBps: 2000 });
+    expect(near).toMatchObject({ hp: 100 + pct(HEAL, 60), dmgBonusBps: 2000 });
   });
 });
 
@@ -342,7 +364,7 @@ describe('Musketier: Bajonett', () => {
     const b = field();
     up(b, 0, 'musketeer', 6, 5, 5);
     const target = post(b, 1, 'knight', 5, 9);
-    expect(hitsOn(run(b, 10), target)).toEqual([420]);
+    expect(hitsOn(run(b, 10), target)).toEqual([3 * hitOf('musketeer')]);
   });
 });
 
@@ -379,8 +401,8 @@ describe('Musketier: Durchschlag', () => {
     const behind = post(b, 1, 'knight', 5, 10);
     const beside = post(b, 1, 'knight', 6, 10);
     const log = run(b, 6);
-    expect(hitsOn(log, target)).toEqual([140]);
-    expect(hitsOn(log, behind)).toEqual([70]);
+    expect(hitsOn(log, target)).toEqual([hitOf('musketeer')]);
+    expect(hitsOn(log, behind)).toEqual([pct(hitOf('musketeer'), 50)]);
     expect(hitsOn(log, beside)).toEqual([]);
   });
 
@@ -390,8 +412,8 @@ describe('Musketier: Durchschlag', () => {
     const target = post(b, 1, 'knight', 5, 9);
     const behind = post(b, 1, 'knight', 5, 10);
     const log = run(b, 6);
-    expect(hitsOn(log, target)).toEqual([420]); // headshot
-    expect(hitsOn(log, behind)).toEqual([210]); // half of it
+    expect(hitsOn(log, target)).toEqual([3 * hitOf('musketeer')]); // headshot
+    expect(hitsOn(log, behind)).toEqual([pct(3 * hitOf('musketeer'), 50)]); // half of it
   });
 });
 
@@ -419,7 +441,13 @@ describe('Todeseffekte und Beschwörungen', () => {
     const summons = eventsOf(log, 'summon');
     expect(summons).toHaveLength(1);
     const daughter = b.units.find((u) => u.id === summons[0]!.unit)!;
-    expect(daughter).toMatchObject({ card: 'tnt', x: 5, y: 5, maxHp: 75, powerBps: 5000 });
+    expect(daughter).toMatchObject({
+      card: 'tnt',
+      x: 5,
+      y: 5,
+      maxHp: pct(CARDS.tnt.hp, 50),
+      powerBps: 5000,
+    });
     expect(daughter.up & 1).toBe(0);
     expect(daughter.summonerId).toBe(tnt.id);
     // The daughter's blast hits for 125 and leaves nothing behind.
@@ -471,17 +499,35 @@ describe('Todeseffekte und Beschwörungen', () => {
   });
 });
 
+describe('Seelenernte: the skeletons are weaker like the other summons (D-077)', () => {
+  it('has 30 % of the HP and 75 % of the damage of a skeleton of the card', () => {
+    for (const level of [1, 3]) {
+      const b = field();
+      up(b, 0, 'necromancer', 2, 5, 5, { level, maxHp: 1_000_000 });
+      post(b, 1, 'bat', 5, 12);
+      const victim = post(b, 1, 'knight', 5, 8);
+      victim.hp = 0;
+      const [summon] = eventsOf(run(b, 1), 'summon');
+      const skeleton = b.units.find((u) => u.id === summon!.unit)!;
+      expect(skeleton.card).toBe('skeleton');
+      expect(skeleton.maxHp).toBe(pct(atLevel(CARDS.skeleton.hp, level), 30));
+      expect(skeleton.hp).toBe(skeleton.maxHp);
+      expect(skeleton.powerBps).toBe(7500);
+    }
+  });
+});
+
 describe('Lauf-TNT: all three upgrades (mask 7)', () => {
   it('the daughter keeps short fuse and armored crate, halved HP, no daughter', () => {
     const b = field();
     busyCorner(b);
     const tnt = up(b, 0, 'tnt', 7, 5, 5);
     post(b, 1, 'bat', 9, 20);
-    expect(tnt).toMatchObject({ maxHp: 300, speed: 160 });
+    expect(tnt).toMatchObject({ maxHp: CARDS.tnt.hp * 2, speed: 160 });
     tnt.hp = 0;
     const log = run(b, 1);
     const daughter = b.units.find((u) => u.id === eventsOf(log, 'summon')[0]!.unit)!;
-    expect(daughter).toMatchObject({ maxHp: 150, speed: 160, up: 6 });
+    expect(daughter).toMatchObject({ maxHp: CARDS.tnt.hp, speed: 160, up: 6 });
   });
 });
 
@@ -494,10 +540,60 @@ describe('Untot, Wiederbelebung, Myzel', () => {
     skeleton.hp = 0;
     const log = run(b, 1);
     const zombie = b.units.find((u) => u.id === eventsOf(log, 'summon')[0]!.unit)!;
-    expect(zombie).toMatchObject({ x: 5, y: 5, maxHp: 24, hp: 24, up: 0 });
+    expect(zombie).toMatchObject({
+      x: 5,
+      y: 5,
+      maxHp: pct(CARDS.skeleton.hp, 40),
+      hp: pct(CARDS.skeleton.hp, 40),
+      up: 0,
+    });
     expect(zombie).toMatchObject({ stunUntil: 40, untargetableUntil: 40, invulnUntil: 40 });
     zombie.hp = 0;
     expect(eventsOf(run(b, 1), 'summon')).toEqual([]); // only once
+  });
+
+  describe('Untot: the zombie takes over HP share and damage of its skeleton (D-077)', () => {
+    /** Kills `skeleton` at once and returns the zombie that rises on its cell. */
+    function rise(b: BattleState, skeleton: UnitState): UnitState {
+      skeleton.hp = 0;
+      const [summon] = eventsOf(run(b, 1), 'summon');
+      return b.units.find((u) => u.id === summon!.unit)!;
+    }
+
+    it('zombie of a card skeleton: 40 % of its max HP and the full damage', () => {
+      const b = field();
+      busyCorner(b);
+      const skeleton = up(b, 0, 'skeleton', 1, 5, 5, { level: 3 });
+      const target = post(b, 1, 'knight', 5, 6);
+      post(b, 1, 'bat', 9, 20);
+      const zombie = rise(b, skeleton);
+      expect(zombie.maxHp).toBe(pct(skeleton.maxHp, 40));
+      expect(zombie.maxHp).toBe(pct(atLevel(CARDS.skeleton.hp, 3), 40));
+      expect(zombie.powerBps).toBe(10000);
+      const hits = hitsOn(run(b, 45), target); // awake after 2 s
+      expect(hits.length).toBeGreaterThan(0);
+      for (const hit of hits) expect(hit).toBe(atLevel(hitOf('skeleton'), 3));
+    });
+
+    it('zombie of a summoned skeleton: 40 % of its reduced max HP and its reduced damage', () => {
+      const b = field();
+      up(b, 0, 'necromancer', 0, 5, 5, { maxHp: 1_000_000 });
+      b.upgrades[0].skeleton = 1; // Untot, applies to the summons of the necromancer
+      post(b, 1, 'bat', 4, 5); // nearest enemy of the necromancer
+      const target = post(b, 1, 'knight', 5, 7);
+      run(b, 81); // the skeleton appears in tick 80
+      const skeleton = b.units.find((u) => u.card === 'skeleton' && u.summonerId !== 0)!;
+      const reduced = pct(CARDS.skeleton.hp, 30);
+      expect(skeleton.maxHp).toBe(reduced);
+      expect(skeleton.up & 1).toBe(1);
+      const zombie = rise(b, skeleton);
+      expect(zombie.maxHp).toBe(pct(reduced, 40));
+      expect(zombie.maxHp).toBeLessThan(pct(CARDS.skeleton.hp, 40));
+      expect(zombie.powerBps).toBe(7500);
+      const hits = hitsOn(run(b, 45), target);
+      expect(hits.length).toBeGreaterThan(0);
+      for (const hit of hits) expect(hit).toBe(pct(hitOf('skeleton'), 75));
+    });
   });
 
   it('Wiederbelebung: the first ally dying in range returns with 50 % HP, once per round', () => {
@@ -511,7 +607,13 @@ describe('Untot, Wiederbelebung, Myzel', () => {
     first.hp = 0;
     const log = run(b, 1);
     const back = b.units.find((u) => u.id === eventsOf(log, 'summon')[0]!.unit)!;
-    expect(back).toMatchObject({ card: 'knight', x: 5, y: 7, hp: 300, maxHp: 600 });
+    expect(back).toMatchObject({
+      card: 'knight',
+      x: 5,
+      y: 7,
+      hp: CARDS.knight.hp / 2,
+      maxHp: CARDS.knight.hp,
+    });
     expect(healer.reviveLeft).toBe(0);
     second.hp = 0;
     expect(eventsOf(run(b, 1), 'summon')).toEqual([]);
@@ -526,7 +628,7 @@ describe('Untot, Wiederbelebung, Myzel', () => {
     const near = put(b, 0, 'knight', 6, 8, { hp: 100 });
     for (const u of [target, near]) applyStun(u, 1000, 0);
     run(b, 1);
-    expect(near).toMatchObject({ hp: 124, dmgBonusBps: 2000 });
+    expect(near).toMatchObject({ hp: 100 + pct(HEAL, 60), dmgBonusBps: 2000 });
   });
 
   it('Myzel: neighbouring shroomlings heal each other by 5 HP per second', () => {
@@ -718,7 +820,10 @@ describe('Bombardierkäfer: Doppelladung', () => {
       [first.x, first.y],
       [second.x, second.y],
     ]);
-    expect(b.projectiles.map((p) => p.damage)).toEqual([96, 96]); // 160 * 60 %
+    expect(b.projectiles.map((p) => p.damage)).toEqual([
+      pct(hitOf('beetle'), 60),
+      pct(hitOf('beetle'), 60),
+    ]);
   });
 
   it('combines all three beetle upgrades (mask 7)', () => {
@@ -782,7 +887,7 @@ describe('Pilzlinge: Riesenpilz (rebuildField)', () => {
     normal.hp = 0;
     run(b, 1);
     expect(first % 3).toBe(0);
-    expect(b.zones.map((z) => z.damagePerSecond)).toEqual([15, 15]);
+    expect(b.zones.map((z) => z.damagePerSecond)).toEqual([CLOUD, CLOUD]);
   });
 });
 
@@ -934,7 +1039,7 @@ describe('Drachenjunges: Feueratem', () => {
         tick: 0,
       },
     ]);
-    for (const u of [main, edge, near]) expect(hitsOn(log, u)).toEqual([55]);
+    for (const u of [main, edge, near]) expect(hitsOn(log, u)).toEqual([hitOf('whelp')]);
     for (const u of [inside, side, behind]) expect(hitsOn(log, u)).toEqual([]);
   });
 
@@ -946,7 +1051,7 @@ describe('Drachenjunges: Feueratem', () => {
     whelp.powerBps = 10000;
     run(b, 201);
     expect(whelp.stacks).toBe(1);
-    expect(hitsOn(run(b, 60), main).every((n) => n > 55)).toBe(true);
+    expect(hitsOn(run(b, 60), main).every((n) => n > hitOf('whelp'))).toBe(true);
   });
 });
 
@@ -986,7 +1091,7 @@ describe('Nachgeschärfte Tests', () => {
     applyStun(beetle, 100_000, b.tick); // no further shells
     const log = run(b, 100);
     const hits = hitsOn(log, target);
-    expect(hits[0]).toBe(160);
+    expect(hits[0]).toBe(hitOf('beetle'));
     expect(hits.slice(1).reduce((a, n) => a + n, 0)).toBe(75);
   });
 
@@ -1000,7 +1105,7 @@ describe('Nachgeschärfte Tests', () => {
     knight.hp = 0;
     const log = run(b, 1);
     const back = b.units.find((u) => u.id === eventsOf(log, 'summon')[0]!.unit)!;
-    expect(back).toMatchObject({ card: 'knight', hp: 300, maxHp: 600 });
+    expect(back).toMatchObject({ card: 'knight', hp: CARDS.knight.hp / 2, maxHp: CARDS.knight.hp });
     expect(healer.reviveLeft).toBe(0);
   });
 });

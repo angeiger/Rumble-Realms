@@ -61,6 +61,7 @@ describe('withCardValues', () => {
 
   it('reaches the engine and restores the cards afterwards', () => {
     const before = snapshot();
+    const cloud = CARDS.shroomling.deathCloud!.damagePerSecond;
     const base = snapshotValues();
     const values = base.map((v) => scaledValues(v, 1.44));
     const knight = CARD_IDS.indexOf('knight');
@@ -73,7 +74,7 @@ describe('withCardValues', () => {
       expect(heal.kind === 'heal' && heal.amount).toBe((values[healer] as CardValues).damage);
       // The healer's emergency melee stays as it is.
       expect(heal.kind === 'heal' && heal.fallbackDamage).toBe(10);
-      expect(CARDS.shroomling.deathCloud?.damagePerSecond).toBe(18);
+      expect(CARDS.shroomling.deathCloud?.damagePerSecond).toBe(Math.round(cloud * 1.2));
       expect(readValues('shroomling')).toEqual(values[shroom]);
     });
     expect(snapshot()).toBe(before);

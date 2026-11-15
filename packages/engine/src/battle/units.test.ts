@@ -3,6 +3,7 @@
  * Knight and skeleton have no special rules; their attack timing is covered in sim.test.ts.
  */
 import { describe, expect, it } from 'vitest';
+import { CARDS } from '../data/cards.ts';
 import type { BattleState, CardId, UnitState } from '../types.ts';
 import { AIR, GROUND } from '../types.ts';
 import { occIndex, unitById } from './state.ts';
@@ -32,6 +33,26 @@ function teleport(b: BattleState, u: UnitState, x: number, y: number): void {
   u.moveCost = 0;
   u.moveProgress = 0;
   u.path = [];
+}
+
+// Card values come from the data, so a balance round does not break the rules tested here.
+const KNIGHT_HP = CARDS.knight.hp;
+const KNIGHT_HIT = 60; // unchanged by the balance rounds
+const BAT_HP = CARDS.bat.hp;
+
+/** Damage of a level 1 attack of `card`, from the card data. */
+function hitOf(card: CardId): number {
+  const a = CARDS[card].attack;
+  if (!('damage' in a)) throw new Error(`${card} has no damage`);
+  return a.damage;
+}
+
+const CLOUD = CARDS.shroomling.deathCloud!.damagePerSecond; // damage per second
+const HEAL = (CARDS.healer.attack as { amount: number }).amount;
+
+/** Level scaling of SPEC 6.3: +10 % per level, rounded down. */
+function atLevel(base: number, level: number): number {
+  return Math.floor((base * (9 + level)) / 10);
 }
 
 // Rule values (D-049, D-050), written out on purpose instead of imported.
@@ -173,8 +194,8 @@ describe('Lauf-TNT', () => {
       put(b, 1, 'knight', 3, 8), // distSq 8
     ];
     run(b, 1);
-    expect(hit.map((u) => u.hp)).toEqual([350, 350, 350]);
-    expect(missed.map((u) => u.hp)).toEqual([600, 600, 600, 600]);
+    expect(hit.map((u) => u.hp)).toEqual(Array(3).fill(KNIGHT_HP - 250));
+    expect(missed.map((u) => u.hp)).toEqual(Array(4).fill(KNIGHT_HP));
   });
 
   it('spares allies and air units', () => {
@@ -185,11 +206,11 @@ describe('Lauf-TNT', () => {
     const enemyBat = put(b, 1, 'bat', 6, 10);
     const trigger = put(b, 1, 'knight', 5, 11);
     run(b, 1);
-    expect(trigger.hp).toBe(350);
-    expect(ally.hp).toBe(600);
-    expect(allyBat.hp).toBe(70);
-    // The enemy bat only took the hit of the allied bat (22), not the blast (250).
-    expect(enemyBat.hp).toBe(48);
+    expect(trigger.hp).toBe(KNIGHT_HP - 250);
+    expect(ally.hp).toBe(KNIGHT_HP);
+    expect(allyBat.hp).toBe(BAT_HP);
+    // The enemy bat only took the hit of the allied bat, not the blast (250).
+    expect(enemyBat.hp).toBe(BAT_HP - hitOf('bat'));
   });
 
   it('is not set off by an air unit, but explodes at once when killed by damage', () => {
@@ -206,7 +227,7 @@ describe('Lauf-TNT', () => {
     expect(eventsOf(log, 'explosion')).toEqual([
       { type: 'explosion', unit: tnt.id, x: 5, y: 10, radius: 1500, tick: death!.tick },
     ]);
-    expect(bat.hp).toBe(70); // and the blast cannot hurt the bat
+    expect(bat.hp).toBe(BAT_HP); // and the blast cannot hurt the bat
   });
 
   it('explodes at once when killed while the fuse burns', () => {
@@ -237,8 +258,8 @@ describe('Lauf-TNT', () => {
       { type: 'damage', unit: enemyTnt.id, amount: 60, tick: 0 },
       { type: 'damage', unit: enemyTnt.id, amount: 250, tick: 0 },
     ]);
-    expect(knight.hp).toBe(350);
-    expect(far.hp).toBe(600);
+    expect(knight.hp).toBe(KNIGHT_HP - 250);
+    expect(far.hp).toBe(KNIGHT_HP);
     expect(unitById(b, killer.id)).toBeUndefined(); // caught by the first blast
     expect(b.units.map((u) => u.id)).toEqual([knight.id, far.id]);
   });
@@ -256,25 +277,25 @@ describe('Heiler', () => {
   it('heals the ally with the lowest HP share in range 3', () => {
     const b = field();
     const h = put(b, 0, 'healer', 5, 5);
-    const half = put(b, 0, 'knight', 5, 7, { hp: 300 }); // 50 %
-    put(b, 0, 'skeleton', 6, 6, { hp: 40 }); // 67 %
-    put(b, 0, 'knight', 5, 9, { hp: 60 }); // 10 %, but out of range (distSq 16)
+    const half = put(b, 0, 'knight', 5, 7, { hp: KNIGHT_HP / 2 }); // 50 %
+    put(b, 0, 'skeleton', 6, 6, { hp: Math.floor(CARDS.skeleton.hp * 0.67) }); // 67 %
+    put(b, 0, 'knight', 5, 9, { hp: 56 }); // 10 %, but out of range (distSq 16)
     put(b, 1, 'knight', 0, 23);
     const log = run(b, 1);
     expect(eventsOf(log, 'heal')).toEqual([
-      { type: 'heal', unit: h.id, target: half.id, amount: 40, tick: 0 },
+      { type: 'heal', unit: h.id, target: half.id, amount: HEAL, tick: 0 },
     ]);
-    expect(half.hp).toBe(340);
+    expect(half.hp).toBe(KNIGHT_HP / 2 + HEAL);
   });
 
   it('never heals above the maximum', () => {
     const b = field();
     put(b, 0, 'healer', 5, 5);
-    const ally = put(b, 0, 'knight', 5, 6, { hp: 590 });
+    const ally = put(b, 0, 'knight', 5, 6, { hp: KNIGHT_HP - 10 });
     put(b, 1, 'knight', 0, 23);
     const log = run(b, 1);
     expect(eventsOf(log, 'heal').map((e) => e.amount)).toEqual([10]);
-    expect(ally.hp).toBe(600);
+    expect(ally.hp).toBe(KNIGHT_HP);
   });
 
   it('scales healing with the level', () => {
@@ -283,7 +304,7 @@ describe('Heiler', () => {
     const ally = put(b, 0, 'knight', 5, 6, { hp: 300 });
     put(b, 1, 'knight', 0, 23);
     run(b, 1);
-    expect(ally.hp).toBe(356); // 40 * 140 %
+    expect(ally.hp).toBe(300 + atLevel(HEAL, 5)); // 140 %
   });
 
   it('heals every 1.5 s (30 ticks)', () => {
@@ -315,7 +336,7 @@ describe('Heiler', () => {
     put(b, 1, 'knight', 0, 23);
     const log = run(b, 1);
     expect(eventsOf(log, 'heal').map((e) => [e.unit, e.target])).toEqual([[other.id, hurt.id]]);
-    expect(hurt.hp).toBe(140);
+    expect(hurt.hp).toBe(100 + HEAL);
   });
 
   it('walks to the nearest injured ally if nobody in range needs healing', () => {
@@ -409,12 +430,12 @@ describe('Assassine', () => {
     expect(attackTicks(charging, s.id)).toEqual([]);
     expect(eventsOf(charging, 'jump')).toEqual([]);
     expect([s.x, s.y, s.tx, s.ty]).toEqual([5, 10, 5, 10]);
-    expect(s.hp).toBe(200 - 3 * 60); // hit in ticks 0, 24 and 48
+    expect(s.hp).toBe(CARDS.assassin.hp - 3 * KNIGHT_HIT); // hit in ticks 0, 24 and 48
     // Its target cell is taken by that enemy; the closest free cell is its own: it stays.
     const after = run(b, 2);
     expect(eventsOf(after, 'jump')).toEqual([]);
     expect(attackTicks(after, s.id)).toEqual([CHARGE + 1]);
-    expect(enemy.hp).toBe(560);
+    expect(enemy.hp).toBe(KNIGHT_HP - hitOf('assassin'));
   });
 
   it('fixes the cell of the farthest ground enemy at battle start; ties: smaller id', () => {
@@ -496,15 +517,16 @@ describe('Assassine', () => {
     for (let i = 1; i < ticks.length; i++)
       expect(ticks[i]! - ticks[i - 1]!).toBeGreaterThanOrEqual(18);
     expect(ticks.length).toBeGreaterThanOrEqual(2);
-    expect(far.maxHp - far.hp).toBe(40 * ticks.length);
+    expect(far.maxHp - far.hp).toBe(hitOf('assassin') * ticks.length);
   });
 });
 
 describe('Bogenschütze und Musketier', () => {
   it.each([
-    ['archer', 5, 30],
-    ['musketeer', 8, 140],
-  ] as const)('%s shoots ground and air at range %i for %i damage', (card, range, damage) => {
+    ['archer', 5],
+    ['musketeer', 8],
+  ] as const)('%s shoots ground and air at range %i for its card damage', (card, range) => {
+    const damage = hitOf(card);
     const ground = field();
     put(ground, 0, card, 5, 2);
     const g = put(ground, 1, 'knight', 5, 2 + range);
@@ -528,9 +550,10 @@ describe('Bogenschütze und Musketier', () => {
       run(b, 200);
       return target.maxHp - target.hp;
     };
-    // 10 s: musketeer 4 shots (56/s), three archers 30 shots (90/s).
-    expect(dealt('musketeer', 1)).toBe(4 * 140);
-    expect(dealt('archer', 3)).toBe(30 * 30);
+    // 10 s: musketeer 4 shots (every 2.5 s), three archers 30 shots (every 1 s each).
+    expect(dealt('musketeer', 1)).toBe(4 * hitOf('musketeer'));
+    expect(dealt('archer', 3)).toBe(30 * hitOf('archer'));
+    expect(4 * hitOf('musketeer')).toBeLessThan(30 * hitOf('archer'));
   });
 });
 
@@ -552,7 +575,7 @@ describe('Fledermäuse', () => {
       put(b, 0, 'bat', 5, 10);
       const k = put(b, 1, 'knight', x, y);
       run(b, 1);
-      expect(k.hp).toBe(578);
+      expect(k.hp).toBe(KNIGHT_HP - hitOf('bat'));
     }
   });
 
@@ -561,7 +584,7 @@ describe('Fledermäuse', () => {
     const own = put(b, 0, 'bat', 5, 10);
     const other = put(b, 1, 'bat', 5, 11);
     run(b, 1);
-    expect([own.hp, other.hp]).toEqual([48, 48]);
+    expect([own.hp, other.hp]).toEqual([BAT_HP - hitOf('bat'), BAT_HP - hitOf('bat')]);
   });
 
   it.each(['knight', 'skeleton', 'tnt', 'assassin', 'berserker', 'shroomling', 'healer'] as const)(
@@ -615,9 +638,9 @@ describe('Berserker', () => {
   ] as const)('steals 25 %% of the damage it removes (target HP %i -> +%i)', (targetHp, steal) => {
     const b = field();
     const berserker = put(b, 0, 'berserker', 5, 10, { hp: 500 });
-    put(b, 1, 'skeleton', 5, 11, { maxHp: 1000, hp: targetHp }); // hits back for 20
+    put(b, 1, 'skeleton', 5, 11, { maxHp: 1000, hp: targetHp }); // hits back
     run(b, 1);
-    expect(berserker.hp).toBe(500 + steal - 20);
+    expect(berserker.hp).toBe(500 + steal - hitOf('skeleton'));
   });
 
   // D-031: a berserker hit fatally earlier in the tick still attacks (D-024), but its
@@ -636,13 +659,13 @@ describe('Berserker', () => {
     const berserker = put(b, 0, 'berserker', 5, 10, { hp: 895 });
     put(b, 1, 'skeleton', 5, 11, { maxHp: 1000 });
     run(b, 1);
-    // Acts before the skeleton (lower id): 895 + 17 is capped at 900, then 20 damage.
-    expect(berserker.hp).toBe(880);
+    // Acts before the skeleton (lower id): 895 + 17 is capped at 900, then its damage.
+    expect(berserker.hp).toBe(900 - hitOf('skeleton'));
   });
 });
 
 describe('Pilzlinge', () => {
-  it('leave a spore cloud (r 1 = cross of 5 cells) with 15 damage per second for 3 s', () => {
+  it('leave a spore cloud (r 1 = cross of 5 cells) with the damage per second of the card for 3 s', () => {
     const b = field();
     const p = put(b, 0, 'shroomling', 5, 10, { hp: 0 }); // dies in tick 0
     busyCorner(b);
@@ -661,18 +684,18 @@ describe('Pilzlinge', () => {
 
     const taken = () => cross.map((u) => u.maxHp - u.hp);
     run(b, 20);
-    expect(taken()).toEqual([15, 15, 15, 15]);
+    expect(taken()).toEqual(Array(4).fill(CLOUD));
     run(b, 20);
-    expect(taken()).toEqual([30, 30, 30, 30]);
+    expect(taken()).toEqual(Array(4).fill(2 * CLOUD));
     run(b, 20);
-    expect(taken()).toEqual([45, 45, 45, 45]);
+    expect(taken()).toEqual(Array(4).fill(3 * CLOUD));
     run(b, 40);
-    expect(taken()).toEqual([45, 45, 45, 45]); // the cloud is gone
+    expect(taken()).toEqual(Array(4).fill(3 * CLOUD)); // the cloud is gone
     expect(b.zones).toEqual([]);
-    expect(outside.map((u) => u.hp)).toEqual([600, 600]);
+    expect(outside.map((u) => u.hp)).toEqual([KNIGHT_HP, KNIGHT_HP]);
   });
 
-  it('spread the cloud damage evenly: exactly 15 after every full second (D-025)', () => {
+  it('spread the cloud damage evenly: exactly the damage per second after every full second (D-025)', () => {
     const b = field();
     put(b, 0, 'shroomling', 5, 10, { hp: 0 });
     busyCorner(b);
@@ -681,7 +704,7 @@ describe('Pilzlinge', () => {
     for (let t = 1; t <= 60; t++) {
       run(b, 1);
       const taken = victim.maxHp - victim.hp;
-      expect(taken).toBe(Math.floor((15 * t) / 20));
+      expect(taken).toBe(Math.floor((CLOUD * t) / 20));
     }
   });
 
@@ -692,9 +715,9 @@ describe('Pilzlinge', () => {
     const bait = put(b, 0, 'knight', 5, 12); // keeps the enemy bat busy, outside the cloud
     const enemyBat = put(b, 1, 'bat', 5, 11); // in the cloud, but in the air
     run(b, 70);
-    expect(ally.hp).toBe(600);
-    expect(enemyBat.hp).toBe(70);
-    expect(bait.hp).toBeLessThan(600);
+    expect(ally.hp).toBe(KNIGHT_HP);
+    expect(enemyBat.hp).toBe(BAT_HP);
+    expect(bait.hp).toBeLessThan(KNIGHT_HP);
   });
 
   it('attack in melee like the others', () => {
@@ -703,6 +726,6 @@ describe('Pilzlinge', () => {
     const enemy = dummy(b, 1, 'knight', 5, 11);
     const ticks = attackTicks(run(b, 60), p.id);
     expect(ticks).toEqual([0, 20, 40]);
-    expect(enemy.maxHp - enemy.hp).toBe(54);
+    expect(enemy.maxHp - enemy.hp).toBe(hitOf('shroomling') * 3);
   });
 });

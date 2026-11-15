@@ -1,5 +1,7 @@
 /**
  * Card definitions of all 16 base units (SPEC 5.2, level 1), in the order of the table.
+ * Hit points, damage and a few other values differ from the table since the first balance
+ * round (D-078).
  * Values are pre-converted to engine units (SPEC 2.5, D-018 ff.):
  * - intervalTicks = seconds * 20
  * - moveSpeed     = fields per second * 50 (milli-fields per tick)
@@ -55,7 +57,7 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     targets: { ground: true, air: true },
     attack: {
       kind: 'ranged',
-      damage: 30,
+      damage: 24,
       intervalTicks: 20, // 1,0 s
       range: 5,
       projectileSpeed: 600, // assumption: 12 fields/s
@@ -69,7 +71,7 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'tank',
     zone: 'front',
     layer: GROUND,
-    hp: 600,
+    hp: 560,
     moveSpeed: 40, // 0,8 field/s
     targets: { ground: true, air: false },
     attack: {
@@ -82,11 +84,11 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
   },
   tnt: {
     id: 'tnt',
-    count: 2,
+    count: 3,
     role: 'bomb',
     zone: 'front',
     layer: GROUND,
-    hp: 150,
+    hp: 180,
     moveSpeed: 100, // 2,0 fields/s (D-071)
     keepsTarget: true,
     targets: { ground: true, air: false },
@@ -106,12 +108,12 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'swarm',
     zone: 'front',
     layer: GROUND,
-    hp: 60,
+    hp: 210,
     moveSpeed: 90, // 1,8 field/s
     targets: { ground: true, air: false },
     attack: {
       kind: 'melee',
-      damage: 20,
+      damage: 27,
       intervalTicks: 14, // 0,7 s
     },
     rarity: 'common',
@@ -123,13 +125,13 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'support',
     zone: 'mid',
     layer: GROUND,
-    hp: 200,
+    hp: 230,
     moveSpeed: 45, // 0,9 field/s
     // Heals allies; its emergency melee only hits ground enemies (SPEC 5.3).
     targets: { ground: true, air: false },
     attack: {
       kind: 'heal',
-      amount: 40,
+      amount: 50,
       intervalTicks: 30, // 1,5 s
       range: 3,
       followDistance: 2,
@@ -144,12 +146,12 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'ranged',
     zone: 'back',
     layer: GROUND,
-    hp: 400,
+    hp: 360,
     moveSpeed: 45, // 0,9 field/s
     targets: { ground: true, air: true },
     attack: {
       kind: 'ranged',
-      damage: 140,
+      damage: 105,
       intervalTicks: 50, // 2,5 s
       range: 8,
       projectileSpeed: 1000, // assumption: 20 fields/s
@@ -163,12 +165,12 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'flyer',
     zone: 'mid',
     layer: AIR,
-    hp: 70,
+    hp: 90,
     moveSpeed: 80, // 1,6 field/s
     targets: { ground: true, air: true },
     attack: {
       kind: 'melee',
-      damage: 22,
+      damage: 26,
       intervalTicks: 16, // 0,8 s
     },
     rarity: 'common',
@@ -180,12 +182,12 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'melee',
     zone: 'mid',
     layer: GROUND,
-    hp: 200,
+    hp: 250,
     moveSpeed: 70, // 1,4 field/s
     targets: { ground: true, air: false },
     attack: {
       kind: 'melee',
-      damage: 40,
+      damage: 46,
       intervalTicks: 18, // 0,9 s
     },
     rarity: 'rare',
@@ -217,18 +219,18 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'swarm',
     zone: 'front',
     layer: GROUND,
-    hp: 90,
+    hp: 200,
     moveSpeed: 50, // 1,0 field/s
     targets: { ground: true, air: false },
     attack: {
       kind: 'melee',
-      damage: 18,
+      damage: 28,
       intervalTicks: 20, // 1,0 s
     },
     rarity: 'common',
     arena: 2,
-    // Spore cloud on death: r 1 field, 15 damage/s for 3 s.
-    deathCloud: { radius: 1000, damagePerSecond: 15, durationTicks: 60 }, // r 1, 3 s
+    // Spore cloud on death: r 1 field, 25 damage/s for 3 s.
+    deathCloud: { radius: 1000, damagePerSecond: 25, durationTicks: 60 }, // r 1, 3 s
   },
   pyromancer: {
     id: 'pyromancer',
@@ -236,12 +238,12 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'mage',
     zone: 'back',
     layer: GROUND,
-    hp: 280,
+    hp: 250,
     moveSpeed: 45, // 0,9 field/s
     targets: { ground: true, air: true },
     attack: {
       kind: 'ranged',
-      damage: 70,
+      damage: 58,
       intervalTicks: 36, // 1,8 s
       range: 4,
       projectileSpeed: 500, // assumption: 10 fields/s
@@ -268,7 +270,9 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     },
     rarity: 'epic',
     arena: 2,
-    summon: { card: 'skeleton', intervalTicks: 80, max: 4 }, // every 4 s, at most 4 alive
+    // Every 4 s, at most 4 alive. A summoned skeleton has 30 % of the hit points and 75 % of
+    // the damage of a skeleton of the card: 63 HP and 20 damage, about the first values (D-077).
+    summon: { card: 'skeleton', intervalTicks: 80, max: 4, hpBps: 3000, damageBps: 7500 },
   },
   beetle: {
     id: 'beetle',
@@ -281,9 +285,9 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     targets: { ground: true, air: false },
     attack: {
       kind: 'artillery',
-      damage: 160,
-      radius: 1500, // r 1,5 fields
-      intervalTicks: 100, // 5,0 s
+      damage: 110,
+      radius: 1000, // r 1 field
+      intervalTicks: 120, // 6,0 s
       minRange: 2,
       flightTicks: 30, // 1,5 s
     },
@@ -313,13 +317,13 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'support',
     zone: 'back',
     layer: GROUND,
-    hp: 260,
+    hp: 360,
     moveSpeed: 45, // 0,9 field/s
     targets: { ground: true, air: true },
     attack: {
       kind: 'ranged',
-      damage: 35,
-      intervalTicks: 30, // 1,5 s
+      damage: 54,
+      intervalTicks: 24, // 1,2 s
       range: 5,
       projectileSpeed: 500, // assumption: 10 fields/s
       slow: { bps: 3000, durationTicks: 40 }, // 30 % slower for 2 s
@@ -333,13 +337,13 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     role: 'flyer',
     zone: 'mid',
     layer: AIR,
-    hp: 550,
+    hp: 400,
     moveSpeed: 55, // 1,1 field/s
     targets: { ground: true, air: true },
     attack: {
       kind: 'ranged',
-      damage: 55,
-      intervalTicks: 32, // 1,6 s
+      damage: 44,
+      intervalTicks: 36, // 1,8 s
       range: 2,
       projectileSpeed: 600, // assumption: 12 fields/s
       splashRadius: 1000, // r 1 field

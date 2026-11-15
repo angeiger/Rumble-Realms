@@ -135,7 +135,7 @@ describe('layoutArmy: centred rows by rank (D-070)', () => {
     expect(rowOf(4)).toEqual([2, 2]); // healers
     expect(rowOf(2)).toEqual([2, 2, 2]); // bats above the healers' row
     expect(rowOf(1)).toEqual([3, 3]); // knights
-    expect(rowOf(3)).toEqual([4, 4]); // TNT
+    expect(rowOf(3)).toEqual([4, 4, 4]); // TNT
     expect(rowOf(0)).toEqual([5, 5, 5, 5, 5]); // skeletons
     expect(layout.forfeited).toEqual([]);
   });
@@ -345,7 +345,9 @@ describe('rebuildField (D-053)', () => {
       expect([u.x, u.y, u.tx, u.ty]).toEqual([cell.x, cell.y, cell.x, cell.y]);
       expect(b.occ[u.layer * GRID_CELLS + u.y * GRID_COLS + u.x]).toBe(u.id);
     }
-    expect(b.units.find((u) => u.card === 'knight')?.maxHp).toBe(720);
+    expect(b.units.find((u) => u.card === 'knight')?.maxHp).toBe(
+      Math.floor((CARDS.knight.hp * 12) / 10), // level 3: +20 %
+    );
     expect(b.occ.filter((v) => v !== 0)).toHaveLength(b.units.length);
     expect(b.nextUnitId).toBe(10);
   });
@@ -360,8 +362,8 @@ describe('rebuildField (D-053)', () => {
     s.battle.occ[GROUND * GRID_CELLS + 9 * GRID_COLS + 9] = 50;
     rebuildField(s);
     expect(s.battle.units.map((u) => [u.id, u.hp, u.targetId])).toEqual([
-      [1, 600, 0],
-      [2, 600, 0],
+      [1, CARDS.knight.hp, 0],
+      [2, CARDS.knight.hp, 0],
     ]);
     expect(s.battle.occ[GROUND * GRID_CELLS + 9 * GRID_COLS + 9]).toBe(0);
   });

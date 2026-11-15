@@ -1,15 +1,25 @@
 import { describe, expect, it } from 'vitest';
 import { simulateToEnd } from './battle/sim.ts';
 import {
+  addGroups,
+  armyGroups,
+  battleMargin,
+  battleValue,
   chooseBotPick,
+  clash,
   cloneMatchState,
-  counterFactor,
-  profileOf,
+  estimateShares,
+  futureCopies,
+  killMs,
+  mediumOpponent,
+  opponentGroups,
   rollout,
+  scaledTo,
   scoreSlot,
   STREAM_BOT,
+  type UnitGroup,
 } from './bots.ts';
-import { BOT_LEVELS, BOT_PROFILES, type BotLevelId } from './data/bots.ts';
+import { BOT_LEVELS, BOT_PROFILES, MEDIUM_HEURISTIC, type BotLevelId } from './data/bots.ts';
 import { BPS, DECK_SIZE, OFFER_SIZE } from './data/balance.ts';
 import { CARDS } from './data/cards.ts';
 import { hashState } from './hash.ts';
@@ -45,6 +55,11 @@ function addArmy(state: MatchState, player: PlayerIndex, card: CardId, double = 
 /** Replaces the current offer (plain data) for a controlled scenario. */
 function setOffer(state: MatchState, slots: OfferSlot[]): void {
   state.draft.offer = { player: getOffer(state).player, slots };
+}
+
+/** Value of the own army without a new pick, against the opponent as the bot sees it. */
+function baseMargin(state: MatchState, me: PlayerIndex): number {
+  return battleValue(armyGroups(state, me, state.activeUpgrades[me]), mediumOpponent(state, me));
 }
 
 /** A state in round 3 or later with a sizeable army on both sides. */
@@ -175,7 +190,193 @@ describe('chooseBotPick (all levels)', () => {
   });
 });
 
-describe('medium heuristic', () => {
+/** Groups of `cards` (one played card each, level 1, no upgrades) for the battle estimate. */
+function groupsOf(cards: CardId[]): UnitGroup[] {
+  const out: UnitGroup[] = [];
+  for (const card of cards) addGroups(out, card, 1, {}, CARDS[card].count * BPS);
+  return out;
+}
+
+/** `card` `n` times. */
+function times(card: CardId, n: number): CardId[] {
+  return Array.from({ length: n }, () => card);
+}
+
+/**
+ * A fresh match in which the player whose pick is due has already played `own` and the
+ * opponent `opp` (round 1, level 1, no upgrades).
+ */
+function scenario(own: CardId[], opp: CardId[]): MatchState {
+  const deck: CardId[] = ['archer', 'knight', 'skeleton', 'healer'];
+  const state = createMatch({
+    seed: 11,
+    players: [
+      { deck, levels: {} },
+      { deck, levels: {} },
+    ],
+  });
+  const me = getOffer(state).player;
+  const opponent: PlayerIndex = me === 0 ? 1 : 0;
+  for (const card of own) addArmy(state, me, card);
+  for (const card of opp) addArmy(state, opponent, card);
+  return state;
+}
+
+/** Score of a normal card for the player whose pick is due. */
+function spawnScore(state: MatchState, card: CardId): number {
+  return scoreSlot(state, { kind: 'spawn', card }, getOffer(state).player);
+}
+
+describe('medium heuristic: battle estimate', () => {
+  it('counts summons with the reduced hit points and damage of a summon (D-077)', () => {
+    const out: UnitGroup[] = [];
+    addGroups(out, 'necromancer', 1, {}, BPS);
+    expect(out).toHaveLength(2);
+    const summon = out[1]!;
+    const skeleton = groupsOf(['skeleton'])[0]!;
+    const s = CARDS.necromancer.summon!;
+    expect(summon.hp).toBe(Math.trunc((skeleton.hp * s.hpBps) / BPS));
+    expect(summon.dps).toBe(Math.trunc((skeleton.dps * s.damageBps) / BPS));
+    expect(summon.weight).toBe(Math.trunc((s.max * MEDIUM_HEURISTIC.summonUptimeBps * BPS) / BPS));
+    // The summons carry the owner's skeleton upgrades (more hit points with "undead" is not
+    // modelled, but extra units of the card are not summoned either).
+    const withGang: UnitGroup[] = [];
+    addGroups(withGang, 'necromancer', 1, { skeleton: 4 }, BPS);
+    expect(withGang[1]!.weight).toBe(summon.weight);
+  });
+
+  it('only counts attackers that can reach a layer of the defender', () => {
+    const knights = groupsOf(times('knight', 3));
+    const bats = groupsOf(['bat']);
+    const c = clash(knights, bats);
+    expect(c.total).toBe(0);
+    expect(killMs(c)).toBeGreaterThan(MEDIUM_HEURISTIC.battleSeconds * 1000);
+    expect(clash(groupsOf(['archer']), bats).toAir).toBeGreaterThan(0);
+  });
+
+  it('lets only the front line of melee units fight, but all shooters', () => {
+    const target = groupsOf(times('golem', 4));
+    const melee = (n: number) => clash(groupsOf(times('skeleton', n)), target).total;
+    const shooters = (n: number) => clash(groupsOf(times('archer', n)), target).total;
+    // One card of 5 skeletons fits the front line, 15 or 30 skeletons do not: beyond it the
+    // damage stays the same (up to rounding).
+    expect(CARDS.skeleton.count).toBeLessThanOrEqual(MEDIUM_HEURISTIC.meleeFrontage);
+    expect(3 * CARDS.skeleton.count).toBeGreaterThan(MEDIUM_HEURISTIC.meleeFrontage);
+    expect(melee(3)).toBeLessThan(melee(1) * 3);
+    expect(Math.abs(melee(6) - melee(3))).toBeLessThanOrEqual(Math.ceil(melee(3) / 100));
+    expect(shooters(3)).toBeGreaterThanOrEqual(shooters(1) * 3 - 3);
+  });
+
+  it('gives area damage more targets against many units than against few', () => {
+    const perDps = (att: CardId, def: CardId[]) => {
+      const g = groupsOf([att]);
+      return Math.trunc((clash(g, groupsOf(def)).total * BPS) / g[0]!.dps);
+    };
+    expect(perDps('pyromancer', times('skeleton', 4))).toBeGreaterThan(
+      perDps('pyromancer', ['golem']),
+    );
+    // Single target damage does not care.
+    expect(perDps('frost_shaman', times('skeleton', 4))).toBe(perDps('frost_shaman', ['golem']));
+  });
+
+  it('gives shooters free fire against slow enemies, not against faster or longer ranged ones', () => {
+    const musketeer = groupsOf(['musketeer']);
+    const vsGolems = clash(musketeer, groupsOf(['golem']));
+    const vsBats = clash(musketeer, groupsOf(['bat']));
+    const vsMusketeers = clash(musketeer, groupsOf(['musketeer']));
+    expect(vsGolems.burstTotal).toBeGreaterThan(vsBats.burstTotal);
+    expect(vsBats.burstTotal).toBeGreaterThan(0);
+    expect(vsMusketeers.burstTotal).toBe(0);
+    expect(clash(groupsOf(['knight']), groupsOf(['golem'])).burstTotal).toBe(0);
+  });
+
+  it('caps the blasts at a share of the enemy hit points', () => {
+    const enemy = groupsOf(times('knight', 4));
+    const hp = enemy.reduce((sum, g) => sum + Math.trunc((g.hp * g.weight) / BPS), 0);
+    const cap = Math.trunc((hp * MEDIUM_HEURISTIC.blastMaxShareBps) / BPS);
+    const one = clash(groupsOf(['tnt']), enemy).burstGround;
+    const many = clash(groupsOf(times('tnt', 10)), enemy).burstGround;
+    expect(one).toBeGreaterThan(0);
+    expect(many).toBe(cap);
+  });
+
+  it('lets healing cancel only part of the damage, and only with allies to heal', () => {
+    const attackers = groupsOf(times('knight', 2));
+    const plain = clash(attackers, groupsOf(['golem'])).total;
+    const healed = clash(attackers, groupsOf(['golem', ...times('healer', 10)])).total;
+    expect(healed).toBeLessThan(plain);
+    const maxCancel = Math.trunc((plain * MEDIUM_HEURISTIC.healMaxShareBps) / BPS);
+    expect(plain - healed).toBeLessThanOrEqual(maxCancel + 1);
+    // Healers alone have nobody to heal.
+    const onlyHealers = groupsOf(times('healer', 3));
+    const noHealing = onlyHealers.map((g) => ({ ...g, heal: 0 }));
+    expect(clash(attackers, onlyHealers).total).toBeGreaterThan(0);
+    expect(clash(attackers, onlyHealers).total).toBe(clash(attackers, noHealing).total);
+  });
+
+  it('reads area healing from the upgrade data', () => {
+    const plain = groupsOf(['healer'])[0]!;
+    const circle: UnitGroup[] = [];
+    addGroups(circle, 'healer', 1, { healer: 1 }, CARDS.healer.count * BPS);
+    expect(plain.healAreaBps).toBe(0);
+    expect(circle[0]!.healAreaBps).toBeGreaterThan(0);
+    expect(circle[0]!.healRadius).toBeGreaterThan(0);
+    // An upgrade with healBps but without a radius (berserker blood frenzy) is no area heal.
+    const frenzy: UnitGroup[] = [];
+    addGroups(frenzy, 'berserker', 1, { berserker: 4 }, BPS);
+    expect(frenzy[0]!.healAreaBps).toBe(0);
+  });
+
+  it('assumes unknown cards of the opponent only until it has played a few', () => {
+    const hp = (groups: UnitGroup[]) =>
+      groups.reduce((sum, g) => sum + Math.trunc((g.hp * g.weight) / BPS), 0);
+    const state = scenario([], []);
+    const opponent: PlayerIndex = getOffer(state).player === 0 ? 1 : 0;
+    const prior = hp(opponentGroups(state, opponent));
+    expect(prior).toBeGreaterThan(0);
+    addArmy(state, opponent, 'knight');
+    const one = hp(opponentGroups(state, opponent));
+    const knight = hp(groupsOf(['knight']));
+    expect(one - knight).toBeLessThan(prior);
+    expect(one - knight).toBeGreaterThan(0);
+    for (let i = 0; i < MEDIUM_HEURISTIC.opponentPriorPicks; i++)
+      addArmy(state, opponent, 'knight');
+    const n = MEDIUM_HEURISTIC.opponentPriorPicks + 1;
+    expect(hp(opponentGroups(state, opponent))).toBe(n * knight);
+  });
+
+  it('scales the opponent towards the own army without changing its unit numbers', () => {
+    const own = groupsOf(times('knight', 4));
+    const opp = groupsOf(['archer']);
+    const scaled = scaledTo(opp, own);
+    expect(scaled[0]!.weight).toBe(opp[0]!.weight);
+    expect(scaled[0]!.hp).toBeGreaterThan(opp[0]!.hp);
+    expect(scaled[0]!.dps).toBeGreaterThan(opp[0]!.dps);
+    expect(scaledTo(opp, [])).toEqual(opp);
+  });
+
+  it('battleMargin is positive for the stronger army and antisymmetric', () => {
+    const strong = groupsOf(['knight', 'knight', 'archer']);
+    const weak = groupsOf(['archer']);
+    expect(battleMargin(strong, weak)).toBeGreaterThan(0);
+    expect(battleMargin(weak, strong)).toBeLessThan(0);
+    expect(battleMargin(strong, weak)).toBe(-battleMargin(weak, strong));
+    expect(battleMargin(strong, strong)).toBe(0);
+  });
+
+  it('decides the time limit by the hit points left', () => {
+    // Neither army can hit the other: the larger sum of hit points is ahead.
+    const golems = groupsOf(['golem']);
+    const bats = groupsOf(['bat']);
+    const golemsOnly = golems.map((g) => ({ ...g, hitsAir: false }));
+    const batsGroundless = bats.map((g) => ({ ...g, hitsGround: false }));
+    const hpGolem = golems[0]!.hp;
+    const hpBats = Math.trunc((bats[0]!.hp * bats[0]!.weight) / BPS);
+    expect(battleMargin(golemsOnly, batsGroundless)).toBe(hpGolem - hpBats);
+  });
+});
+
+describe('medium heuristic: picks', () => {
   it('avoids cards that cannot hit the enemy flyers', () => {
     const state = matchFor(['bat', 'knight', 'archer', 'skeleton']);
     const opponent: PlayerIndex = getOffer(state).player === 0 ? 1 : 0;
@@ -188,94 +389,126 @@ describe('medium heuristic', () => {
     expect(chooseBotPick(state, 'medium', seedRng(1, STREAM_BOT))).toBe(1);
   });
 
+  it('chooses a shooter when the opponent has flyers and the own army no anti-air', () => {
+    const state = scenario(['knight', 'skeleton', 'knight'], ['bat', 'bat', 'knight']);
+    setOffer(state, [
+      { kind: 'spawn', card: 'skeleton' },
+      { kind: 'spawn', card: 'knight' },
+      { kind: 'spawn', card: 'archer' },
+    ]);
+    expect(chooseBotPick(state, 'medium', seedRng(1, STREAM_BOT))).toBe(2);
+    // Against ground units the same army takes the melee card.
+    const ground = scenario(['knight', 'skeleton', 'knight'], ['knight', 'knight', 'skeleton']);
+    expect(spawnScore(ground, 'archer') - spawnScore(ground, 'skeleton')).toBeLessThan(
+      spawnScore(state, 'archer') - spawnScore(state, 'skeleton'),
+    );
+  });
+
   it('values ranged anti-air higher against flyers than against ground units', () => {
-    const state = matchFor(['bat', 'knight', 'archer', 'skeleton']);
-    const me = getOffer(state).player;
-    const opponent: PlayerIndex = me === 0 ? 1 : 0;
-    const own = profileOf(state, me);
-    const vsAir = cloneMatchState(state);
-    addArmy(vsAir, opponent, 'bat');
-    const vsGround = cloneMatchState(state);
-    addArmy(vsGround, opponent, 'knight');
-    const air = counterFactor('archer', profileOf(vsAir, opponent), own);
-    const ground = counterFactor('archer', profileOf(vsGround, opponent), own);
-    expect(air).toBeGreaterThan(ground);
-    expect(counterFactor('knight', profileOf(vsAir, opponent), own)).toBeLessThan(BPS);
+    const vsAir = scenario(['knight'], ['bat', 'bat']);
+    const vsGround = scenario(['knight'], ['knight', 'knight']);
+    const edge = (s: MatchState) => spawnScore(s, 'archer') - spawnScore(s, 'knight');
+    expect(edge(vsAir)).toBeGreaterThan(edge(vsGround));
+    expect(edge(vsAir)).toBeGreaterThan(0);
   });
 
-  it('prefers area damage against swarms', () => {
-    const state = matchFor(['skeleton', 'knight', 'pyromancer', 'musketeer']);
-    const me = getOffer(state).player;
-    const opponent: PlayerIndex = me === 0 ? 1 : 0;
-    const own = profileOf(state, me);
-    const swarm = cloneMatchState(state);
-    for (let i = 0; i < 3; i++) addArmy(swarm, opponent, 'skeleton');
-    const tanks = cloneMatchState(state);
-    for (let i = 0; i < 3; i++) addArmy(tanks, opponent, 'golem');
-    expect(counterFactor('pyromancer', profileOf(swarm, opponent), own)).toBeGreaterThan(
-      counterFactor('pyromancer', profileOf(tanks, opponent), own),
-    );
+  it('prefers area damage against many units', () => {
+    const swarm = scenario(['knight'], times('skeleton', 4));
+    const tanks = scenario(['knight'], times('golem', 2));
+    const edge = (s: MatchState) => spawnScore(s, 'pyromancer') - spawnScore(s, 'frost_shaman');
+    expect(edge(swarm)).toBeGreaterThan(edge(tanks));
   });
 
-  it('puts a frontline in front of an army of shooters and shooters behind tanks', () => {
-    const state = matchFor(['archer', 'knight', 'musketeer', 'golem']);
-    const me = getOffer(state).player;
-    const opponent: PlayerIndex = me === 0 ? 1 : 0;
-    addArmy(state, opponent, 'knight');
-    const opp = profileOf(state, opponent);
-    const shooters = cloneMatchState(state);
-    for (let i = 0; i < 3; i++) addArmy(shooters, me, 'musketeer');
-    const tanks = cloneMatchState(state);
-    for (let i = 0; i < 3; i++) addArmy(tanks, me, 'golem');
-    const ownShooters = profileOf(shooters, me);
-    const ownTanks = profileOf(tanks, me);
-    expect(counterFactor('golem', opp, ownShooters)).toBeGreaterThan(
-      counterFactor('golem', opp, ownTanks),
-    );
-    expect(counterFactor('musketeer', opp, ownTanks)).toBeGreaterThan(
-      counterFactor('musketeer', opp, ownShooters),
-    );
+  it('mixes: a frontline in front of shooters, shooters behind a crowded front', () => {
+    const opp: CardId[] = ['knight', 'archer', 'knight', 'archer'];
+    const shooters = scenario(times('musketeer', 4), opp);
+    const melee = scenario(times('knight', 6), opp);
+    const edge = (s: MatchState) => spawnScore(s, 'knight') - spawnScore(s, 'musketeer');
+    expect(edge(shooters)).toBeGreaterThan(0);
+    expect(edge(melee)).toBeLessThan(0);
   });
 
-  it('rates flyers highly when the enemy army cannot hit the air', () => {
-    const state = matchFor(['bat', 'knight', 'archer', 'skeleton']);
-    const me = getOffer(state).player;
-    const opponent: PlayerIndex = me === 0 ? 1 : 0;
-    const own = profileOf(state, me);
-    const noAntiAir = cloneMatchState(state);
-    addArmy(noAntiAir, opponent, 'knight');
-    addArmy(noAntiAir, opponent, 'skeleton');
-    const antiAir = cloneMatchState(state);
-    addArmy(antiAir, opponent, 'archer');
-    addArmy(antiAir, opponent, 'musketeer');
-    expect(counterFactor('bat', profileOf(noAntiAir, opponent), own)).toBeGreaterThan(
-      counterFactor('bat', profileOf(antiAir, opponent), own),
-    );
+  it('adds less for one more melee card once the front line is full', () => {
+    const opp: CardId[] = ['golem', 'golem', 'archer'];
+    const gain = (own: CardId[]) => {
+      const s = scenario(own, opp);
+      const me = getOffer(s).player;
+      return spawnScore(s, 'skeleton') - baseMargin(s, me);
+    };
+    expect(gain(times('skeleton', 4))).toBeLessThan(gain(['skeleton']));
   });
 
-  it('values a double pack at twice the normal card', () => {
-    const state = matchFor(['archer', 'knight', 'skeleton', 'healer']);
+  it('rates flyers higher when the enemy army cannot hit the air', () => {
+    const noAntiAir = scenario(['knight'], ['knight', 'skeleton']);
+    const antiAir = scenario(['knight'], ['archer', 'musketeer']);
+    const edge = (s: MatchState) => spawnScore(s, 'bat') - spawnScore(s, 'knight');
+    expect(edge(noAntiAir)).toBeGreaterThan(edge(antiAir));
+  });
+
+  it('does not rate all slots alike when the deck cannot hit the air (prior opponent)', () => {
+    const state = createMatch({
+      seed: 4,
+      players: [
+        { deck: ['knight', 'golem', 'beetle', 'healer'], levels: {} },
+        { deck: ['knight', 'golem', 'beetle', 'healer'], levels: {} },
+      ],
+    });
     const me = getOffer(state).player;
-    const single = scoreSlot(state, { kind: 'spawn', card: 'knight' }, me);
-    const double = scoreSlot(state, { kind: 'double', card: 'knight' }, me);
-    // Integer rounding of the factor may add one point.
-    expect(Math.abs(double - single * 2)).toBeLessThanOrEqual(1);
+    const scores = (['knight', 'golem', 'beetle', 'healer'] as CardId[]).map((card) =>
+      scoreSlot(state, { kind: 'spawn', card }, me),
+    );
+    expect(new Set(scores).size).toBe(scores.length);
+  });
+
+  it('values a double pack above the normal card, but not above twice its gain', () => {
+    const state = scenario(times('knight', 4), ['knight', 'archer', 'knight']);
+    const me = getOffer(state).player;
+    const base = baseMargin(state, me);
+    const single = scoreSlot(state, { kind: 'spawn', card: 'knight' }, me) - base;
+    const double = scoreSlot(state, { kind: 'double', card: 'knight' }, me) - base;
+    expect(single).toBeGreaterThan(0);
+    expect(double).toBeGreaterThan(single);
+    expect(double).toBeLessThanOrEqual(2 * single + 1);
   });
 
   it('values an upgrade more with more units of the card and earlier in the match', () => {
-    const state = matchFor(['archer', 'knight', 'skeleton', 'healer']);
+    const state = scenario([], ['knight', 'archer', 'skeleton']);
     const me = getOffer(state).player;
     const upgrade: OfferSlot = { kind: 'upgrade', card: 'skeleton', upgrade: 2 };
-    const none = scoreSlot(state, upgrade, me);
+    const gain = (s: MatchState) => scoreSlot(s, upgrade, me) - baseMargin(s, me);
+    const none = gain(state);
     addArmy(state, me, 'skeleton');
-    const one = scoreSlot(state, upgrade, me);
+    const one = gain(state);
     addArmy(state, me, 'skeleton', true);
-    const three = scoreSlot(state, upgrade, me);
+    const three = gain(state);
+    expect(none).toBeGreaterThan(0);
     expect(one).toBeGreaterThan(none);
     expect(three).toBeGreaterThan(one);
     const late = cloneMatchState(state);
     late.lives = [1, 1];
-    expect(scoreSlot(late, upgrade, me)).toBeLessThan(three);
+    expect(gain(late)).toBeLessThan(three);
+  });
+
+  it('expects more future copies of a card it plays, and fewer late in the match', () => {
+    const state = matchFor(['archer', 'knight', 'skeleton', 'healer']);
+    const me = getOffer(state).player;
+    const fresh = futureCopies(state, me, 'knight');
+    expect(fresh).toBeGreaterThan(0);
+    addArmy(state, me, 'knight');
+    addArmy(state, me, 'knight');
+    addArmy(state, me, 'archer');
+    expect(futureCopies(state, me, 'knight')).toBeGreaterThan(futureCopies(state, me, 'healer'));
+    const late = cloneMatchState(state);
+    late.lives = [1, 2];
+    expect(futureCopies(late, me, 'knight')).toBeLessThan(futureCopies(state, me, 'knight'));
+  });
+
+  it('values an upgrade of a card it does not play less than one of a card it plays', () => {
+    const state = scenario(times('knight', 4), ['knight', 'archer']);
+    const shield: OfferSlot = { kind: 'upgrade', card: 'knight', upgrade: 0 };
+    const fire: OfferSlot = { kind: 'upgrade', card: 'archer', upgrade: 0 };
+    const me = getOffer(state).player;
+    expect(scoreSlot(state, shield, me)).toBeGreaterThan(scoreSlot(state, fire, me));
   });
 
   it('breaks ties with the bot stream', () => {
@@ -315,6 +548,31 @@ describe('hard (Monte Carlo)', () => {
     expect(hashState(state)).toBe(hashState(lateState()));
   });
 
+  it('estimateShares gives the medium estimate of every slot as a share of the hit points', () => {
+    const state = lateState();
+    const offer = getOffer(state);
+    const before = hashState(state);
+    const shares = estimateShares(state, offer);
+    expect(shares).toHaveLength(offer.slots.length);
+    const values = offer.slots.map((slot) => scoreSlot(state, slot, offer.player));
+    for (let a = 0; a < shares.length; a++) {
+      expect(Number.isInteger(shares[a])).toBe(true);
+      // A lead cannot be larger than a few times the hit points on the field.
+      expect(Math.abs(shares[a]!)).toBeLessThan(5000);
+      // The shares keep the order of the medium bot's values.
+      for (let b = 0; b < shares.length; b++) {
+        if (values[a]! >= values[b]!) expect(shares[a]!).toBeGreaterThanOrEqual(shares[b]!);
+      }
+    }
+    expect(hashState(state)).toBe(before);
+  });
+
+  it('hard counts the medium estimate with a weight from the bot data', () => {
+    expect(BOT_LEVELS.hard.estimateWeight).toBeGreaterThan(0);
+    expect(BOT_LEVELS.easy.estimateWeight).toBe(0);
+    expect(BOT_LEVELS.medium.estimateWeight).toBe(0);
+  });
+
   it('returns a valid slot in a late round with large armies', () => {
     const state = lateState(5);
     const offer = getOffer(state);
@@ -325,13 +583,24 @@ describe('hard (Monte Carlo)', () => {
 });
 
 /**
- * Strength test (SPEC 8.1): same deck and card level on both sides, sides alternate.
- * Takes about a minute (hard rollouts), so it only runs with BOT_STRENGTH=1:
- *   BOT_STRENGTH=1 pnpm vitest run src/bots.test.ts
+ * Strength test (SPEC 8.1): same deck, card level 2 and unlocked upgrades on both sides,
+ * sides alternate, so only the pick strategy counts. Takes a few minutes (hard rollouts),
+ * so it only runs with BOT_STRENGTH=1:
+ *   BOT_STRENGTH=1 pnpm --filter @rumble-realms/engine exec vitest run src/bots.test.ts
  */
-function winShare(strong: BotLevelId, weak: BotLevelId, deck: CardId[], matches: number): number {
+function winShare(
+  strong: BotLevelId,
+  weak: BotLevelId,
+  deck: CardId[],
+  matches: number,
+  upgradeMask = 0,
+): number {
   const levels: Partial<Record<CardId, number>> = {};
-  for (const card of deck) levels[card] = 2;
+  const upgrades: Partial<Record<CardId, number>> = {};
+  for (const card of deck) {
+    levels[card] = 2;
+    upgrades[card] = upgradeMask;
+  }
   let score = 0;
   for (let i = 0; i < matches; i++) {
     const strongSide: PlayerIndex = i % 2 === 0 ? 0 : 1;
@@ -341,8 +610,8 @@ function winShare(strong: BotLevelId, weak: BotLevelId, deck: CardId[], matches:
       {
         seed: 500 + i,
         players: [
-          { deck, levels },
-          { deck, levels },
+          { deck, levels, upgrades },
+          { deck, levels, upgrades },
         ],
       },
       (s) => {
@@ -356,13 +625,39 @@ function winShare(strong: BotLevelId, weak: BotLevelId, deck: CardId[], matches:
 }
 
 describe.skipIf(process.env['BOT_STRENGTH'] === undefined)('bot strength (slow)', () => {
-  const deck: CardId[] = ['necromancer', 'skeleton', 'bat', 'berserker'];
+  const testDeck: CardId[] = ['necromancer', 'skeleton', 'bat', 'berserker'];
+  /** Test deck, start deck and decks of shooters, tanks, rushers and flyers. */
+  const decks: CardId[][] = [
+    testDeck,
+    ['archer', 'knight', 'skeleton', 'healer'],
+    ['archer', 'musketeer', 'pyromancer', 'frost_shaman'],
+    ['knight', 'golem', 'beetle', 'healer'],
+    ['tnt', 'berserker', 'assassin', 'skeleton'],
+    ['bat', 'whelp', 'archer', 'healer'],
+  ];
 
-  it('medium beats easy in clearly more than half of 40 matches', () => {
-    expect(winShare('medium', 'easy', deck, 40)).toBeGreaterThan(0.6);
-  });
+  /** Medium against easy on every deck: at least 60 % on average and 55 % per deck. */
+  function expectMediumBeatsEasy(matches: number, upgradeMask: number): void {
+    const shares = decks.map((deck) => winShare('medium', 'easy', deck, matches, upgradeMask));
+    const mean = shares.reduce((a, b) => a + b, 0) / shares.length;
+    expect(mean, `shares ${shares.join(' ')}`).toBeGreaterThan(0.6);
+    for (const [i, share] of shares.entries()) {
+      expect(share, `deck ${decks[i]!.join(', ')}`).toBeGreaterThan(0.55);
+    }
+  }
 
-  it('hard beats medium in clearly more than half of 40 matches', () => {
-    expect(winShare('hard', 'medium', deck, 40)).toBeGreaterThan(0.6);
-  }, 600_000);
+  it('medium beats easy clearly with every deck (60 matches each)', () => {
+    expectMediumBeatsEasy(60, 0);
+  }, 300_000);
+
+  it('medium beats easy clearly with upgrade 1 unlocked (40 matches each)', () => {
+    expectMediumBeatsEasy(40, 1);
+  }, 300_000);
+
+  it('hard beats medium with the test deck and the start deck (40 matches each)', () => {
+    const shares = [testDeck, decks[1]!].map((deck) => winShare('hard', 'medium', deck, 40));
+    const mean = shares.reduce((a, b) => a + b, 0) / shares.length;
+    expect(mean, `shares ${shares.join(' ')}`).toBeGreaterThan(0.6);
+    for (const share of shares) expect(share).toBeGreaterThan(0.55);
+  }, 900_000);
 });

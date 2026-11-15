@@ -310,14 +310,14 @@ describe('applyPick', () => {
       applyPick(s, slot);
     }
     const expectedHp: Partial<Record<CardId, number>> = {
-      knight: 720, // 600 * 120 %
-      bat: 98, // 70 * 140 %
-      archer: 120,
-      healer: 200,
-      tnt: 150,
-      skeleton: 60,
-      musketeer: 400,
-      assassin: 200,
+      knight: Math.floor((CARDS.knight.hp * 12) / 10), // level 3: +20 %
+      bat: Math.floor((CARDS.bat.hp * 14) / 10), // level 5: +40 %
+      archer: CARDS.archer.hp,
+      healer: CARDS.healer.hp,
+      tnt: CARDS.tnt.hp,
+      skeleton: CARDS.skeleton.hp,
+      musketeer: CARDS.musketeer.hp,
+      assassin: CARDS.assassin.hp,
     };
     expect(s.battle.units.length).toBeGreaterThan(0);
     for (const u of s.battle.units) {

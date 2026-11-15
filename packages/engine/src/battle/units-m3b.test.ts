@@ -3,10 +3,23 @@
  * shaman, whelp. Rule values are written out on purpose instead of imported.
  */
 import { describe, expect, it } from 'vitest';
-import type { BattleState, UnitState } from '../types.ts';
+import { CARDS } from '../data/cards.ts';
+import type { BattleState, CardId, UnitState } from '../types.ts';
 import { AIR, GROUND } from '../types.ts';
 import { applyStun } from './status.ts';
 import { attackTicks, dummy, eventsOf, field, put, run, type TickLog } from './testing.ts';
+
+/** Damage of a level 1 attack of `card`, from the card data (a balance round changes it). */
+function hitOf(card: CardId): number {
+  const a = CARDS[card].attack;
+  if (!('damage' in a)) throw new Error(`${card} has no damage`);
+  return a.damage;
+}
+
+/** Level scaling of SPEC 6.3: +10 % per level, rounded down. */
+function atLevel(base: number, level: number): number {
+  return Math.floor((base * (9 + level)) / 10);
+}
 
 /** A punching bag that neither moves nor attacks. */
 function post(
@@ -43,7 +56,8 @@ describe('Pyromantin', () => {
     expect(eventsOf(log, 'impact')).toEqual([
       { type: 'impact', kind: 'splash', unit: pyro.id, x: 5, y: 9, radius: 1000, tick: 8 },
     ]);
-    for (const u of [target, left, behind, bat]) expect(hitsOn(log, u)).toEqual([70]);
+    for (const u of [target, left, behind, bat])
+      expect(hitsOn(log, u)).toEqual([hitOf('pyromancer')]);
     expect(hitsOn(log, diagonal)).toEqual([]);
   });
 
@@ -85,7 +99,8 @@ describe('Nekromant', () => {
     expect([skeleton.owner, skeleton.level, skeleton.maxHp, skeleton.layer]).toEqual([
       0,
       3,
-      72, // 60 * 120 %
+      // 30 % of the hit points of a card skeleton of level 3 (D-077).
+      Math.floor((atLevel(CARDS.skeleton.hp, 3) * 3000) / 10000),
       GROUND,
     ]);
     expect(skeleton.summonerId).toBe(necro.id);
@@ -111,6 +126,57 @@ describe('Nekromant', () => {
     expect(summons).toHaveLength(1);
     expect([summons[0]!.x, summons[0]!.y]).toEqual([fallen.x, fallen.y]);
     expect(mine()).toHaveLength(4);
+  });
+
+  // D-077: a summoned skeleton has 30 % of the hit points and 75 % of the damage of a skeleton
+  // of the card. Both are applied on top of the level scaling.
+  describe('summoned skeletons (D-077)', () => {
+    const summonedHp = (level: number) =>
+      Math.floor((atLevel(CARDS.skeleton.hp, level) * 3000) / 10000);
+    const summonedHit = (level: number) =>
+      Math.floor((atLevel(hitOf('skeleton'), level) * 7500) / 10000);
+
+    /** A necromancer whose bat target is nearer than the knight that its skeleton will hit. */
+    function setup(level: number) {
+      const b = field();
+      put(b, 0, 'necromancer', 5, 5, { level, maxHp: 1_000_000 });
+      post(b, 1, 'bat', 4, 5); // nearest enemy of the necromancer: it keeps off the knight
+      const knight = post(b, 1, 'knight', 5, 7); // next to the first summon cell (5, 6)
+      run(b, 80);
+      const log = run(b, 5); // the summon appears in tick 80
+      const [summon] = eventsOf(log, 'summon');
+      const skeleton = b.units.find((u) => u.id === summon!.unit)!;
+      return { b, log, skeleton, knight };
+    }
+
+    it.each([1, 3, 5])('has 30 %% of the HP and 75 %% of the damage at level %i', (level) => {
+      const { log, skeleton, knight } = setup(level);
+      expect(skeleton.card).toBe('skeleton');
+      expect(skeleton.maxHp).toBe(summonedHp(level));
+      expect(skeleton.hp).toBe(skeleton.maxHp);
+      expect(skeleton.powerBps).toBe(7500);
+      const hits = hitsOn(log, knight);
+      expect(hits.length).toBeGreaterThan(0);
+      for (const hit of hits) expect(hit).toBe(summonedHit(level));
+    });
+
+    it('is about 63 HP and 20 damage at level 1, as before the balance round', () => {
+      expect(summonedHp(1)).toBe(63);
+      expect(summonedHit(1)).toBe(20);
+    });
+
+    it('leaves skeletons of the card unchanged', () => {
+      for (const level of [1, 3, 5]) {
+        const b = field();
+        const card = put(b, 0, 'skeleton', 5, 5, { level });
+        expect(card.maxHp).toBe(atLevel(CARDS.skeleton.hp, level));
+        expect(card.powerBps).toBe(10000);
+        const target = post(b, 1, 'knight', 5, 6);
+        const log = run(b, 3);
+        for (const hit of hitsOn(log, target)) expect(hit).toBe(atLevel(hitOf('skeleton'), level));
+        expect(hitsOn(log, target).length).toBeGreaterThan(0);
+      }
+    });
   });
 
   it('also attacks itself: 25 damage every 1.2 s at range 3', () => {
@@ -144,11 +210,12 @@ describe('Nekromant', () => {
 });
 
 describe('Bombardierkäfer', () => {
-  it('lobs at the cell of the nearest ground enemy and hits all ground enemies in 3 x 3', () => {
+  it('lobs at the cell of the nearest ground enemy and hits all ground enemies within r 1', () => {
     const b = field();
     const beetle = put(b, 0, 'beetle', 5, 2);
     const target = post(b, 1, 'knight', 5, 10);
-    const diagonal = post(b, 1, 'knight', 6, 11);
+    const side = post(b, 1, 'knight', 4, 10);
+    const diagonal = post(b, 1, 'knight', 6, 11); // outside r 1 (D-022)
     const outside = post(b, 1, 'knight', 7, 10);
     const bat = post(b, 1, 'bat', 5, 10); // air: not attackable for the beetle
     const log = run(b, 31);
@@ -156,20 +223,21 @@ describe('Bombardierkäfer', () => {
       { type: 'lob', id: 1, unit: beetle.id, x: 5, y: 10, impactTick: 30, tick: 0 },
     ]);
     expect(eventsOf(log, 'impact')).toEqual([
-      { type: 'impact', kind: 'shell', unit: beetle.id, x: 5, y: 10, radius: 1500, tick: 30 },
+      { type: 'impact', kind: 'shell', unit: beetle.id, x: 5, y: 10, radius: 1000, tick: 30 },
     ]);
-    expect(hitsOn(log, target)).toEqual([160]);
-    expect(hitsOn(log, diagonal)).toEqual([160]);
+    expect(hitsOn(log, target)).toEqual([hitOf('beetle')]);
+    expect(hitsOn(log, side)).toEqual([hitOf('beetle')]);
+    expect(hitsOn(log, diagonal)).toEqual([]);
     expect(hitsOn(log, outside)).toEqual([]);
     expect(hitsOn(log, bat)).toEqual([]);
   });
 
-  it('reaches the whole field, fires every 5 s and does not move while it has a target', () => {
+  it('reaches the whole field, fires every 6 s and does not move while it has a target', () => {
     const b = field();
     const beetle = put(b, 0, 'beetle', 0, 0);
     post(b, 1, 'knight', 11, 23);
-    const log = run(b, 201);
-    expect(attackTicks(log, beetle.id)).toEqual([0, 100, 200]);
+    const log = run(b, 241);
+    expect(attackTicks(log, beetle.id)).toEqual([0, 120, 240]);
     expect([beetle.x, beetle.y, beetle.moveCost]).toEqual([0, 0, 0]);
   });
 
@@ -227,7 +295,7 @@ describe('Frostschamane', () => {
     const knight = dummy(b, 1, 'knight', 5, 10); // walks towards the shaman
     const log = run(b, 11);
     // 5 fields at 10 fields/s: impact in tick 10.
-    expect(hitsOn(log, knight)).toEqual([35]);
+    expect(hitsOn(log, knight)).toEqual([hitOf('frost_shaman')]);
     expect([knight.slowBps, knight.slowUntil]).toEqual([3000, 50]);
     // Ticks 0..9 at 40, tick 10 at 28.
     expect(knight.moveProgress).toBe(428);
@@ -239,8 +307,8 @@ describe('Frostschamane', () => {
     const target = post(b, 1, 'knight', 5, 8);
     run(b, 7); // impact in tick 6 (3 fields)
     expect([target.slowBps, target.slowUntil]).toEqual([3000, 46]);
-    run(b, 30); // second shot in tick 30, impact in tick 36
-    expect([target.slowBps, target.slowUntil]).toEqual([3000, 76]);
+    run(b, 30); // second shot in tick 24 (every 1.2 s), impact in tick 30
+    expect([target.slowBps, target.slowUntil]).toEqual([3000, 70]);
   });
 });
 
@@ -268,6 +336,6 @@ describe('Drachenjunges', () => {
     expect(eventsOf(log, 'impact')).toEqual([
       { type: 'impact', kind: 'splash', unit: whelp.id, x: 5, y: 10, radius: 1000, tick: 4 },
     ]);
-    for (const u of [target, side, bat]) expect(hitsOn(log, u)).toEqual([55]);
+    for (const u of [target, side, bat]) expect(hitsOn(log, u)).toEqual([hitOf('whelp')]);
   });
 });

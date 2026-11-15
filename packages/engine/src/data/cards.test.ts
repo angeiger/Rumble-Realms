@@ -11,34 +11,37 @@ function numbersIn(value: unknown): number[] {
   return [];
 }
 
-/** Hand-copied from SPEC 5.2 (Level 1). Do not copy values from cards.ts. */
+/**
+ * Snapshot of the card table (level 1): values after the first balance round, D-078.
+ * Written out on purpose; a later balance round changes this table together with cards.ts.
+ */
 const SPEC_SAMPLE = {
-  archer: { count: 3, hp: 120, value: 30, arena: 1, rarity: 'common' },
-  knight: { count: 2, hp: 600, value: 60, arena: 1, rarity: 'common' },
-  tnt: { count: 2, hp: 150, value: 250, arena: 1, rarity: 'rare' },
-  skeleton: { count: 5, hp: 60, value: 20, arena: 1, rarity: 'common' },
-  healer: { count: 2, hp: 200, value: 40, arena: 1, rarity: 'rare' }, // heals 40
-  musketeer: { count: 1, hp: 400, value: 140, arena: 1, rarity: 'rare' },
-  bat: { count: 3, hp: 70, value: 22, arena: 1, rarity: 'common' },
-  assassin: { count: 3, hp: 200, value: 40, arena: 2, rarity: 'rare' },
+  archer: { count: 3, hp: 120, value: 24, arena: 1, rarity: 'common' },
+  knight: { count: 2, hp: 560, value: 60, arena: 1, rarity: 'common' },
+  tnt: { count: 3, hp: 180, value: 250, arena: 1, rarity: 'rare' },
+  skeleton: { count: 5, hp: 210, value: 27, arena: 1, rarity: 'common' },
+  healer: { count: 2, hp: 230, value: 50, arena: 1, rarity: 'rare' }, // heals 50
+  musketeer: { count: 1, hp: 360, value: 105, arena: 1, rarity: 'rare' },
+  bat: { count: 3, hp: 90, value: 26, arena: 1, rarity: 'common' },
+  assassin: { count: 3, hp: 250, value: 46, arena: 2, rarity: 'rare' },
   berserker: { count: 1, hp: 900, value: 70, arena: 2, rarity: 'epic' },
-  shroomling: { count: 4, hp: 90, value: 18, arena: 2, rarity: 'common' },
-  pyromancer: { count: 1, hp: 280, value: 70, arena: 2, rarity: 'rare' },
+  shroomling: { count: 4, hp: 200, value: 28, arena: 2, rarity: 'common' },
+  pyromancer: { count: 1, hp: 250, value: 58, arena: 2, rarity: 'rare' },
   necromancer: { count: 1, hp: 300, value: 25, arena: 2, rarity: 'epic' },
-  beetle: { count: 1, hp: 350, value: 160, arena: 3, rarity: 'epic' },
+  beetle: { count: 1, hp: 350, value: 110, arena: 3, rarity: 'epic' },
   golem: { count: 1, hp: 1600, value: 90, arena: 3, rarity: 'epic' },
-  frost_shaman: { count: 1, hp: 260, value: 35, arena: 4, rarity: 'rare' },
-  whelp: { count: 1, hp: 550, value: 55, arena: 5, rarity: 'epic' },
+  frost_shaman: { count: 1, hp: 360, value: 54, arena: 4, rarity: 'rare' },
+  whelp: { count: 1, hp: 400, value: 44, arena: 5, rarity: 'epic' },
 } as const;
 
 /** Further SPEC 5.2 columns of the six units added in M3b (engine units: ticks, fields). */
 const SPEC_M3B = {
   pyromancer: { role: 'mage', zone: 'back', interval: 36, range: 4, speed: 45, air: true },
   necromancer: { role: 'summoner', zone: 'back', interval: 24, range: 3, speed: 40, air: true },
-  beetle: { role: 'artillery', zone: 'back', interval: 100, range: 0, speed: 20, air: false },
+  beetle: { role: 'artillery', zone: 'back', interval: 120, range: 0, speed: 20, air: false },
   golem: { role: 'tank', zone: 'front', interval: 40, range: 1, speed: 25, air: false },
-  frost_shaman: { role: 'support', zone: 'back', interval: 30, range: 5, speed: 45, air: true },
-  whelp: { role: 'flyer', zone: 'mid', interval: 32, range: 2, speed: 55, air: true },
+  frost_shaman: { role: 'support', zone: 'back', interval: 24, range: 5, speed: 45, air: true },
+  whelp: { role: 'flyer', zone: 'mid', interval: 36, range: 2, speed: 55, air: true },
 } as const;
 
 describe('card registry', () => {
@@ -98,15 +101,21 @@ describe('card registry', () => {
     expect(whelp.kind === 'ranged' && whelp.splashRadius).toBe(1000);
     expect(CARDS.beetle.attack).toEqual({
       kind: 'artillery',
-      damage: 160,
-      radius: 1500,
-      intervalTicks: 100,
+      damage: 110,
+      radius: 1000,
+      intervalTicks: 120,
       minRange: 2,
       flightTicks: 30,
     });
     const frost = CARDS.frost_shaman.attack;
     expect(frost.kind === 'ranged' && frost.slow).toEqual({ bps: 3000, durationTicks: 40 });
-    expect(CARDS.necromancer.summon).toEqual({ card: 'skeleton', intervalTicks: 80, max: 4 });
+    expect(CARDS.necromancer.summon).toEqual({
+      card: 'skeleton',
+      intervalTicks: 80,
+      max: 4,
+      hpBps: 3000, // D-077
+      damageBps: 7500,
+    });
   });
 
   it('gives only bat and whelp the AIR layer', () => {

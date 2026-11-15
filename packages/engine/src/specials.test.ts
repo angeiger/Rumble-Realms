@@ -308,6 +308,7 @@ describe('upgrade cards (SPEC 4.5)', () => {
   });
 
   it('stack with other upgrades of the same card (Kurze Lunte + Panzerkiste)', () => {
+    const tntHp = Math.floor((CARDS.tnt.hp * 12) / 10); // level 3: +20 %
     const cfg = config(6);
     cfg.players[0].levels = { tnt: 3 };
     cfg.players[1].levels = { tnt: 3 };
@@ -316,23 +317,25 @@ describe('upgrade cards (SPEC 4.5)', () => {
     forceOffer(s, [{ kind: 'spawn', card: 'tnt' }]);
     applyPick(s, 0);
     expect(unitsOf(s, p, 'tnt').map((u) => [u.maxHp, u.speed])).toEqual([
-      [180, 100],
-      [180, 100],
+      [tntHp, 100],
+      [tntHp, 100],
+      [tntHp, 100],
     ]);
     passTo(s, p);
     forceOffer(s, [{ kind: 'upgrade', card: 'tnt', upgrade: 1 }]);
     applyPick(s, 0);
     expect(unitsOf(s, p, 'tnt').map((u) => [u.maxHp, u.speed])).toEqual([
-      [180, 160],
-      [180, 160],
+      [tntHp, 160],
+      [tntHp, 160],
+      [tntHp, 160],
     ]);
     passTo(s, p);
     forceOffer(s, [{ kind: 'upgrade', card: 'tnt', upgrade: 2 }]);
     applyPick(s, 0);
     expect(s.activeUpgrades[p].tnt).toBe(6);
-    // Level 3: 150 * 120 % = 180 HP, doubled by the crate; 75 * 160 % = 120 speed.
+    // Level 3: +20 % HP, doubled by the crate; speed +60 %.
     for (const u of unitsOf(s, p, 'tnt')) {
-      expect([u.maxHp, u.hp, u.speed, u.up]).toEqual([360, 360, 160, 6]);
+      expect([u.maxHp, u.hp, u.speed, u.up]).toEqual([2 * tntHp, 2 * tntHp, 160, 6]);
     }
   });
 
@@ -368,11 +371,13 @@ describe('the seven implemented upgrades', () => {
   });
 
   it('Panzerkiste, Glutschuppen and Kurze Lunte change HP and speed', () => {
-    expect(unitStats('tnt', 1, 4).maxHp).toBe(300);
+    expect(unitStats('tnt', 1, 4).maxHp).toBe(CARDS.tnt.hp * 2);
     expect(unitStats('tnt', 1, 2).speed).toBe(160);
-    expect(unitStats('whelp', 1, 2).maxHp).toBe(770);
-    expect(unitStats('whelp', 5, 2).maxHp).toBe(1078); // 550 * 140 % * 140 %
-    expect(unitStats('beetle', 1, 4).maxHp).toBe(560); // Chitinpanzer: 350 * 160 %
+    expect(unitStats('whelp', 1, 2).maxHp).toBe(Math.floor((CARDS.whelp.hp * 14) / 10)); // +40 %
+    expect(unitStats('whelp', 5, 2).maxHp).toBe(
+      Math.floor((Math.floor((CARDS.whelp.hp * 14) / 10) * 14) / 10), // level 5 +40 %, then +40 %
+    );
+    expect(unitStats('beetle', 1, 4).maxHp).toBe(Math.floor((CARDS.beetle.hp * 16) / 10)); // Chitinpanzer: +60 %
     expect(unitStats('whelp', 1, 1).range).toBe(3); // Feueratem: +1 range
   });
 

@@ -13,6 +13,10 @@ import { TAB_ORDER, TabBar } from './TabBar.tsx';
 import { BotLevelPicker, TitleScreen } from './TitleScreen.tsx';
 import { START_DECK } from '../game/config.ts';
 
+// Card values come from the data, so a balance round does not break these tests.
+const KNIGHT_HP = CARDS.knight.hp;
+const KNIGHT_HP_L3 = Math.floor((KNIGHT_HP * 12) / 10);
+
 const noop = () => undefined;
 const actions: BattleActions = {
   play: noop,
@@ -123,7 +127,7 @@ describe('CardView', () => {
     const html = renderToString(<CardView card="knight" level={1} testId="offer-card-0" />);
     expect(html).toContain('Ritter');
     expect(html).toContain('×2');
-    expect(html).toContain('600');
+    expect(html).toContain(String(KNIGHT_HP));
     expect(html).toContain('>60<');
     expect(html).toContain('card--common');
   });
@@ -134,7 +138,7 @@ describe('CardView', () => {
     expect(healer).toContain('Heiler');
     const berserker = renderToString(<CardView card="berserker" level={1} />);
     expect(berserker).toContain('card--epic');
-    expect(renderToString(<CardView card="knight" level={3} />)).toContain('720');
+    expect(renderToString(<CardView card="knight" level={3} />)).toContain(String(KNIGHT_HP_L3));
   });
 
   it('has no selection state any more (a tap plays the card)', () => {
@@ -200,15 +204,15 @@ describe('CardDetail', () => {
       /data-testid="level-plus"[^>]*disabled|disabled[^>]*data-testid="level-plus"/,
     );
     expect(high).toContain(`Level ${MAX_LEVEL}`);
-    // The values follow the level (knight hp: 600 at level 1, 720 at level 3).
+    // The values follow the level (knight hp: +20 % at level 3).
     const l1 = renderToString(
       <CardDetail card="knight" level={1} onClose={noop} onLevelChange={noop} />,
     );
     const l3 = renderToString(
       <CardDetail card="knight" level={3} onClose={noop} onLevelChange={noop} />,
     );
-    expect(l1).toContain('600');
-    expect(l3).toContain('720');
+    expect(l1).toContain(String(KNIGHT_HP));
+    expect(l3).toContain(String(KNIGHT_HP_L3));
   });
 });
 

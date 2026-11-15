@@ -149,9 +149,9 @@ describe('applyDamage', () => {
     addShield(k, 50);
     const events: Parameters<typeof applyDamage>[3] = [];
     expect(applyDamage(k, 30, 0, events)).toBe(0);
-    expect([k.shield, k.hp]).toEqual([20, 600]);
+    expect([k.shield, k.hp]).toEqual([20, k.maxHp]);
     expect(applyDamage(k, 30, 0, events)).toBe(10);
-    expect([k.shield, k.hp]).toEqual([0, 590]);
+    expect([k.shield, k.hp]).toEqual([0, k.maxHp - 10]);
     expect(events).toEqual([
       { type: 'damage', unit: k.id, amount: 0 },
       { type: 'damage', unit: k.id, amount: 10 },
@@ -164,10 +164,10 @@ describe('applyDamage', () => {
     setInvulnerable(k, 40, 10);
     const events: Parameters<typeof applyDamage>[3] = [];
     expect(applyDamage(k, 100, 49, events)).toBe(0);
-    expect(k.hp).toBe(600);
+    expect(k.hp).toBe(k.maxHp);
     expect(events).toEqual([]);
     applyDamage(k, 100, 50, events);
-    expect(k.hp).toBe(500);
+    expect(k.hp).toBe(k.maxHp - 100);
   });
 
   it('armour reduces damage, rounded down; the removed HP are capped at the remaining HP', () => {
