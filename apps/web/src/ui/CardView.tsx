@@ -1,9 +1,10 @@
 import type { CardId } from '@rumble-realms/engine';
-import { CARDS } from '@rumble-realms/engine';
+import { CARDS, DOUBLE_FACTOR, unitCount, type OfferKind } from '@rumble-realms/engine';
 import { useEffect, useRef, type CSSProperties, type PointerEvent, type ReactElement } from 'react';
 import { t, type MessageKey } from '../i18n/index.ts';
 import { formatNumber, getCardStats, type CardStats } from './cardStats.ts';
 import { FigureImage } from './FigureImage.tsx';
+import { upgradeName, upgradeText } from './upgradeText.ts';
 import {
   ClockIcon,
   DamageIcon,
@@ -74,22 +75,51 @@ export interface CardViewProps {
   testId?: string;
   onTap?: () => void;
   onInfo?: () => void;
+  /** Kind of the offer slot; default `spawn`. */
+  kind?: OfferKind;
+  /** Only for `upgrade`: which upgrade (0..2) the card activates. */
+  upgrade?: number;
+  /** Upgrades of this card already active in the match (bit mask), for the unit count. */
+  activeMask?: number;
 }
 
-/** An offer card: figure, name, count, key values, frame colour by rarity. */
-export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps): ReactElement {
+/**
+ * An offer card: figure, name, count, key values, frame colour by rarity. A double pack has a
+ * "x2" banner, an upgrade card shows the upgrade instead of the values (SPEC 4.5).
+ */
+export function CardView({
+  card,
+  level,
+  testId,
+  onTap,
+  onInfo,
+  kind = 'spawn',
+  upgrade = 0,
+  activeMask = 0,
+}: CardViewProps): ReactElement {
   const def = CARDS[card];
   const s = getCardStats(card, level);
   const press = useLongPress(() => onInfo?.());
   const name = cardName(card);
+  const isUpgrade = kind === 'upgrade';
+  const count = unitCount(card, activeMask, kind === 'double');
+  const label = isUpgrade
+    ? `${t('card.upgradeOf', { unit: name })} – ${upgradeName(card, upgrade)}`
+    : kind === 'double'
+      ? `${t('card.double')}: ${name}`
+      : name;
   return (
     <div
-      className={`card card--${def.rarity}`}
+      className={`card card--${def.rarity}${kind === 'double' ? ' card--double' : ''}${
+        isUpgrade ? ' card--upgrade' : ''
+      }`}
       data-testid={testId}
       data-card={card}
+      data-kind={kind}
+      data-upgrade={isUpgrade ? upgrade : undefined}
       role="button"
       tabIndex={0}
-      aria-label={name}
+      aria-label={label}
       {...press.handlers}
       onClick={() => {
         if (!press.consumeClick()) onTap?.();
@@ -102,10 +132,20 @@ export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps):
       }}
       onContextMenu={(e) => e.preventDefault()}
     >
+      {kind === 'double' && (
+        <div className="card__ribbon" data-testid="card-double">
+          <span>{`×${DOUBLE_FACTOR}`}</span> {t('card.double')}
+        </div>
+      )}
+      {isUpgrade && (
+        <div className="card__ribbon card__ribbon--upgrade" data-testid="card-upgrade">
+          {t('card.upgrade')}
+        </div>
+      )}
       <div className="card__art">
         <FigureImage card={card} />
-        <span className="card__level">{t('detail.level', { level })}</span>
-        <span className="card__count">{`×${s.count}`}</span>
+        {!isUpgrade && <span className="card__level">{t('detail.level', { level })}</span>}
+        {!isUpgrade && <span className="card__count">{`×${count}`}</span>}
         <button
           type="button"
           className="card__info"
@@ -120,33 +160,48 @@ export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps):
           <InfoIcon size={18} />
         </button>
       </div>
-      <div className="card__name" style={{ '--len': name.length } as CSSProperties}>
-        {name}
-      </div>
-      <div className="card__stats">
-        <span className="chip">
-          <HpIcon />
-          {formatNumber(s.hp)}
-        </span>
-        <span className="chip">
-          {s.effectKind === 'heal' ? <HealIcon /> : <DamageIcon />}
-          {formatNumber(s.effect)}
-        </span>
-      </div>
-      <div className="card__stats card__stats--more">
-        <span className="chip">
-          {s.rangeKind !== 'contact' && <RangeIcon />}
-          {rangeText(s)}
-        </span>
-        <span className="chip">
-          <ClockIcon />
-          {s.interval === null ? '–' : formatNumber(s.interval)}
-        </span>
-        <span className="chip">
-          <SpeedIcon />
-          {formatNumber(s.speed)}
-        </span>
-      </div>
+      {isUpgrade ? (
+        <>
+          <div className="card__unit">{name}</div>
+          <div
+            className="card__upgrade-name"
+            style={{ '--len': upgradeName(card, upgrade).length } as CSSProperties}
+          >
+            {upgradeName(card, upgrade)}
+          </div>
+          <p className="card__upgrade-text">{upgradeText(card, upgrade)}</p>
+        </>
+      ) : (
+        <>
+          <div className="card__name" style={{ '--len': name.length } as CSSProperties}>
+            {name}
+          </div>
+          <div className="card__stats">
+            <span className="chip">
+              <HpIcon />
+              {formatNumber(s.hp)}
+            </span>
+            <span className="chip">
+              {s.effectKind === 'heal' ? <HealIcon /> : <DamageIcon />}
+              {formatNumber(s.effect)}
+            </span>
+          </div>
+          <div className="card__stats card__stats--more">
+            <span className="chip">
+              {s.rangeKind !== 'contact' && <RangeIcon />}
+              {rangeText(s)}
+            </span>
+            <span className="chip">
+              <ClockIcon />
+              {s.interval === null ? '–' : formatNumber(s.interval)}
+            </span>
+            <span className="chip">
+              <SpeedIcon />
+              {formatNumber(s.speed)}
+            </span>
+          </div>
+        </>
+      )}
     </div>
   );
 }

@@ -1,17 +1,27 @@
 import { CARD_IDS, MAX_LEVEL } from '@rumble-realms/engine';
 import { beforeEach, describe, expect, it } from 'vitest';
 import { START_DECK } from './config.ts';
-import { DECK_STORAGE_KEY, levelOf, sanitizeDeckData, useDeckStore } from './deckStore.ts';
+import {
+  DECK_STORAGE_KEY,
+  levelOf,
+  sanitizeDeckData,
+  upgradesOf,
+  useDeckStore,
+} from './deckStore.ts';
 
 function reset(): void {
-  useDeckStore.setState({ deck: [...START_DECK], levels: {} });
+  useDeckStore.setState({ deck: [...START_DECK], levels: {}, upgrades: {} });
 }
 
 describe('sanitizeDeckData', () => {
-  const start = { deck: [...START_DECK], levels: {} };
+  const start = { deck: [...START_DECK], levels: {}, upgrades: {} };
 
   it('keeps valid data', () => {
-    const ok = { deck: ['assassin', 'tnt', 'knight', 'archer'], levels: { tnt: 3, knight: 5 } };
+    const ok = {
+      deck: ['assassin', 'tnt', 'knight', 'archer'],
+      levels: { tnt: 3, knight: 5 },
+      upgrades: { tnt: 3, knight: 0 },
+    };
     expect(sanitizeDeckData(ok)).toEqual(ok);
   });
 
@@ -157,5 +167,51 @@ describe('deck store with a working localStorage', () => {
       delete (globalThis as { localStorage?: unknown }).localStorage;
       reset();
     }
+  });
+});
+
+describe('upgrades', () => {
+  beforeEach(reset);
+
+  it('a missing card has all upgrades (D-073)', () => {
+    expect(upgradesOf({}, 'knight')).toBe(7);
+    expect(upgradesOf({ knight: 2 }, 'knight')).toBe(2);
+    expect(upgradesOf({ knight: 0 }, 'knight')).toBe(0);
+  });
+
+  it('toggleUpgrade switches one bit and leaves the other cards alone', () => {
+    const s = useDeckStore.getState();
+    s.toggleUpgrade('knight', 1);
+    expect(useDeckStore.getState().upgrades).toEqual({ knight: 5 });
+    s.toggleUpgrade('knight', 1);
+    expect(useDeckStore.getState().upgrades).toEqual({ knight: 7 });
+    s.toggleUpgrade('archer', 0);
+    s.toggleUpgrade('archer', 2);
+    expect(upgradesOf(useDeckStore.getState().upgrades, 'archer')).toBe(2);
+    expect(upgradesOf(useDeckStore.getState().upgrades, 'knight')).toBe(7);
+  });
+
+  it('toggleUpgrade ignores invalid input', () => {
+    const s = useDeckStore.getState();
+    s.toggleUpgrade('knight', 3);
+    s.toggleUpgrade('knight', -1);
+    s.toggleUpgrade('knight', 0.5);
+    s.toggleUpgrade('dragon' as never, 0);
+    expect(useDeckStore.getState().upgrades).toEqual({});
+  });
+
+  it('accepts old saved data without the field', () => {
+    const old = { deck: ['assassin', 'tnt', 'knight', 'archer'], levels: { tnt: 3 } };
+    expect(sanitizeDeckData(old).upgrades).toEqual({});
+    expect(sanitizeDeckData(old).levels).toEqual({ tnt: 3 });
+  });
+
+  it('drops invalid masks and unknown cards', () => {
+    const got = sanitizeDeckData({
+      upgrades: { knight: 8, tnt: -1, archer: 1.5, bat: '3', dragon: 2, healer: 4, golem: 0 },
+    });
+    expect(got.upgrades).toEqual({ healer: 4, golem: 0 });
+    expect(sanitizeDeckData({ upgrades: [1] }).upgrades).toEqual({});
+    expect(sanitizeDeckData({ upgrades: null }).upgrades).toEqual({});
   });
 });

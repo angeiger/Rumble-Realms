@@ -1,7 +1,8 @@
 /** App state outside React: current screen and the running game session. */
 import { BOT_PROFILES } from '@rumble-realms/engine';
 import { create } from 'zustand';
-import { useDeckStore } from './deckStore.ts';
+import { useBotStore } from './botStore.ts';
+import { upgradesOf, useDeckStore } from './deckStore.ts';
 import { createLocalSession } from './session.ts';
 import type { BattleSpeed, GameSession, SessionSnapshot } from './types.ts';
 
@@ -53,16 +54,18 @@ export const useGameStore = create<GameStore>()((set, get) => ({
 
   startMatch() {
     detach();
-    const bots = BOT_PROFILES.filter((p) => p.level === 'easy');
+    const level = useBotStore.getState().level;
+    const bots = BOT_PROFILES.filter((p) => p.level === level);
     const bot = bots[randomIndex(bots.length)] ?? (bots[0] as (typeof bots)[number]);
     // The human's name stays empty: the UI shows its own i18n text for "you".
-    const { deck, levels } = useDeckStore.getState();
+    const { deck, levels, upgrades } = useDeckStore.getState();
     const session = createLocalSession({
       seed: randomSeed(),
       bot,
       playerName: '',
       playerDeck: deck,
       playerLevels: levels,
+      playerUpgrades: Object.fromEntries(deck.map((card) => [card, upgradesOf(upgrades, card)])),
     });
     unsubscribe = session.subscribe(() => {
       if (get().session === session) set({ snapshot: session.getSnapshot() });

@@ -3,13 +3,30 @@
  * state is only read. Figures are sprites with cached textures; all animation is a
  * transformation of the whole figure (D-037).
  */
-import { CARDS, type BattleState, type CardId, type PlayerIndex } from '@rumble-realms/engine';
+import {
+  AIR,
+  CARDS,
+  type BattleState,
+  type CardId,
+  type PlayerIndex,
+  type UnitState,
+} from '@rumble-realms/engine';
 import { Container, Sprite, Texture } from 'pixi.js';
-import { FIGURE_BOX, type Team } from './figures.ts';
+import { FIGURE_BOX, type FigureId, type Team } from './figures.ts';
 import { fieldToScreen, type FieldLayout, type Point } from './layout.ts';
 import { PALETTE } from './palette.ts';
 import { clamp, easeOutBack, unitFieldPosition } from './motion.ts';
-import type { AnchoredTexture, FigureTextures } from './textures.ts';
+import { StatusOverlay } from './statusOverlay.ts';
+import type { AnchoredTexture, EffectTextures, FigureTextures } from './textures.ts';
+import {
+  bodyAlpha,
+  bodyTint,
+  figureFor,
+  isHeld,
+  overlayFlags,
+  sizeFactor,
+  zombieLying,
+} from './unitLook.ts';
 
 /** Height and width of a figure in field widths (SPEC 10). */
 export const FIGURE_CELLS = 1.3;
@@ -28,6 +45,10 @@ const NUMBER_INTERVAL_MS = 300;
 /** Air units hover this high above the ground point, in cells. */
 const AIR_LIFT_CELLS = 0.6;
 const AIR_ZINDEX = 100000;
+/** A changing size (growth, giant) eases in this time constant. */
+const SIZE_EASE_MS = 140;
+/** A risen zombie lies down at once and gets up in this time. */
+const RISE_MS = 320;
 
 export type NumberKind = 'hitOwn' | 'hitEnemy' | 'heal';
 
@@ -45,6 +66,8 @@ const FUSE_WHITE = 0xffffff;
 export class UnitView {
   id = 0;
   card: CardId = 'archer';
+  /** Figure currently drawn (differs from the card for zombies, ghosts and mini golems). */
+  figure: FigureId = 'archer';
   owner: PlayerIndex = 0;
   air = false;
   moveSpeed = 0;
@@ -69,6 +92,18 @@ export class UnitView {
   lift = 0;
   /** Top of the figure above the ground point in pixels, for bars and numbers. */
   topPx = 0;
+  /** Same for size 1. */
+  topBase = 0;
+  /** Size factor now (eases) and wanted (giant, daughter, growth). 0 = not set yet. */
+  size = 0;
+  sizeTarget = 1;
+  /** Status overlay bits of this frame and the overlay sprites (made on first use). */
+  fxFlags = 0;
+  overlay: StatusOverlay | null = null;
+  tintApplied = 0xffffff;
+  bodyAlphaWanted = 1;
+  /** Zombie: 1 = lying flat, 0 = standing; eases in between while getting up. */
+  lie = 0;
 
   seen = -1;
   hp = -1;
@@ -140,12 +175,19 @@ export class UnitViews {
   private readonly layers: Layers;
   private readonly textures: FigureTextures;
   private readonly shadowTexture: Texture;
+  private readonly fxTextures: EffectTextures;
   private readonly sink: NumberSink;
 
-  constructor(layers: Layers, textures: FigureTextures, shadowTexture: Texture, sink: NumberSink) {
+  constructor(
+    layers: Layers,
+    textures: FigureTextures,
+    fxTextures: EffectTextures,
+    sink: NumberSink,
+  ) {
     this.layers = layers;
     this.textures = textures;
-    this.shadowTexture = shadowTexture;
+    this.fxTextures = fxTextures;
+    this.shadowTexture = fxTextures.dot;
     this.sink = sink;
     layers.units.sortableChildren = true;
   }
@@ -168,7 +210,8 @@ export class UnitViews {
     this.k = UnitViews.pixelsPerUnit(layout.cell);
     // Everything measured in pixels is recomputed on the next frame.
     for (const v of this.list) {
-      v.topPx = v.fig.anchor.y * v.fig.texture.height * this.k;
+      v.topBase = v.fig.anchor.y * v.fig.texture.height * this.k;
+      v.topPx = v.topBase * Math.max(v.size, 0.1);
       v.hp = -1;
     }
   }
@@ -191,14 +234,23 @@ export class UnitViews {
 
   /** Attack, shot or heal of `id` aimed at `targetId`: lunge towards the target. */
   attack(id: number, targetId: number): void {
+    const t = this.map.get(targetId);
+    this.lunge(id, t?.sx, t?.sy);
+  }
+
+  /** Attack of `id` aimed at a point on the screen (lobbed shell): lunge towards it. */
+  attackAt(id: number, x: number, y: number): void {
+    this.lunge(id, x, y);
+  }
+
+  private lunge(id: number, tx: number | undefined, ty: number | undefined): void {
     const v = this.map.get(id);
     if (v === undefined || v.dying) return;
-    const t = this.map.get(targetId);
     let dx = 0;
     let dy = -1;
-    if (t !== undefined) {
-      dx = t.sx - v.sx;
-      dy = t.sy - v.sy;
+    if (tx !== undefined && ty !== undefined) {
+      dx = tx - v.sx;
+      dy = ty - v.sy;
       const len = Math.hypot(dx, dy);
       if (len > 1e-3) {
         dx /= len;
@@ -257,7 +309,7 @@ export class UnitViews {
       if (u === undefined) continue;
       let v = this.map.get(u.id);
       if (v === undefined) {
-        v = this.create(u.id, u.card, u.owner, u.layer === 1, me);
+        v = this.create(u.id, u.card, u.owner, u.layer === AIR, me);
         if (crowd) {
           v.spawnMs = CROWD_SPAWN_MS;
           v.age = -(newIndex / fresh) * CROWD_SPREAD_MS;
@@ -265,7 +317,13 @@ export class UnitViews {
         }
       }
       v.seen = frameNo;
-      if (v.texGen !== gen) this.applyTextures(v);
+      const figure = figureFor(u);
+      if (v.texGen !== gen || v.figure !== figure) {
+        v.figure = figure;
+        this.applyTextures(v);
+      }
+      if (v.air !== (u.layer === AIR)) this.setAir(v, u.layer === AIR);
+      this.applyLook(v, u, battle.tick, dt);
 
       unitFieldPosition(u, v.moveSpeed, alpha, this.pos);
       fieldToScreen(layout, me, this.pos.x, this.pos.y, this.pos);
@@ -277,7 +335,7 @@ export class UnitViews {
       if (u.fuseTick >= 0 && v.fuseTicks > 0) {
         fuse = clamp(1 - (u.fuseTick - (battle.tick + alpha)) / v.fuseTicks, 0, 1);
       }
-      this.animate(v, dt, now, u.moveCost > 0, charging, fuse);
+      this.animate(v, dt, now, u.moveCost > 0 && !isHeld(v.fxFlags), charging, fuse);
       if (v.marker.visible !== charging) v.marker.visible = charging;
       if (charging) this.placeMarker(v, u.jumpX, u.jumpY, layout, me, now);
       if (v.dmgAcc > 0 && now >= v.dmgNextAt) this.flushNumber(v, now);
@@ -290,6 +348,8 @@ export class UnitViews {
         v.dying = true;
         v.deathT = 0;
         v.bar.visible = false;
+        v.overlay?.reset();
+        v.fxFlags = 0;
         if (v.dmgAcc > 0) this.flushNumber(v, now);
       }
       if (v.dying) {
@@ -368,6 +428,15 @@ export class UnitViews {
     const v = this.pool.pop() ?? new UnitView();
     v.id = id;
     v.card = card;
+    v.figure = card;
+    v.size = 0;
+    v.sizeTarget = 1;
+    v.fxFlags = 0;
+    v.overlay?.reset();
+    v.fig.tint = 0xffffff;
+    v.tintApplied = 0xffffff;
+    v.bodyAlphaWanted = 1;
+    v.lie = 0;
     v.owner = owner;
     v.air = air;
     v.moveSpeed = CARDS[card].moveSpeed;
@@ -417,6 +486,38 @@ export class UnitViews {
     return v;
   }
 
+  /** Moves a view to the air or the ground layer (a lich ghost floats up). */
+  private setAir(v: UnitView, air: boolean): void {
+    v.air = air;
+    if (air) this.layers.floor.addChild(v.shadow);
+    else v.shadow.removeFromParent();
+  }
+
+  /** Reads the status and variant of `u` into the view: size, tint, opacity, overlay flags. */
+  private applyLook(v: UnitView, u: UnitState, tick: number, dt: number): void {
+    v.sizeTarget = sizeFactor(u);
+    if (v.size === 0) v.size = v.sizeTarget;
+    else v.size += (v.sizeTarget - v.size) * Math.min(1, dt / SIZE_EASE_MS);
+    v.topPx = v.topBase * v.size;
+
+    const flags = overlayFlags(u, tick);
+    v.fxFlags = flags;
+    if (zombieLying(u, tick)) v.lie = 1;
+    else if (v.lie > 0) v.lie = Math.max(0, v.lie - dt / RISE_MS);
+    const tint = bodyTint(flags, u.ghost);
+    if (tint !== v.tintApplied) {
+      v.tintApplied = tint;
+      v.fig.tint = tint;
+    }
+    v.bodyAlphaWanted = bodyAlpha(flags, u.ghost);
+    if (flags !== 0 && v.overlay === null) {
+      const o = new StatusOverlay(this.fxTextures);
+      v.overlay = o;
+      v.root.addChildAt(o.under, 0);
+      v.root.addChildAt(o.over, v.root.getChildIndex(v.bar));
+    }
+  }
+
   private release(v: UnitView, index: number): void {
     this.map.delete(v.id);
     const last = this.list.length - 1;
@@ -430,7 +531,7 @@ export class UnitViews {
   }
 
   private applyTextures(v: UnitView): void {
-    const fig: AnchoredTexture = this.textures.figure(v.card, v.team);
+    const fig: AnchoredTexture = this.textures.figure(v.figure, v.team);
     const ring: AnchoredTexture = this.textures.ring(v.team);
     v.fig.texture = fig.texture;
     v.fig.anchor.set(fig.anchorX, fig.anchorY);
@@ -440,7 +541,8 @@ export class UnitViews {
     v.ring.anchor.set(ring.anchorX, ring.anchorY);
     v.shadow.texture = this.shadowTexture;
     v.marker.texture = this.shadowTexture;
-    v.topPx = fig.anchorY * fig.texture.height * this.k;
+    v.topBase = fig.anchorY * fig.texture.height * this.k;
+    v.topPx = v.topBase * Math.max(v.size, 0.1);
     v.texGen = this.textures.generation;
   }
 
@@ -499,7 +601,7 @@ export class UnitViews {
       const s = Math.cos(w * 2) * 0.04;
       sx += s;
       sy -= s;
-    } else {
+    } else if (!isHeld(v.fxFlags)) {
       const b = Math.sin(now * 0.0055 + v.phase);
       sy += b * 0.03;
       sx -= b * 0.015;
@@ -573,6 +675,17 @@ export class UnitViews {
       sx *= s;
       sy *= s;
     }
+    sx *= v.size;
+    sy *= v.size;
+
+    if (v.lie > 0) {
+      // Risen zombie: flat on the ground, then it gets up.
+      const e = v.lie * v.lie * (3 - 2 * v.lie);
+      rot += v.deathDir * (Math.PI / 2) * e;
+      sy *= 1 - 0.3 * e;
+      ox -= v.deathDir * v.topPx * 0.35 * e;
+      oy -= cell * 0.12 * e;
+    }
 
     let lift = 0;
     if (v.air) lift = AIR_LIFT_CELLS * cell + Math.sin(now * 0.004 + v.phase) * cell * 0.06;
@@ -581,6 +694,8 @@ export class UnitViews {
     v.body.position.set(ox, oy - lift);
     v.body.scale.set(k * sx, k * sy);
     v.body.rotation = rot;
+    if (v.body.alpha !== v.bodyAlphaWanted) v.body.alpha = v.bodyAlphaWanted;
+    v.overlay?.update(v.fxFlags, now, v.phase, cell, cell * 0.95 * v.size, v.topPx * 0.95, lift);
     this.placeSupport(v, flash);
   }
 
@@ -603,7 +718,7 @@ export class UnitViews {
     v.lift = lift;
     v.body.position.set(0, -lift);
     v.body.rotation = v.deathDir * (Math.PI / 2) * (1 - (1 - p) * (1 - p));
-    v.body.scale.set(k * (1 + 0.15 * p), k * (1 - 0.45 * p));
+    v.body.scale.set(k * v.size * (1 + 0.15 * p), k * v.size * (1 - 0.45 * p));
     v.body.alpha = p < 0.5 ? 1 : 1 - (p - 0.5) * 2;
     v.ring.alpha = 1 - p;
     v.shadow.alpha = 0.3 * (1 - p);
@@ -617,7 +732,7 @@ export class UnitViews {
     v.root.position.set(v.sx, v.sy);
     v.root.zIndex = (v.air ? AIR_ZINDEX : 0) + v.sy;
     v.ring.position.set(v.sx, v.sy);
-    v.ring.scale.set(k * 0.95);
+    v.ring.scale.set(k * 0.95 * (0.6 + 0.4 * v.size));
     if (v.air) {
       v.shadow.position.set(v.sx, v.sy + cell * 0.05);
       const near = 1 - Math.min(1, v.lift / (AIR_LIFT_CELLS * cell * 1.4));

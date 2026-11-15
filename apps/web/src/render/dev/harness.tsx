@@ -7,6 +7,9 @@ export function mountHarness(root: HTMLElement, name: string): void {
     case 'canvas':
       void import('./canvasHarness.tsx').then((m) => m.mountCanvasHarness(root));
       return;
+    case 'fx':
+      void import('./fxHarness.tsx').then((m) => m.mountFxHarness(root));
+      return;
     default:
       root.textContent = `Unknown harness: ${name}`;
   }

@@ -1,4 +1,6 @@
+import { BOT_PROFILES } from '@rumble-realms/engine';
 import { beforeEach, describe, expect, it } from 'vitest';
+import { useBotStore } from './botStore.ts';
 import { useDeckStore } from './deckStore.ts';
 import { START_DECK } from './config.ts';
 import { useGameStore } from './store.ts';
@@ -77,5 +79,25 @@ describe('game store', () => {
     expect(second).not.toBe(first);
     first?.setSpeed(2);
     expect(useGameStore.getState().snapshot?.speed).toBe(1);
+  });
+
+  it('startMatch uses a bot of the chosen level and the unlocked upgrades of the deck store', () => {
+    useBotStore.setState({ level: 'hard' });
+    useDeckStore.setState({
+      deck: ['assassin', 'tnt', 'knight', 'archer'],
+      levels: {},
+      upgrades: { tnt: 2, knight: 0 },
+    });
+    try {
+      useGameStore.getState().startMatch();
+      const snap = useGameStore.getState().snapshot;
+      expect(BOT_PROFILES.find((p) => p.name === snap?.players[1].name)?.level).toBe('hard');
+      // Missing = all unlocked (D-073).
+      expect(snap?.players[0].upgrades).toEqual({ assassin: 7, tnt: 2, knight: 0, archer: 7 });
+      expect(snap?.activeUpgrades).toEqual([{}, {}]);
+    } finally {
+      useBotStore.setState({ level: 'easy' });
+      useDeckStore.setState({ deck: [...START_DECK], levels: {}, upgrades: {} });
+    }
   });
 });

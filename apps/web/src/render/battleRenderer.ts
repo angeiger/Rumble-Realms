@@ -4,7 +4,13 @@
  * The battle state is only read (SPEC 6.4).
  */
 import { DESTROY_RENDERER } from './destroy.ts';
-import type { BattleEvent, BattleState, PlayerIndex } from '@rumble-realms/engine';
+import {
+  CARDS,
+  unitById,
+  type BattleEvent,
+  type BattleState,
+  type PlayerIndex,
+} from '@rumble-realms/engine';
 import { Application, Container, Graphics } from 'pixi.js';
 import type { GameSession, SessionPhase } from '../game/types.ts';
 import { CANVAS_BACKGROUND, drawBackdrop } from './backdrop.ts';
@@ -23,6 +29,7 @@ import {
   destroyEffectTextures,
   type EffectTextures,
 } from './textures.ts';
+import { summonStyle } from './unitLook.ts';
 import { UnitViews } from './unitViews.ts';
 
 export interface BattleRendererStats {
@@ -131,7 +138,7 @@ class Scene implements BattleRenderer {
     this.views = new UnitViews(
       { floor, units },
       this.figureTextures,
-      this.effectTextures.dot,
+      this.effectTextures,
       this.effects,
     );
 
@@ -303,10 +310,79 @@ class Scene implements BattleRenderer {
       }
       case 'zone': {
         fieldToScreen(this.layout, this.me, e.x, e.y, this.a);
-        this.effects.zone(e.id, this.a.x, this.a.y, (e.radius / 1000) * cell, e.endTick);
+        this.effects.zone(e.id, e.kind, this.a.x, this.a.y, (e.radius / 1000) * cell, e.endTick);
+        break;
+      }
+      case 'lob': {
+        fieldToScreen(this.layout, this.me, e.x, e.y, this.a);
+        const shooter = this.views.get(e.unit);
+        let radius = 1500;
+        let sx = this.a.x;
+        let sy = this.a.y;
+        if (shooter !== undefined) {
+          sx = shooter.sx;
+          sy = shooter.sy - shooter.lift - cell * 0.55;
+          const attack = CARDS[shooter.card].attack;
+          if (attack.kind === 'artillery') radius = attack.radius;
+          this.views.attackAt(e.unit, this.a.x, this.a.y);
+        }
+        const flight = shooter !== undefined ? this.flightTicks(shooter.card) : 30;
+        this.effects.lob(
+          e.id,
+          sx,
+          sy,
+          this.a.x,
+          this.a.y,
+          this.launchTickOf(battle, e.id, e.impactTick - flight),
+          e.impactTick,
+          (radius / 1000) * cell,
+        );
+        break;
+      }
+      case 'impact': {
+        fieldToScreen(this.layout, this.me, e.x, e.y, this.a);
+        this.effects.impact(e.kind, this.a.x, this.a.y, (e.radius / 1000) * cell);
+        break;
+      }
+      case 'breath': {
+        fieldToScreen(this.layout, this.me, e.x, e.y, this.a);
+        fieldToScreen(this.layout, this.me, e.tx, e.ty, this.b);
+        this.views.attackAt(e.unit, this.b.x, this.b.y);
+        const whelp = this.views.get(e.unit);
+        const lift = whelp?.lift ?? 0;
+        this.effects.breath(
+          this.a.x,
+          this.a.y - lift - cell * 0.45,
+          this.b.x,
+          this.b.y - lift - cell * 0.45,
+          e.range * cell,
+        );
+        break;
+      }
+      case 'summon': {
+        fieldToScreen(this.layout, this.me, e.x, e.y, this.a);
+        const unit = unitById(battle, e.unit);
+        const style = summonStyle(e.card, unit?.variant ?? 'normal', unit?.ghost ?? false);
+        this.effects.summon(style, this.a.x, this.a.y);
         break;
       }
     }
+  }
+
+  /** Flight time of an artillery shell of `card`, in ticks. */
+  private flightTicks(card: keyof typeof CARDS): number {
+    const attack = CARDS[card].attack;
+    return attack.kind === 'artillery' ? attack.flightTicks : 30;
+  }
+
+  /** Launch tick of the projectile `id` while it is in flight, else `fallback`. */
+  private launchTickOf(battle: BattleState, id: number, fallback: number): number {
+    const projectiles = battle.projectiles;
+    for (let i = 0; i < projectiles.length; i++) {
+      const p = projectiles[i];
+      if (p !== undefined && p.id === id) return p.launchTick;
+    }
+    return fallback;
   }
 
   // ---- cleanup ------------------------------------------------------------------------

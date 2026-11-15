@@ -5,6 +5,7 @@
  * All randomness comes from the options (seeds), so a session is fully reproducible.
  */
 import {
+  ALL_UPGRADES_MASK,
   applyPick,
   chooseBotPick,
   BOT_LEVELS,
@@ -25,6 +26,7 @@ import {
   type PlayerIndex,
   type RoundOutcome,
   type RngState,
+  upgradesForLevel,
 } from '@rumble-realms/engine';
 import {
   BOT_THINK_MS,
@@ -55,6 +57,11 @@ export interface LocalSessionOptions {
   playerDeck?: CardId[];
   /** Levels of the human's cards; missing or invalid entries count as level 1. */
   playerLevels?: Partial<Record<CardId, number>>;
+  /**
+   * Unlocked upgrades of the human's cards, bit mask 0..7 per card (bit i = upgrade i).
+   * Missing cards have none. The bot owns what its card level allows (D-073).
+   */
+  playerUpgrades?: Partial<Record<CardId, number>>;
 }
 
 /** The session plus access to the engine state, for tests (not part of the contract). */
@@ -82,6 +89,23 @@ function levelsOf(
         : level;
   }
   return levels;
+}
+
+/** Unlocked upgrade masks of `deck`: `own` if valid (0..7), else `fallback`. */
+function masksOf(
+  deck: readonly CardId[],
+  fallback: number,
+  own?: Partial<Record<CardId, number>>,
+): Partial<Record<CardId, number>> {
+  const masks: Partial<Record<CardId, number>> = {};
+  for (const card of deck) {
+    const wanted = own?.[card];
+    masks[card] =
+      wanted !== undefined && Number.isInteger(wanted) && wanted >= 0 && wanted <= ALL_UPGRADES_MASK
+        ? wanted
+        : fallback;
+  }
+  return masks;
 }
 
 /** Lives after the finished battle, computed like `endRound` does (shown during `roundEnd`). */
@@ -123,19 +147,21 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
       isBot: false,
       deck: playerDeck,
       levels: levelsOf(playerDeck, 1, options.playerLevels),
+      upgrades: masksOf(playerDeck, 0, options.playerUpgrades),
     },
     {
       name: options.bot.name,
       isBot: true,
       deck: botDeck,
       levels: levelsOf(botDeck, botLevel.cardLevel),
+      upgrades: masksOf(botDeck, upgradesForLevel(botLevel.cardLevel)),
     },
   ];
   const match = createMatch({
     seed: options.seed,
     players: [
-      { deck: playerDeck, levels: { ...players[0].levels } },
-      { deck: botDeck, levels: { ...players[1].levels } },
+      { deck: playerDeck, levels: { ...players[0].levels }, upgrades: { ...players[0].upgrades } },
+      { deck: botDeck, levels: { ...players[1].levels }, upgrades: { ...players[1].upgrades } },
     ],
   });
   const botRng: RngState = seedRng(options.botSeed ?? options.seed, STREAM_BOT);
@@ -175,6 +201,7 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
       roundResult,
       winner: match.winner,
       speed,
+      activeUpgrades: [{ ...match.activeUpgrades[0] }, { ...match.activeUpgrades[1] }],
     };
     return deepFreeze(snap);
   }

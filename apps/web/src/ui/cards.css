@@ -184,6 +184,79 @@
   paint-order: stroke fill;
 }
 
+/* Special cards (SPEC 4.5): ribbon above the figure; the upgrade card shows text instead of values. */
+.card__ribbon {
+  margin: -3px -3px 3px;
+  padding: 1px 4px;
+  border-radius: 10px 10px 4px 4px;
+  background: var(--gold);
+  font-family: var(--font-display);
+  font-size: 0.74rem;
+  line-height: 1.25;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.card__ribbon span {
+  font-size: 0.9rem;
+}
+
+.card__ribbon--upgrade {
+  background: var(--green);
+}
+
+.card--double {
+  box-shadow:
+    0 0 0 3px var(--gold),
+    0 4px 0 3px var(--outline);
+}
+
+.card--upgrade {
+  background: #e9f6df;
+}
+
+.card--upgrade .card__art {
+  height: 66px;
+}
+
+.card--upgrade .figure {
+  height: 56px;
+}
+
+.card__unit {
+  padding-top: 4px;
+  font-size: 0.7rem;
+  font-weight: 800;
+  line-height: 1.1;
+  text-align: center;
+  opacity: 0.75;
+}
+
+.card__upgrade-name {
+  padding: 1px 2px 3px;
+  font-family: var(--font-display);
+  font-size: clamp(0.8rem, calc(12rem / var(--len, 10)), 1.25rem);
+  line-height: 1.1;
+  text-align: center;
+  overflow-wrap: anywhere;
+}
+
+.card__upgrade-text {
+  margin: 0;
+  padding: 0 2px;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 6;
+  line-clamp: 6;
+  overflow: hidden;
+  font-size: 0.66rem;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+}
+
 /* Detail dialog */
 .dialog--card {
   max-width: 340px;
@@ -328,4 +401,107 @@
   font-weight: 800;
   text-align: center;
   opacity: 0.7;
+}
+
+/* Upgrade list in the detail view, with test-mode switches (D-073). */
+.detail__upgrades {
+  margin-top: 10px;
+}
+
+.detail__upgrades-title {
+  margin: 0 0 4px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.1rem;
+  text-align: center;
+}
+
+.upgrade-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.upgrade-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  border: 3px solid transparent;
+  border-radius: 12px;
+  background: #efe4b8;
+}
+
+.upgrade-row--highlight {
+  border-color: var(--gold);
+  background: #fff1b8;
+  box-shadow: 0 0 0 2px var(--outline);
+}
+
+.upgrade-row__body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.upgrade-row__name {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.upgrade-row__text {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+/* On/off switch; the button is 48 px wide and tall enough to hit (touch target >= 44 px). */
+.switch {
+  flex: none;
+  position: relative;
+  width: 52px;
+  height: 44px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+}
+
+.switch::before {
+  content: '';
+  position: absolute;
+  inset: 8px 0;
+  border: 3px solid var(--outline);
+  border-radius: 999px;
+  background: #9aa0b8;
+}
+
+.switch--on::before {
+  background: var(--green);
+}
+
+.switch__knob {
+  position: absolute;
+  top: 11px;
+  left: 5px;
+  width: 22px;
+  height: 22px;
+  border: 3px solid var(--outline);
+  border-radius: 50%;
+  background: var(--cream);
+  transition: transform 0.15s var(--ease-spring);
+}
+
+.switch--on .switch__knob {
+  transform: translateX(20px);
+}
+
+.switch:focus-visible {
+  outline: 3px solid var(--gold);
+  outline-offset: 2px;
 }
