@@ -106,7 +106,7 @@
   "card.pyromancer.name": "Pyromancer",
   "card.pyromancer.text": "Sets targets on fire and calls a meteor on the largest enemy group every 10 s.",
   "card.necromancer.name": "Necromancer",
-  "card.necromancer.text": "Summons a skeleton every 4 seconds and attacks itself.",
+  "card.necromancer.text": "Summons a weak skeleton every 4 seconds and also attacks on its own.",
   "card.beetle.name": "Bombardier Beetle",
   "card.beetle.text": "Shells the whole field with artillery and leaves acid puddles.",
   "card.golem.name": "Stone Golem",

@@ -753,7 +753,7 @@ export function runBalance(o: BalanceOptions): number {
   const header = [
     '# Balance-Bericht',
     '',
-    '> **VORLÄUFIG, kleine Stichprobe, Engine noch in Arbeit.** Die Zahlen sind nur ein Funktionstest des Tools und keine Balance-Aussage. Erzeugt mit `pnpm sim balance`.',
+    '> Erzeugt mit `pnpm sim balance` (gleicher Seed und gleiche Parameter ergeben dieselbe Datei). Maßgeblich für die Balance ist die Siegquote je Karte im Deck (Abschnitt 2); zur Einordnung der übrigen Abschnitte siehe `docs/DECISIONS.md`, D-078.',
     '',
     '## Parameter',
     '',
