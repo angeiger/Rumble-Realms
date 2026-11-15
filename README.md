@@ -4,7 +4,7 @@ Rumble Realms ist ein rundenbasiertes Auto-Battler-Kartenspiel für das Handy im
 
 Es läuft als Progressive Web App (PWA) im Browser und soll auf Android und iOS installierbar sein.
 
-Stand: Meilenstein M2 (spielbarer Prototyp) – ein lokales Spiel gegen den Bot „Leicht“ mit festem Deck.
+Stand: Meilenstein M3 (volle Kampfmechanik) – lokales Spiel gegen die Bots „Leicht“, „Mittel“ und „Schwer“ mit allen 16 Einheiten, 48 Upgrades und Sonderkarten; das Deck wählt man im Deck-Tab.
 
 ## Voraussetzungen
 
@@ -23,6 +23,8 @@ Stand: Meilenstein M2 (spielbarer Prototyp) – ein lokales Spiel gegen den Bot 
 | `pnpm build`       | Baut die Web-App für die Auslieferung                               |
 | `pnpm preview`     | Zeigt die gebaute App (nach `pnpm build`) auf http://localhost:5173 |
 | `pnpm sim`         | Kommandozeilen-Simulation, z. B. `pnpm sim match --seed 42`         |
+| `pnpm sim balance` | Balance-Bericht, schreibt `docs/BALANCE.md` (`pnpm sim --help`)     |
+| `pnpm sim tune`    | Schlägt Kartenwerte für eine ausgeglichene Siegquote vor            |
 | `pnpm test:robust` | Spielt viele Zufallsmatches und prüft sie (`--matches N`)           |
 | `pnpm test:e2e`    | Ende-zu-Ende-Tests im Test-Browser (baut die App, Port 4173)        |
 | `pnpm format`      | Formatiert alle Dateien mit Prettier                                |
@@ -40,6 +42,7 @@ Stand: Meilenstein M2 (spielbarer Prototyp) – ein lokales Spiel gegen den Bot 
 
 - [docs/SPEC.md](docs/SPEC.md): verbindliche Spezifikation
 - [docs/DECISIONS.md](docs/DECISIONS.md): getroffene Annahmen
+- [docs/BALANCE.md](docs/BALANCE.md): Ergebnisse der Balance-Simulation
 - [CLAUDE.md](CLAUDE.md): Arbeitsweise der Agenten
 
 ## Meilensteine
@@ -48,8 +51,8 @@ Stand: Meilenstein M2 (spielbarer Prototyp) – ein lokales Spiel gegen den Bot 
 | --- | ---------------------- | ---------- |
 | M0  | Projektgerüst          | fertig     |
 | M1  | Engine ohne Grafik     | fertig     |
-| M2  | Spielbarer Prototyp    | in Abnahme |
-| M3  | Volle Kampfmechanik    | offen      |
+| M2  | Spielbarer Prototyp    | fertig     |
+| M3  | Volle Kampfmechanik    | in Abnahme |
 | M4  | Konten und Fortschritt | offen      |
 | M5  | Online gegen Freunde   | offen      |
 | M6  | Feinschliff            | offen      |
