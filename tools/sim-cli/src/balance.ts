@@ -1,5 +1,6 @@
 /**
- * Balance tool (SPEC 12): card against card, whole-match statistics and deck against deck.
+ * Balance tool (SPEC 12): card against card, card in a deck, whole-match statistics (with mirror
+ * matches and living units per tick) and deck against deck.
  * Writes docs/BALANCE.md (German) and prints a short summary. Everything is derived from the
  * start seed, so two runs with the same options give the same file (no time stamps in it).
  * Built only on the public engine exports (the single-card battles use the army and
@@ -25,6 +26,7 @@ import {
   seedRng,
   simulateToEnd,
   startBattle,
+  stepTick,
   unitCount,
 } from '@rumble-realms/engine';
 import type {
@@ -37,12 +39,33 @@ import type {
   PlayerIndex,
 } from '@rumble-realms/engine';
 
-/** Stream number for random picks (the engine itself uses 1..4; robust uses 100). */
-const PICK_STREAM = 100;
+import {
+  PICK_STREAM,
+  ci95,
+  deckWinRates,
+  firstRoundLeadTheory,
+  fullPlayer,
+  randomDeck,
+  randomSeed,
+  runDeckCardMatches,
+} from './deckStats.ts';
+import type { DeckCardResults } from './deckStats.ts';
+import { num, pc, table } from './report.ts';
+
 export const DEFAULT_BALANCE_SEED = 20260101;
 /** Marks cards whose mean win rate leaves this corridor (SPEC 12: no card above 60 %). */
 const HIGH_PERCENT = 60;
 const LOW_PERCENT = 40;
+/** Card in a deck: target corridor and the limits beyond which a card is conspicuous. */
+export const DECK_TARGET_LOW = 45;
+export const DECK_TARGET_HIGH = 55;
+export const DECK_FLAG_LOW = 42;
+export const DECK_FLAG_HIGH = 58;
+/** Random streams of the start seed for the new sections (randomConfig uses 7). */
+const DECK_CARD_STREAM = 11;
+const MIRROR_STREAM = 12;
+/** Extra pick counts of the card duels (mean only, no matrix). */
+const EXTRA_PICKS = [1, 6] as const;
 
 /** Thematic decks for the deck against deck table: four different cards each. */
 export const THEME_DECKS: readonly { name: string; deck: readonly CardId[] }[] = [
@@ -63,9 +86,16 @@ export interface BalanceOptions {
   duels: number;
   matches: number;
   deckMatches: number;
+  /** Random matches for the win rate of a card in a deck. */
+  cardMatches: number;
+  /** Mirror matches (both players the same deck) for the round 1 lead (D-057). */
+  mirrorMatches: number;
   out: string;
-  only: 'cards' | 'matches' | 'decks' | 'all';
+  only: BalancePart | 'all';
 }
+
+export const BALANCE_PARTS = ['cards', 'deckcards', 'matches', 'decks'] as const;
+export type BalancePart = (typeof BALANCE_PARTS)[number];
 
 // ---------------------------------------------------------------------------
 // 1. Card against card
@@ -125,27 +155,28 @@ function duelBattle(
   return simulateToEnd(startBattle(state));
 }
 
-interface CardResults {
+export interface CardResults {
   /** score[i][j]: points of card i against card j (win 1, draw 0.5), in [0, 1]. */
   score: number[][];
   mean: number[];
 }
 
-function runCards(o: BalanceOptions): CardResults {
+/** Every card against every other card, `duels` seeds per pair, both side assignments each. */
+export function runCards(seed: number, duels: number, picks: number, level: number): CardResults {
   const n = CARD_IDS.length;
   const score: number[][] = CARD_IDS.map(() => CARD_IDS.map(() => 0.5));
   for (let i = 0; i < n; i++) {
     for (let j = i + 1; j < n; j++) {
       let points = 0;
       let battles = 0;
-      for (let d = 0; d < o.duels; d++) {
-        const seed = o.seed * 1_000 + (i * n + j) * 100 + d;
+      for (let d = 0; d < duels; d++) {
+        const battleSeed = seed * 1_000 + (i * n + j) * 100 + d;
         const a = CARD_IDS[i] as CardId;
         const b = CARD_IDS[j] as CardId;
-        const r1 = duelBattle(seed, a, b, o.picks, o.level);
+        const r1 = duelBattle(battleSeed, a, b, picks, level);
         points += r1.winner === 0 ? 1 : r1.winner === 'draw' ? 0.5 : 0;
         // Swapped sides, same seed.
-        const r2 = duelBattle(seed, b, a, o.picks, o.level);
+        const r2 = duelBattle(battleSeed, b, a, picks, level);
         points += r2.winner === 1 ? 1 : r2.winner === 'draw' ? 0.5 : 0;
         battles += 2;
       }
@@ -173,6 +204,15 @@ interface RoundField {
   forfeited: number;
   /** Highest own row (0 = base line, 11 = next to the middle) occupied by any unit. */
   maxFrontRow: number;
+  /** Most units alive at the same time during a battle, both sides together (D-060). */
+  peakAlive: number;
+  /** Most units of one side alive at the same time during a battle. */
+  peakAliveSide: number;
+  /** Sum over the battles of their peak of living units (both sides), for the mean. */
+  peakAliveSum: number;
+  /** Units summoned during one battle (both sides), maximum and sum. */
+  maxSummons: number;
+  summonsSum: number;
 }
 
 interface MatchResults {
@@ -197,7 +237,53 @@ function otherSide(p: PlayerIndex): PlayerIndex {
   return p === 0 ? 1 : 0;
 }
 
-/** Plays a match with random picks and collects the statistics. `onMatch` may be omitted. */
+function newRoundField(): RoundField {
+  return {
+    battles: 0,
+    maxUnits: 0,
+    forfeited: 0,
+    maxFrontRow: 0,
+    peakAlive: 0,
+    peakAliveSide: 0,
+    peakAliveSum: 0,
+    maxSummons: 0,
+    summonsSum: 0,
+  };
+}
+
+/**
+ * Runs the battle of `state` tick by tick (the same ticks `simulateToEnd` runs, so the result
+ * is identical) and returns the peaks of living units, both sides and one side.
+ */
+export function battleWithPeaks(state: MatchState): {
+  result: BattleResult;
+  both: number;
+  side: number;
+} {
+  const battle = startBattle(state);
+  let both = 0;
+  let side = 0;
+  const count = (): void => {
+    let a = 0;
+    let b = 0;
+    for (const u of battle.units) {
+      if (u.hp <= 0) continue;
+      if (u.owner === 0) a++;
+      else b++;
+    }
+    if (a + b > both) both = a + b;
+    if (a > side) side = a;
+    if (b > side) side = b;
+  };
+  count();
+  while (battle.result === null) {
+    stepTick(battle);
+    count();
+  }
+  return { result: battle.result, both, side };
+}
+
+/** Plays a match with random picks and collects the statistics. */
 function playStats(cfg: MatchConfig, r: MatchResults): MatchState {
   const state = createMatch(cfg);
   const picker = randomPicker(seedRng(cfg.seed, PICK_STREAM));
@@ -210,7 +296,7 @@ function playStats(cfg: MatchConfig, r: MatchResults): MatchState {
         r.picks++;
         if (pick.kind === 'double') r.doublePicks++;
         if (pick.kind === 'upgrade') r.upgradePicks++;
-        r.perRound[state.round - 1] ??= { battles: 0, maxUnits: 0, forfeited: 0, maxFrontRow: 0 };
+        r.perRound[state.round - 1] ??= newRoundField();
         (r.perRound[state.round - 1] as RoundField).forfeited += pick.forfeited;
       }
       continue;
@@ -224,7 +310,14 @@ function playStats(cfg: MatchConfig, r: MatchResults): MatchState {
       if (row > field.maxFrontRow) field.maxFrontRow = row;
     }
     field.maxUnits = Math.max(field.maxUnits, units[0], units[1]);
-    const result = simulateToEnd(startBattle(state));
+    const { result, both, side } = battleWithPeaks(state);
+    field.peakAlive = Math.max(field.peakAlive, both);
+    field.peakAliveSide = Math.max(field.peakAliveSide, side);
+    field.peakAliveSum += both;
+    // Ids are handed out in order; everything above the army ids was spawned in the battle.
+    const summoned = state.battle.nextUnitId - state.nextUnitId;
+    field.maxSummons = Math.max(field.maxSummons, summoned);
+    field.summonsSum += summoned;
     r.rounds++;
     r.ticks += result.ticks;
     if (result.reason === 'timeout') r.timeouts++;
@@ -276,6 +369,21 @@ function runMatches(o: BalanceOptions): MatchResults {
   return r;
 }
 
+/**
+ * Mirror matches (D-057): both players get the same random deck at `o.level` with all
+ * upgrades unlocked, so the round 1 winner has no advantage from the deck.
+ */
+function runMirror(o: BalanceOptions): MatchResults {
+  const r = newMatchResults();
+  const rng = seedRng(o.seed, MIRROR_STREAM);
+  for (let i = 0; i < o.mirrorMatches; i++) {
+    const seed = randomSeed(rng);
+    const deck = randomDeck(rng);
+    playStats({ seed, players: [fullPlayer(deck, o.level), fullPlayer(deck, o.level)] }, r);
+  }
+  return r;
+}
+
 // ---------------------------------------------------------------------------
 // 3. Deck against deck
 // ---------------------------------------------------------------------------
@@ -316,20 +424,16 @@ function runDecks(o: BalanceOptions): number[][] {
 // Output
 // ---------------------------------------------------------------------------
 
-const pc = (x: number, digits = 1): string => `${(100 * x).toFixed(digits)}`.replace('.', ',');
-const num = (x: number, digits = 1): string => x.toFixed(digits).replace('.', ',');
+const picksText = (n: number): string => `${n} ${n === 1 ? 'Pick' : 'Picks'}`;
 
-/** Markdown table with padded columns, so that `prettier --check` accepts the file. */
-function table(header: string[], rows: string[][]): string {
-  const all = [header, ...rows];
-  const widths = header.map((_, c) => Math.max(3, ...all.map((r) => (r[c] ?? '').length)));
-  const line = (cells: string[]): string =>
-    `| ${cells.map((cell, c) => cell.padEnd(widths[c] as number)).join(' | ')} |`;
-  const rule = `| ${widths.map((w) => '-'.repeat(w)).join(' | ')} |`;
-  return [line(header), rule, ...rows.map(line)].join('\n');
-}
+/** Mean win rates of the card duels at other pick counts, keyed by the pick count. */
+type ExtraMeans = ReadonlyMap<number, readonly number[]>;
 
-function cardsSection(res: CardResults): { md: string; summary: string[] } {
+export function cardsSection(
+  res: CardResults,
+  extra: ExtraMeans,
+  picks: number,
+): { md: string; summary: string[] } {
   const ids = [...CARD_IDS];
   const matrix = table(
     ['Zeile \\ Spalte', ...ids, 'Mittel'],
@@ -344,21 +448,33 @@ function cardsSection(res: CardResults): { md: string; summary: string[] } {
     .sort((a, b) => (res.mean[b] as number) - (res.mean[a] as number));
   const flag = (m: number): string =>
     m * 100 > HIGH_PERCENT ? '**ZU STARK**' : m * 100 < LOW_PERCENT ? '**ZU SCHWACH**' : 'ok';
+  const extraPicks = [...extra.keys()];
   const ranking = table(
-    ['Rang', 'Karte', 'Mittlere Siegquote (%)', 'Bewertung'],
+    [
+      'Rang',
+      'Karte',
+      `Mittlere Siegquote, ${picksText(picks)} (%)`,
+      'Bewertung',
+      ...extraPicks.map((p) => `${picksText(p)} (%)`),
+    ],
     order.map((i, k) => [
       String(k + 1),
       ids[i] as string,
       pc(res.mean[i] as number),
       flag(res.mean[i] as number),
+      ...extraPicks.map((p) => pc(extra.get(p)?.[i] as number)),
     ]),
   );
+  const extraText =
+    extraPicks.length === 0
+      ? ''
+      : ` Die letzten Spalten zeigen die mittlere Siegquote derselben Duelle mit ${extraPicks.join(' bzw. ')} Picks pro Seite (Skalierung mit der Armeegröße, ohne eigene Matrix).`;
   const md = [
     '## 1. Karte gegen Karte',
     '',
-    `Jede Karte spielt gegen jede andere in einem einzelnen Rundenkampf, in dem beide Seiten dieselbe Zahl Picks ihrer einen Karte haben (ohne Sonderkarten, ohne Upgrades). Jede Seed-Paarung wird mit getauschten Seiten wiederholt.`,
+    `Jede Karte spielt gegen jede andere in einem einzelnen Rundenkampf, in dem beide Seiten dieselbe Zahl Picks ihrer einen Karte haben (ohne Sonderkarten, ohne Upgrades). Jede Seed-Paarung wird mit getauschten Seiten wiederholt. Für einen Draft-Auto-Battler ist das nur bedingt aussagekräftig: Flieger schlagen alle Karten ohne Luftangriff zwangsläufig, Heiler können allein nie gewinnen. Maßgeblich ist deshalb die Siegquote im Deck (Abschnitt 2).`,
     '',
-    '### Siegquote in Prozent (Zeile schlägt Spalte)',
+    `### Siegquote in Prozent (Zeile schlägt Spalte, ${picksText(picks)})`,
     '',
     'Ein Unentschieden zählt halb. Der Mittelwert ist der Schnitt über die 15 Gegner (Diagonale ausgenommen).',
     '',
@@ -366,7 +482,7 @@ function cardsSection(res: CardResults): { md: string; summary: string[] } {
     '',
     '### Rangliste',
     '',
-    `Ziel der SPEC: keine Karte über ${HIGH_PERCENT} % im Schnitt; unter ${LOW_PERCENT} % gilt als zu schwach.`,
+    `Ziel der SPEC: keine Karte über ${HIGH_PERCENT} % im Schnitt; unter ${LOW_PERCENT} % gilt als zu schwach. Die Bewertung bezieht sich auf ${picksText(picks)}.${extraText}`,
     '',
     ranking,
     '',
@@ -388,16 +504,88 @@ function cardsSection(res: CardResults): { md: string; summary: string[] } {
   };
 }
 
-function matchesSection(r: MatchResults): { md: string; summary: string[] } {
+/** Rating of a win rate of a card in a deck (target 45..55 %, conspicuous below 42 / above 58). */
+export function deckFlag(rate: number): string {
+  // The shown percentage (one decimal), so that rating and number agree.
+  const p = Math.round(rate * 1000) / 10;
+  if (p > DECK_FLAG_HIGH) return '**ZU STARK**';
+  if (p < DECK_FLAG_LOW) return '**ZU SCHWACH**';
+  if (p > DECK_TARGET_HIGH) return 'eher stark';
+  if (p < DECK_TARGET_LOW) return 'eher schwach';
+  return 'ok';
+}
+
+/** Ranking table of the win rate of each card in a deck, best first. */
+export function deckCardTable(r: DeckCardResults): string {
+  const rates = deckWinRates(r);
+  const order = CARD_IDS.map((_, i) => i).sort(
+    (a, b) => (rates[b] as number) - (rates[a] as number) || a - b,
+  );
+  return table(
+    ['Rang', 'Karte', 'Deck-Einsätze', 'Siegquote (%)', '95-%-Intervall (±)', 'Bewertung'],
+    order.map((i, k) => {
+      const rate = rates[i] as number;
+      return [
+        String(k + 1),
+        CARD_IDS[i] as string,
+        String(r.uses[i]),
+        pc(rate),
+        pc(ci95(rate, r.uses[i] as number)),
+        deckFlag(rate),
+      ];
+    }),
+  );
+}
+
+function deckCardsSection(r: DeckCardResults, level: number): { md: string; summary: string[] } {
+  const rates = deckWinRates(r);
+  const md = [
+    '## 2. Siegquote je Karte im Deck',
+    '',
+    `${r.matches} ganze Matches mit zufälligen Decks (je 4 verschiedene Karten aus allen 16), beide Seiten Level ${level}, alle Upgrades freigeschaltet, Zufallspicks mit Sonderkarten. Jede Karte bekommt das Ergebnis des Spielers, in dessen Deck sie steckt (Sieg 1, Unentschieden 0,5, Niederlage 0); steckt sie in beiden Decks, zählt sie für beide. Das Intervall ist die grobe Normalnäherung ±1,96·√(p(1−p)/n).`,
+    '',
+    `Ziel ${DECK_TARGET_LOW}–${DECK_TARGET_HIGH} %; unter ${DECK_FLAG_LOW} % bzw. über ${DECK_FLAG_HIGH} % gilt eine Karte als auffällig.`,
+    '',
+    deckCardTable(r),
+    '',
+  ].join('\n');
+  const flagged = CARD_IDS.map((c, i) => ({ c, rate: rates[i] as number }))
+    .filter(({ rate }) => deckFlag(rate).startsWith('**'))
+    .sort((a, b) => b.rate - a.rate)
+    .map(({ c, rate }) => `${c} ${pc(rate)} %`);
+  return {
+    md,
+    summary: [
+      `Card in deck (${r.matches} matches) outside ${DECK_FLAG_LOW}..${DECK_FLAG_HIGH} %: ${flagged.length === 0 ? 'none' : flagged.join(', ')}`,
+    ],
+  };
+}
+
+function rate(n: number, d: number): number {
+  return n / Math.max(1, d);
+}
+
+function matchesSection(
+  r: MatchResults,
+  mirror: MatchResults,
+  level: number,
+): { md: string; summary: string[] } {
+  const theory = firstRoundLeadTheory();
+  const mirrorRate = rate(mirror.r1WinnerWins, mirror.r1Decisive);
   const kpi = table(
     ['Kennzahl', 'Wert'],
     [
       ['Matches', String(r.matches)],
       [
         'Siegquote des Siegers von Runde 1 (%)',
-        `${pc(r.r1WinnerWins / Math.max(1, r.r1Decisive))} (von ${r.r1Decisive} Matches mit Rundensieger)`,
+        `${pc(rate(r.r1WinnerWins, r.r1Decisive))} (von ${r.r1Decisive} Matches mit Rundensieger)`,
       ],
-      ['Verlierer von Runde 1 dreht das Match (%)', pc(r.comebacks / Math.max(1, r.r1Decisive))],
+      [
+        'Dasselbe in Spiegel-Matches (%)',
+        `${pc(mirrorRate)} ± ${pc(ci95(mirrorRate, mirror.r1Decisive))} (von ${mirror.r1Decisive} Matches mit Rundensieger)`,
+      ],
+      ['Rechnerisch bei unabhängigen 50:50-Runden (%)', `${pc(theory)} (42/64)`],
+      ['Verlierer von Runde 1 dreht das Match (%)', pc(rate(r.comebacks, r.r1Decisive))],
       ['Matches mit Unentschieden (%)', pc(r.matchDraws / r.matches)],
       ['Runden pro Match, Mittel', num(r.rounds / r.matches)],
       ['Runden pro Match, Maximum', String(r.maxRounds)],
@@ -421,6 +609,11 @@ function matchesSection(r: MatchResults): { md: string; summary: string[] } {
       'Max. Einheiten pro Seite',
       'Verfallene Einheiten',
       'Vorderste belegte Reihe (0-11)',
+      'Max. gleichzeitig lebend (beide)',
+      'Max. gleichzeitig lebend (pro Seite)',
+      'Spitze lebend, Mittel (beide)',
+      'Max. Beschwörungen',
+      'Beschwörungen, Mittel',
     ],
     r.perRound.map((f, i) => [
       String(i + 1),
@@ -428,29 +621,40 @@ function matchesSection(r: MatchResults): { md: string; summary: string[] } {
       String(f?.maxUnits ?? 0),
       String(f?.forfeited ?? 0),
       String(f?.maxFrontRow ?? 0),
+      String(f?.peakAlive ?? 0),
+      String(f?.peakAliveSide ?? 0),
+      num(rate(f?.peakAliveSum ?? 0, f?.battles ?? 0)),
+      String(f?.maxSummons ?? 0),
+      num(rate(f?.summonsSum ?? 0, f?.battles ?? 0)),
     ]),
   );
   const md = [
-    '## 2. Match-Kennzahlen',
+    '## 3. Match-Kennzahlen',
     '',
     'Ganze Zufallsmatches (zufällige Decks, Level, freigeschaltete Upgrades und Picks, mit Sonderkarten). Ziel der SPEC 4.3: ein bis drei aktive Upgrades pro Spieler am Ende. Die Siegquote des Rundensiegers zeigt, wie stark ein früher Vorsprung trägt (D-057).',
+    '',
+    `Weil in Zufallsmatches meist das stärkere Deck die erste Runde gewinnt, misst die Zeile „Spiegel-Matches“ denselben Wert in ${mirror.matches} eigenen Matches, in denen beide Spieler dasselbe zufällige Deck spielen (Level ${level}, alle Upgrades freigeschaltet). Zum Vergleich der rechnerische Wert, wenn jede weitere Runde unabhängig 50:50 ausginge: Der Sieger von Runde 1 braucht noch 3 Rundensiege, bevor der Gegner 4 hat (42/64). Liegt der gemessene Wert darüber, wächst ein früher Vorsprung trotz Verlierer-Bonus weiter; liegt er darunter, gleicht der Verlierer-Bonus ihn teilweise aus.`,
     '',
     kpi,
     '',
     '### Feldgröße je Rundennummer',
     '',
-    'Größte Einheitenzahl einer Seite zu Kampfbeginn, Einheiten, die wegen voller Hälfte verfielen (nur beim Platzieren der Picks gezählt, ohne Wiederholung pro Runde), und die vorderste je belegte eigene Reihe (D-054, D-060).',
+    'Größte Einheitenzahl einer Seite zu Kampfbeginn, Einheiten, die wegen voller Hälfte verfielen (nur beim Platzieren der Picks gezählt, ohne Wiederholung pro Runde), und die vorderste je belegte eigene Reihe (D-054, D-060). Dazu die größte Zahl gleichzeitig lebender Einheiten während eines Kampfes (nach jedem Tick gezählt, beide Seiten zusammen und die vollere Seite), der Mittelwert dieser Spitze über die Kämpfe und die im Kampf beschworenen Einheiten (Skelette, Zombies, Mini-Golems, Töchter, Wiederbelebte, Geister).',
     '',
     field,
     '',
   ].join('\n');
   const first = r.perRound.reduce((m, f) => Math.max(m, f?.forfeited ?? 0), 0);
+  const peak = r.perRound.reduce((m, f) => Math.max(m, f?.peakAlive ?? 0), 0);
+  const peakSide = r.perRound.reduce((m, f) => Math.max(m, f?.peakAliveSide ?? 0), 0);
+  const summons = r.perRound.reduce((m, f) => Math.max(m, f?.maxSummons ?? 0), 0);
   return {
     md,
     summary: [
       `Matches: ${r.matches}, rounds/match mean ${num(r.rounds / r.matches)} (max ${r.maxRounds}), battle ${num(r.ticks / r.rounds / TICKS_PER_SECOND)} s, time limit ${pc(r.timeouts / r.rounds)} %, draw rounds ${pc(r.drawRounds / r.rounds)} %`,
-      `Round 1 winner wins match: ${pc(r.r1WinnerWins / Math.max(1, r.r1Decisive))} %, comebacks ${pc(r.comebacks / Math.max(1, r.r1Decisive))} %`,
+      `Round 1 winner wins match: ${pc(rate(r.r1WinnerWins, r.r1Decisive))} %, in ${mirror.matches} mirror matches ${pc(mirrorRate)} % (theory ${pc(theory)} %), comebacks ${pc(rate(r.comebacks, r.r1Decisive))} %`,
       `Special picks ${pc((r.doublePicks + r.upgradePicks) / r.picks)} %, active upgrades per player ${num(r.activeAtEnd / (2 * r.matches), 2)}, max forfeited units in a round ${first}`,
+      `Most units alive at once: ${peak} (one side ${peakSide}), most summons in one battle ${summons}`,
     ],
   };
 }
@@ -477,7 +681,7 @@ function decksSection(score: number[][]): { md: string; summary: string[] } {
     ]),
   );
   const md = [
-    '## 3. Deck gegen Deck',
+    '## 4. Deck gegen Deck',
     '',
     'Acht feste, thematische Decks spielen ganze Matches mit Zufallspicks gegeneinander (alle Upgrades freigeschaltet, Seiten abwechselnd).',
     '',
@@ -502,8 +706,7 @@ function decksSection(score: number[][]): { md: string; summary: string[] } {
 
 export function runBalance(o: BalanceOptions): number {
   const started = performance.now();
-  const want = (part: 'cards' | 'matches' | 'decks'): boolean =>
-    o.only === 'all' || o.only === part;
+  const want = (part: BalancePart): boolean => o.only === 'all' || o.only === part;
   const sections: string[] = [];
   const summary: string[] = [];
   const timing: string[] = [];
@@ -514,12 +717,31 @@ export function runBalance(o: BalanceOptions): number {
     return value;
   };
   if (want('cards')) {
-    const s = cardsSection(step('cards', () => runCards(o)));
+    const res = step('cards', () => runCards(o.seed, o.duels, o.picks, o.level));
+    const extra = new Map<number, number[]>();
+    for (const p of EXTRA_PICKS) {
+      if (p === o.picks) continue;
+      extra.set(
+        p,
+        step(`cards ${p} picks`, () => runCards(o.seed, o.duels, p, o.level).mean),
+      );
+    }
+    const s = cardsSection(res, extra, o.picks);
+    sections.push(s.md);
+    summary.push(...s.summary);
+  }
+  if (want('deckcards')) {
+    const res = step('deck cards', () =>
+      runDeckCardMatches(o.seed, DECK_CARD_STREAM, o.cardMatches, o.level),
+    );
+    const s = deckCardsSection(res, o.level);
     sections.push(s.md);
     summary.push(...s.summary);
   }
   if (want('matches')) {
-    const s = matchesSection(step('matches', () => runMatches(o)));
+    const r = step('matches', () => runMatches(o));
+    const mirror = step('mirror', () => runMirror(o));
+    const s = matchesSection(r, mirror, o.level);
     sections.push(s.md);
     summary.push(...s.summary);
   }
@@ -540,10 +762,18 @@ export function runBalance(o: BalanceOptions): number {
       [
         ['ENGINE_VERSION', String(ENGINE_VERSION)],
         ['Start-Seed (`--seed`)', String(o.seed)],
-        ['Picks pro Karte im Kartenduell (`--picks`)', String(o.picks)],
-        ['Level im Kartenduell und Deckduell (`--level`)', `${o.level} (max. ${MAX_LEVEL})`],
+        [
+          'Picks pro Karte im Kartenduell (`--picks`)',
+          `${o.picks} (Zusatzspalten ${EXTRA_PICKS.filter((p) => p !== o.picks).join(' und ')})`,
+        ],
+        [
+          'Level im Kartenduell, Deckduell, Karte im Deck und Spiegel-Matches (`--level`)',
+          `${o.level} (max. ${MAX_LEVEL})`,
+        ],
         ['Seeds pro Kartenpaar (`--duels`, je beide Seitenverteilungen)', String(o.duels)],
+        ['Matches für die Siegquote je Karte im Deck (`--card-matches`)', String(o.cardMatches)],
         ['Zufallsmatches (`--matches`)', String(o.matches)],
+        ['Spiegel-Matches (`--mirror-matches`)', String(o.mirrorMatches)],
         ['Matches pro Deckpaar (`--deck-matches`)', String(o.deckMatches)],
         ['Teil (`--only`)', o.only],
       ],

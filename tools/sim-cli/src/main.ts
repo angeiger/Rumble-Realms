@@ -25,7 +25,9 @@ import {
   startBattle,
   stepTick,
 } from '@rumble-realms/engine';
-import { DEFAULT_BALANCE_SEED, runBalance } from './balance.ts';
+import { BALANCE_PARTS, DEFAULT_BALANCE_SEED, runBalance } from './balance.ts';
+import type { BalancePart } from './balance.ts';
+import { DEFAULT_TUNE_SEED, runTune } from './tune.ts';
 import type {
   BattleEvent,
   CardId,
@@ -63,15 +65,31 @@ Commands:
   robust  Play many random matches and check them; prints statistics per round
             --matches N     number of matches (default ${DEFAULT_ROBUST_MATCHES})
             --seed N        start seed of the random configs (default ${DEFAULT_SEED})
-  balance Card against card, match statistics and deck against deck; writes a Markdown report
+  balance Card against card, card in a deck, match statistics and deck against deck;
+          writes a Markdown report
             --seed N        start seed (default fixed; same seed = same file)
             --picks N       picks of the one card per side in card duels (default 3)
             --level N       level 1..${MAX_LEVEL} in card and deck duels (default 1)
-            --duels N       seeds per card pair, both side assignments each (default 20)
+            --duels N       seeds per card pair, both side assignments each (default 1; duels are deterministic since D-070)
             --matches N     random matches for the match statistics (default 300)
+            --card-matches N  random matches for the win rate of a card in a deck (default 1000)
+            --mirror-matches N  mirror matches for the round 1 lead (default 400)
             --deck-matches N  matches per deck pair (default 20)
-            --only P        cards, matches or decks (default: all)
+            --only P        ${BALANCE_PARTS.join(', ')} (default: all)
             --out PATH      target file (default docs/BALANCE.md)
+  tune    Propose HP and damage factors per card for a win rate in a deck near 50 %
+          (changes the card values in memory only, never the engine files)
+            --seed N        start seed (default fixed)
+            --iterations N  tracking steps (default 8)
+            --matches N     random matches per iteration (default 1500)
+            --level N       level 1..${MAX_LEVEL} of both sides (default 1)
+            --min X         smallest factor (default 0.6)
+            --max X         largest factor (default 1.6)
+            --gain X        relative change per percentage point off 50 %, /100 (default 3)
+            --max-step X    largest relative change per iteration (default 0.25)
+            --duels N       seeds per pair for the final card duel ranking, 0 = off (default 1)
+            --picks N       picks per side in that ranking (default 3)
+            --out PATH      also write the result as Markdown
   golden  Print the JSON for packages/engine/src/golden/replay.json (use: pnpm --silent sim golden > file)
 
 Default decks: ${START_DECK.join(', ')}
@@ -493,24 +511,96 @@ function printRoundStats(stats: RoundStats[]): void {
 function runBalanceCommand(args: string[]): number {
   const options = parseOptions(
     args,
-    ['--seed', '--picks', '--level', '--duels', '--matches', '--deck-matches', '--only', '--out'],
+    [
+      '--seed',
+      '--picks',
+      '--level',
+      '--duels',
+      '--matches',
+      '--card-matches',
+      '--mirror-matches',
+      '--deck-matches',
+      '--only',
+      '--out',
+    ],
     [],
   );
-  const only = options.get('--only') ?? 'all';
-  if (only !== 'all' && only !== 'cards' && only !== 'matches' && only !== 'decks') {
-    throw new UsageError('--only must be cards, matches or decks.');
+  const raw = options.get('--only') ?? 'all';
+  const only = BALANCE_PARTS.find((p) => p === raw) ?? (raw === 'all' ? 'all' : undefined);
+  if (only === undefined) {
+    throw new UsageError(`--only must be ${BALANCE_PARTS.join(', ')}.`);
   }
   const out = options.get('--out');
   return runBalance({
     seed: intOption(options, '--seed', DEFAULT_BALANCE_SEED, 0, 1_000_000_000),
     picks: intOption(options, '--picks', 3, 1, 30),
     level: intOption(options, '--level', 1, 1, MAX_LEVEL),
-    duels: intOption(options, '--duels', 20, 1, 1000),
+    duels: intOption(options, '--duels', 1, 1, 1000),
     matches: intOption(options, '--matches', 300, 1, 1_000_000),
     deckMatches: intOption(options, '--deck-matches', 20, 1, 10_000),
+    cardMatches: intOption(options, '--card-matches', 1000, 1, 1_000_000),
+    mirrorMatches: intOption(options, '--mirror-matches', 400, 1, 1_000_000),
     out: typeof out === 'string' ? out : defaultBalancePath(),
-    only,
+    only: only satisfies BalancePart | 'all',
   });
+}
+
+/** A decimal number option like "0.6" within [min, max]. */
+function numberOption(options: Options, name: string, fallback: number, min: number, max: number) {
+  const raw = options.get(name);
+  if (raw === undefined) return fallback;
+  const value = typeof raw === 'string' && /^\d+(\.\d+)?$/.test(raw) ? Number(raw) : NaN;
+  if (!Number.isFinite(value) || value < min || value > max) {
+    throw new UsageError(`${name} must be a number ${min}..${max}, got "${String(raw)}".`);
+  }
+  return value;
+}
+
+// ---------------------------------------------------------------------------
+// tune
+// ---------------------------------------------------------------------------
+
+function runTuneCommand(args: string[]): number {
+  const options = parseOptions(
+    args,
+    [
+      '--seed',
+      '--iterations',
+      '--matches',
+      '--level',
+      '--min',
+      '--max',
+      '--gain',
+      '--max-step',
+      '--duels',
+      '--picks',
+      '--out',
+    ],
+    [],
+  );
+  const min = numberOption(options, '--min', 0.6, 0.05, 1);
+  const max = numberOption(options, '--max', 1.6, 1, 20);
+  const out = options.get('--out');
+  const started = performance.now();
+  const result = runTune({
+    seed: intOption(options, '--seed', DEFAULT_TUNE_SEED, 0, 1_000_000_000),
+    iterations: intOption(options, '--iterations', 8, 1, 100),
+    matches: intOption(options, '--matches', 1500, 1, 1_000_000),
+    level: intOption(options, '--level', 1, 1, MAX_LEVEL),
+    min,
+    max,
+    gain: numberOption(options, '--gain', 3, 0, 20),
+    maxStep: numberOption(options, '--max-step', 0.25, 0.01, 1),
+    duels: intOption(options, '--duels', 1, 0, 1000),
+    picks: intOption(options, '--picks', 3, 1, 30),
+    out: typeof out === 'string' ? out : undefined,
+    log: (line) => console.log(line),
+  });
+  console.log('');
+  console.log(result.markdown);
+  if (typeof out === 'string') console.log(`Written: ${out}`);
+  console.log(`Run time: ${((performance.now() - started) / 1000).toFixed(1)} s`);
+  return 0;
 }
 
 /** docs/BALANCE.md in the repo root, wherever pnpm runs the script from. */
@@ -539,6 +629,8 @@ function main(argv: string[]): number {
         return runRobust(rest);
       case 'balance':
         return runBalanceCommand(rest);
+      case 'tune':
+        return runTuneCommand(rest);
       case 'golden':
         parseOptions(rest, [], []);
         console.log(JSON.stringify(createGoldenReplay(), null, 2));
