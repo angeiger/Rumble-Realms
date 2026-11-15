@@ -36,7 +36,6 @@ function addArmy(state: MatchState, player: PlayerIndex, card: CardId, double = 
     player,
     card,
     level: 1,
-    column: 0,
     round: 1,
     double,
     unitIds: [],

@@ -26,12 +26,6 @@ export const GRID_CELLS = GRID_COLS * GRID_ROWS;
 export const FIELD = 1000;
 /** Length of a diagonal step in milli-fields (1000 * sqrt 2, rounded). */
 export const DIAGONAL_STEP = 1414;
-/**
- * Army layout (D-052): a unit takes the free cell that minimises
- * (column - center)^2 + FORMATION_ROW_WEIGHT * (row - first row of its group)^2.
- * 4 = a row counts twice as far as a column, so formations grow wide before they grow deep.
- */
-export const FORMATION_ROW_WEIGHT = 4;
 
 // --- Combat ---
 /** Melee reaches the 8 neighbouring cells (SPEC 6.2). */

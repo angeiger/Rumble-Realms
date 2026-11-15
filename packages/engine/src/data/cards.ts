@@ -29,6 +29,20 @@ export const CARD_IDS = [
 
 export type CardId = (typeof CARD_IDS)[number];
 
+/**
+ * Army formation (D-070): the ranks from the own base line towards the middle of the field.
+ * Every rank stands in its own centred rows; cards of one rank share the rows in the order
+ * given here. Flyers hover on the air layer above the rank of the healers.
+ */
+export const FORMATION_RANKS: readonly (readonly CardId[])[] = [
+  ['assassin'],
+  ['archer', 'musketeer', 'pyromancer', 'necromancer', 'frost_shaman', 'beetle'],
+  ['healer', 'bat', 'whelp'],
+  ['knight', 'berserker', 'golem'],
+  ['tnt', 'shroomling'],
+  ['skeleton'],
+];
+
 export const CARDS: Readonly<Record<CardId, CardDef>> = {
   archer: {
     id: 'archer',
@@ -73,7 +87,8 @@ export const CARDS: Readonly<Record<CardId, CardDef>> = {
     zone: 'front',
     layer: GROUND,
     hp: 150,
-    moveSpeed: 75, // 1,5 field/s
+    moveSpeed: 100, // 2,0 fields/s (D-071)
+    keepsTarget: true,
     targets: { ground: true, air: false },
     attack: {
       kind: 'explode',

@@ -477,11 +477,11 @@ describe('Lauf-TNT: all three upgrades (mask 7)', () => {
     busyCorner(b);
     const tnt = up(b, 0, 'tnt', 7, 5, 5);
     post(b, 1, 'bat', 9, 20);
-    expect(tnt).toMatchObject({ maxHp: 300, speed: 120 });
+    expect(tnt).toMatchObject({ maxHp: 300, speed: 160 });
     tnt.hp = 0;
     const log = run(b, 1);
     const daughter = b.units.find((u) => u.id === eventsOf(log, 'summon')[0]!.unit)!;
-    expect(daughter).toMatchObject({ maxHp: 150, speed: 120, up: 6 });
+    expect(daughter).toMatchObject({ maxHp: 150, speed: 160, up: 6 });
   });
 });
 
@@ -744,8 +744,8 @@ describe('Pilzlinge: Riesenpilz (rebuildField)', () => {
     const n = double ? 8 : 4;
     const unitIds = Array.from({ length: n }, (_, i) => 1 + i);
     s.army = [
-      { player: 0, card: 'shroomling', level: 1, column: 5, round: 1, double, unitIds },
-      { player: 1, card: 'bat', level: 1, column: 5, round: 1, double: false, unitIds: [20] },
+      { player: 0, card: 'shroomling', level: 1, round: 1, double, unitIds },
+      { player: 1, card: 'bat', level: 1, round: 1, double: false, unitIds: [20] },
     ];
     s.nextUnitId = 21;
     s.activeUpgrades[0].shroomling = mask;

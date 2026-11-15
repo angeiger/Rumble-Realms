@@ -17,14 +17,7 @@ import { BPS, DECK_SIZE, PICKS_PER_ROUND } from './data/balance.ts';
 import { CARDS } from './data/cards.ts';
 import { applyPick, getOffer, startBattle } from './match.ts';
 import { isqrt, scaleByLevel } from './math.ts';
-import {
-  nextInt,
-  nextU32,
-  seedRng,
-  STREAM_BATTLE,
-  STREAM_OFFERS,
-  STREAM_PLACEMENT,
-} from './rng.ts';
+import { nextInt, nextU32, seedRng, STREAM_BATTLE, STREAM_OFFERS } from './rng.ts';
 import type {
   CardDef,
   CardId,
@@ -270,14 +263,13 @@ function rolloutScore(state: MatchState, player: PlayerIndex): number {
 
 /**
  * Plays the rest of the round on a copy: `slot` now, then random picks for both sides.
- * The copy gets fresh offer, placement and battle streams from `seed`, so the bot never
+ * The copy gets fresh offer and battle streams from `seed`, so the bot never
  * peeks at the real future offers or battle random numbers.
  */
 export function rollout(state: MatchState, slot: number, seed: number): number {
   const player = getOffer(state).player;
   const copy = cloneMatchState(state);
   copy.rng.offers = seedRng(seed, STREAM_OFFERS);
-  copy.rng.placement = seedRng(seed, STREAM_PLACEMENT);
   copy.battle.rng = seedRng(seed, STREAM_BATTLE);
   const picks = seedRng(seed, STREAM_BOT);
   applyPick(copy, slot);

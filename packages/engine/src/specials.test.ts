@@ -216,14 +216,12 @@ describe('offers with special cards (SPEC 4.3)', () => {
         player: 0,
         card: 'knight',
         level: 1,
-        column: i % 12,
         round: 1,
         double: false,
         unitIds: [5000 + 2 * i, 5001 + 2 * i],
       });
     }
     b.nextUnitId = 6000;
-    b.rng.placement = seedRng(4711, 3);
     while (a.phase === 'draft') {
       expect(getOffer(b)).toEqual(getOffer(a));
       applyPick(a, 2);
@@ -276,12 +274,10 @@ describe('upgrade cards (SPEC 4.5)', () => {
     forceOffer(s, [{ kind: 'spawn', card: 'skeleton' }]); // the opponent's skeletons
     applyPick(s, 0);
     expect(unitsOf(s, p, 'skeleton')).toHaveLength(5);
-    const placement = [...s.rng.placement];
     const nextId = s.nextUnitId;
     forceOffer(s, [{ kind: 'upgrade', card: 'skeleton', upgrade: 2 }]); // Rasselbande
     applyPick(s, 0);
-    // No placement draw and no new army entry; the standing card grows to 7 units.
-    expect(s.rng.placement).toEqual(placement);
+    // No new army entry; the standing card grows to 7 units.
     expect(s.army).toHaveLength(2);
     expect(s.activeUpgrades[p]).toEqual({ skeleton: 4 });
     expect(s.activeUpgrades[q]).toEqual({});
@@ -320,15 +316,15 @@ describe('upgrade cards (SPEC 4.5)', () => {
     forceOffer(s, [{ kind: 'spawn', card: 'tnt' }]);
     applyPick(s, 0);
     expect(unitsOf(s, p, 'tnt').map((u) => [u.maxHp, u.speed])).toEqual([
-      [180, 75],
-      [180, 75],
+      [180, 100],
+      [180, 100],
     ]);
     passTo(s, p);
     forceOffer(s, [{ kind: 'upgrade', card: 'tnt', upgrade: 1 }]);
     applyPick(s, 0);
     expect(unitsOf(s, p, 'tnt').map((u) => [u.maxHp, u.speed])).toEqual([
-      [180, 120],
-      [180, 120],
+      [180, 160],
+      [180, 160],
     ]);
     passTo(s, p);
     forceOffer(s, [{ kind: 'upgrade', card: 'tnt', upgrade: 2 }]);
@@ -336,7 +332,7 @@ describe('upgrade cards (SPEC 4.5)', () => {
     expect(s.activeUpgrades[p].tnt).toBe(6);
     // Level 3: 150 * 120 % = 180 HP, doubled by the crate; 75 * 160 % = 120 speed.
     for (const u of unitsOf(s, p, 'tnt')) {
-      expect([u.maxHp, u.hp, u.speed, u.up]).toEqual([360, 360, 120, 6]);
+      expect([u.maxHp, u.hp, u.speed, u.up]).toEqual([360, 360, 160, 6]);
     }
   });
 
@@ -373,7 +369,7 @@ describe('the seven implemented upgrades', () => {
 
   it('Panzerkiste, Glutschuppen and Kurze Lunte change HP and speed', () => {
     expect(unitStats('tnt', 1, 4).maxHp).toBe(300);
-    expect(unitStats('tnt', 1, 2).speed).toBe(120);
+    expect(unitStats('tnt', 1, 2).speed).toBe(160);
     expect(unitStats('whelp', 1, 2).maxHp).toBe(770);
     expect(unitStats('whelp', 5, 2).maxHp).toBe(1078); // 550 * 140 % * 140 %
     expect(unitStats('beetle', 1, 4).maxHp).toBe(560); // Chitinpanzer: 350 * 160 %

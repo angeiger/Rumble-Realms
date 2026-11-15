@@ -41,7 +41,7 @@ describe('Pyromantin', () => {
     expect(shots[0]).toMatchObject({ tick: 0, unit: pyro.id, target: target.id, impactTick: 8 });
     // 4 fields at 10 fields/s = 8 ticks of flight.
     expect(eventsOf(log, 'impact')).toEqual([
-      { type: 'impact', unit: pyro.id, x: 5, y: 9, radius: 1000, tick: 8 },
+      { type: 'impact', kind: 'splash', unit: pyro.id, x: 5, y: 9, radius: 1000, tick: 8 },
     ]);
     for (const u of [target, left, behind, bat]) expect(hitsOn(log, u)).toEqual([70]);
     expect(hitsOn(log, diagonal)).toEqual([]);
@@ -156,7 +156,7 @@ describe('Bombardierkäfer', () => {
       { type: 'lob', id: 1, unit: beetle.id, x: 5, y: 10, impactTick: 30, tick: 0 },
     ]);
     expect(eventsOf(log, 'impact')).toEqual([
-      { type: 'impact', unit: beetle.id, x: 5, y: 10, radius: 1500, tick: 30 },
+      { type: 'impact', kind: 'shell', unit: beetle.id, x: 5, y: 10, radius: 1500, tick: 30 },
     ]);
     expect(hitsOn(log, target)).toEqual([160]);
     expect(hitsOn(log, diagonal)).toEqual([160]);
@@ -266,7 +266,7 @@ describe('Drachenjunges', () => {
     expect(attackTicks(log, whelp.id)).toEqual([0]);
     // 2 fields at 12 fields/s: 4 ticks.
     expect(eventsOf(log, 'impact')).toEqual([
-      { type: 'impact', unit: whelp.id, x: 5, y: 10, radius: 1000, tick: 4 },
+      { type: 'impact', kind: 'splash', unit: whelp.id, x: 5, y: 10, radius: 1000, tick: 4 },
     ]);
     for (const u of [target, side, bat]) expect(hitsOn(log, u)).toEqual([55]);
   });

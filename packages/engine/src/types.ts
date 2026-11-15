@@ -128,6 +128,11 @@ export interface CardDef {
   rarity: Rarity;
   /** Arena (1-5) whose pool contains this card. */
   arena: number;
+  /**
+   * Lauf-TNT (D-071): the unit sticks to its target until that target dies or can no longer
+   * be targeted, instead of looking for a nearer one every 0.5 s. A taunt still overrides.
+   */
+  keepsTarget?: boolean;
   /** Berserker: attack interval shrinks linearly with missing HP; heals from damage dealt. */
   rage?: { intervalReductionTicks: number; lifestealBps: number };
   /**
@@ -502,20 +507,18 @@ export interface PickInfo {
    * an upgrade the units the army gained through it (e.g. two more skeletons per card).
    */
   spawned: number[];
-  /** New units that found no free cell in the player's half (D-052). */
+  /** New units that found no row in the player's half (D-055, D-070). */
   forfeited: number;
 }
 
 /**
  * One card played in this match (D-046, D-053). The whole army is set up again on the
- * field after every pick and at the start of every round.
+ * field after every pick and at the start of every round (D-070).
  */
 export interface ArmyEntry {
   player: PlayerIndex;
   card: CardId;
   level: number;
-  /** Random center column of the card, relative to the owner (0..11, D-052). */
-  column: number;
   /** Round in which the card was played (1-based). */
   round: number;
   /** Played as double pack: twice the units, in this and every later round (SPEC 4.5). */
@@ -557,8 +560,11 @@ export interface MatchState {
   lastPick: PickInfo | null;
   /** Finished rounds, oldest first. */
   rounds: RoundOutcome[];
-  /** Separate streams so that e.g. placement never shifts the offers (SPEC 6.1). */
-  rng: { match: RngState; offers: RngState; placement: RngState };
+  /**
+   * Separate streams (SPEC 6.1): coin flips and offers. The battle has its own stream in
+   * `battle.rng`; the formation needs no random numbers (D-070).
+   */
+  rng: { match: RngState; offers: RngState };
   /** Every card played so far by both players, in pick order (D-053). */
   army: ArmyEntry[];
   /** Upgrades activated in this match per player and card (bit masks, missing = 0). */

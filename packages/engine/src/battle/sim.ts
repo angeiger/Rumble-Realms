@@ -705,7 +705,7 @@ function chooseTarget(b: BattleState, u: UnitState): void {
     alive &&
     isTargetable(current, b.tick) &&
     (minSq === 0 || distSq(u.x, u.y, current.x, current.y) >= minSq);
-  if (valid && b.tick < u.retargetTick) return;
+  if (valid && (b.tick < u.retargetTick || def.keepsTarget === true)) return;
   setTarget(b, u, nearestEnemy(u, def, b.tick, minSq), 'attack');
 }
 

@@ -3,13 +3,12 @@
  * growing army (SPEC 4.2, 4.3, 4.5, D-020, D-046, D-053).
  *
  * The state is mutated in place (D-019). Random numbers come from separate streams
- * (D-029): coin flips from `match`, offers from `offers`, center columns from `placement`,
- * so e.g. a different placement never changes the offers.
+ * (D-029): coin flips from `match`, offers from `offers`, the battle from its own
+ * stream. The formation is not random (D-070).
  */
 import { createBattle } from './battle/state.ts';
 import {
   DECK_SIZE,
-  GRID_COLS,
   LOSER_BONUS_PICKS,
   MAX_LEVEL,
   OFFER_SIZE,
@@ -26,15 +25,7 @@ import {
 } from './data/specials.ts';
 import { ALL_UPGRADES_MASK } from './data/upgrades.ts';
 import { rebuildField } from './placement.ts';
-import {
-  nextInt,
-  seedRng,
-  shuffle,
-  STREAM_BATTLE,
-  STREAM_MATCH,
-  STREAM_OFFERS,
-  STREAM_PLACEMENT,
-} from './rng.ts';
+import { nextInt, seedRng, shuffle, STREAM_BATTLE, STREAM_MATCH, STREAM_OFFERS } from './rng.ts';
 import type {
   ArmyEntry,
   BattleState,
@@ -200,7 +191,6 @@ export function createMatch(cfg: MatchConfig): MatchState {
     rng: {
       match: seedRng(seed, STREAM_MATCH),
       offers: seedRng(seed, STREAM_OFFERS),
-      placement: seedRng(seed, STREAM_PLACEMENT),
     },
     army: [],
     activeUpgrades: [{}, {}],
@@ -243,12 +233,12 @@ export function getOffer(state: MatchState): Offer {
 /**
  * Plays the card in `slot` of the current offer and moves on; after the last pick of the
  * round the phase switches to `battle`.
- * - normal card / double pack: adds it to the army with a random center column (exactly
- *   one draw of the placement stream, D-030); a double pack has twice the units (SPEC 4.5).
- * - upgrade card: activates the upgrade for the rest of the match (SPEC 4.5); no placement
- *   draw, no new army entry.
+ * - normal card / double pack: adds it to the army; a double pack has twice the units
+ *   (SPEC 4.5).
+ * - upgrade card: activates the upgrade for the rest of the match (SPEC 4.5); no new army
+ *   entry.
  * Then every army entry gets fresh unit ids up to its current unit count (new cards, or
- * more units through an upgrade) and the whole field is set up again (D-052).
+ * more units through an upgrade) and the whole field is set up again (D-070).
  */
 export function applyPick(state: MatchState, slot: number): MatchState {
   const offer = requireDraft(state, 'applyPick');
@@ -266,7 +256,6 @@ export function applyPick(state: MatchState, slot: number): MatchState {
       player,
       card,
       level: state.config.players[player].levels[card] ?? 1,
-      column: nextInt(state.rng.placement, GRID_COLS),
       round: state.round,
       double: chosen.kind === 'double',
       unitIds: [],

@@ -39,6 +39,35 @@ const FUSE = 25; // 1.25 s
 const CHARGE = 50; // 2.5 s
 
 describe('Lauf-TNT', () => {
+  it('keeps its target until it dies, even if another enemy comes closer (D-071)', () => {
+    const b = field();
+    const tnt = put(b, 0, 'tnt', 2, 2, { maxHp: 10_000 });
+    const far = dummy(b, 1, 'archer', 2, 20);
+    run(b, 1);
+    expect(tnt.targetId).toBe(far.id);
+    // A second enemy appears much closer, well outside the fuse range.
+    const near = put(b, 1, 'knight', 9, 4);
+    run(b, 15); // more than one retarget interval
+    expect(tnt.targetId).toBe(far.id);
+    // An archer at the same spot would have switched to the nearer enemy.
+    const archer = put(b, 0, 'archer', 0, 0);
+    run(b, 12);
+    expect(archer.targetId).toBe(near.id);
+    // Once the target is dead, the TNT picks the nearest enemy again.
+    far.hp = 0;
+    run(b, 2);
+    expect(tnt.targetId).toBe(near.id);
+  });
+
+  it('runs 2 fields per second (D-071)', () => {
+    const b = field();
+    const tnt = put(b, 0, 'tnt', 5, 0, { maxHp: 10_000 });
+    dummy(b, 1, 'archer', 5, 23);
+    run(b, 100); // 5 s
+    expect(tnt.y).toBeGreaterThanOrEqual(9);
+    expect(tnt.y).toBeLessThanOrEqual(10);
+  });
+
   it('runs to the nearest ground enemy and ignores air units', () => {
     const b = field();
     const tnt = put(b, 0, 'tnt', 5, 5);

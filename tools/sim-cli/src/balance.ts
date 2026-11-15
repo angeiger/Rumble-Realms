@@ -12,7 +12,6 @@ import {
   CARD_IDS,
   DECK_SIZE,
   ENGINE_VERSION,
-  GRID_COLS,
   GRID_ROWS,
   MAX_LEVEL,
   TICKS_PER_SECOND,
@@ -20,7 +19,6 @@ import {
   applyPick,
   createMatch,
   endRound,
-  nextInt,
   randomConfig,
   randomPicker,
   rebuildField,
@@ -88,7 +86,7 @@ function deckWith(card: CardId): CardId[] {
  * One battle in which player 0 plays `picks` copies of `a` and player 1 `picks` copies of `b`,
  * all at `level`, without special cards and upgrades. Workaround: the public flow only
  * offers random deck cards, so the army entries are put into the match state directly (the
- * same fields `applyPick` fills: random column from the placement stream, fresh unit ids)
+ * same fields `applyPick` fills, with fresh unit ids)
  * and the field is built with `rebuildField`.
  */
 function duelBattle(
@@ -115,7 +113,6 @@ function duelBattle(
         player,
         card,
         level,
-        column: nextInt(state.rng.placement, GRID_COLS),
         round: 1,
         double: false,
         unitIds: ids,
