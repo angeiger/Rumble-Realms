@@ -65,19 +65,73 @@ test('Draft: ein Tippen spielt, Info spielt nicht, Karten über dem Feld', async
     const card = document.querySelector<HTMLElement>('[data-testid="offer-card-1"]');
     card?.click();
     await new Promise((r) => setTimeout(r, 40));
-    return document.querySelector('[data-testid="played-ghost"]') !== null;
+    const ghost = document.querySelector('[data-testid="played-ghost"]') !== null;
+    // While the opponent chooses (which can be short), no cards cover the field. Checked inside
+    // the page at every frame, because the opponent's turn may be over before a test step runs.
+    let opponentTurnSeen = false;
+    let cardsDuringOpponentTurn = 0;
+    const end = performance.now() + 3000;
+    while (performance.now() < end && !opponentTurnSeen) {
+      const bar = document.querySelector('[data-testid="draft-bar"]');
+      if (bar?.getAttribute('data-my-turn') === 'false') {
+        opponentTurnSeen = true;
+        cardsDuringOpponentTurn = document.querySelectorAll('[data-testid^="offer-card-"]').length;
+      } else {
+        await new Promise((r) => requestAnimationFrame(() => r(null)));
+      }
+    }
+    return { ghost, opponentTurnSeen, cardsDuringOpponentTurn };
   });
-  expect(played).toBe(true);
+  expect(played.ghost).toBe(true);
+  expect(played.opponentTurnSeen).toBe(true);
+  expect(played.cardsDuringOpponentTurn).toBe(0);
   await expect(page.getByTestId('pick-hint')).toBeVisible();
-  await expect(page.getByTestId('draft-bar')).toHaveAttribute('data-my-turn', 'false');
-  // While the opponent chooses, no cards cover the field
-  await expect(page.getByTestId('offer-card-0')).toHaveCount(0);
 
   // Second pick
   await waitForMyTurn(page);
   const hint = await page.getByTestId('pick-hint').textContent();
+  // The hint sits in the middle third of the screen and does not overlap the offer cards or the screen edge
+  await page.waitForTimeout(500); // past the fade-in slide
+  const hintBox = await page
+    .getByTestId('pick-hint')
+    .locator('.pick-hint__text')
+    .first()
+    .boundingBox();
+  const offerBox = await page.getByTestId('offer-card-0').boundingBox();
+  const viewport = page.viewportSize() ?? { width: 412, height: 915 };
+  expect(hintBox).not.toBeNull();
+  expect(offerBox).not.toBeNull();
+  const hintMid = (hintBox?.y ?? 0) + (hintBox?.height ?? 0) / 2;
+  expect(hintMid).toBeGreaterThan(viewport.height / 3);
+  expect(hintMid).toBeLessThan((viewport.height * 2) / 3);
+  expect((hintBox?.y ?? 0) + (hintBox?.height ?? 0)).toBeLessThanOrEqual(offerBox?.y ?? 0);
+  expect(hintBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+  expect((hintBox?.x ?? 0) + (hintBox?.width ?? 1e9)).toBeLessThanOrEqual(viewport.width);
   await page.getByTestId('offer-card-0').click();
   await expect(page.getByTestId('pick-hint')).not.toHaveText(hint ?? '');
+});
+
+test('Draft: drei große Karten vertikal mittig über der Mittellinie', async ({ page }) => {
+  await startMatch(page);
+  await waitForMyTurn(page);
+  const vh = page.viewportSize()?.height ?? 915;
+  const boxes = [];
+  for (const i of [0, 1, 2]) {
+    const box = await page.getByTestId(`offer-card-${i}`).boundingBox();
+    expect(box).not.toBeNull();
+    boxes.push(box as NonNullable<typeof box>);
+  }
+  for (const b of boxes) expect(b.width).toBeGreaterThanOrEqual(110);
+  const top = Math.min(...boxes.map((b) => b.y));
+  const bottom = Math.max(...boxes.map((b) => b.y + b.height));
+  expect(Math.abs((top + bottom) / 2 - vh / 2)).toBeLessThan(vh * 0.08);
+  // Side by side, not overlapping
+  expect(boxes[1]?.x ?? 0).toBeGreaterThan((boxes[0]?.x ?? 0) + (boxes[0]?.width ?? 0) - 1);
+  expect(boxes[2]?.x ?? 0).toBeGreaterThan((boxes[1]?.x ?? 0) + (boxes[1]?.width ?? 0) - 1);
+  // The status line sits directly above the cards
+  const status = await page.getByTestId('draft-status').boundingBox();
+  expect((status?.y ?? 0) + (status?.height ?? 0)).toBeLessThanOrEqual(top + 1);
+  expect(top - ((status?.y ?? 0) + (status?.height ?? 0))).toBeLessThan(40);
 });
 
 test('Feld bleibt zwischen Draft und Kampf gleich groß', async ({ page }) => {
@@ -343,4 +397,126 @@ test('Querformat: Dreh-Hinweis nur im Querformat sichtbar', async ({ page }) => 
   await expect(hint).toBeVisible();
   await page.setViewportSize({ width: 412, height: 915 });
   await expect(hint).toBeHidden();
+});
+
+test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) => {
+  const errors = collectErrors(page);
+  await page.goto('/');
+  const pager = page.getByTestId('tab-pager');
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  // Order in the tab bar: Deck | Kampf; the battle tab is active at start
+  const deckTab = await page.getByTestId('tab-deck').boundingBox();
+  const battleTab = await page.getByTestId('tab-battle').boundingBox();
+  expect((deckTab?.x ?? 1e9) + (deckTab?.width ?? 0)).toBeLessThanOrEqual((battleTab?.x ?? 0) + 1);
+  await expect(page.getByTestId('tab-battle')).toHaveAttribute('aria-current', 'page');
+  const scrollLeft = (): Promise<number> => pager.evaluate((el) => el.scrollLeft);
+  const width = (): Promise<number> => pager.evaluate((el) => el.clientWidth);
+  expect(await scrollLeft()).toBeGreaterThan((await width()) - 2);
+
+  // Tap: scrolls over to the deck page
+  await page.getByTestId('tab-deck').click();
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect.poll(scrollLeft).toBeLessThan(2);
+  await expect(page.getByTestId('deck-screen')).toBeInViewport();
+  await page.getByTestId('tab-battle').click();
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+
+  // Swipe with real touch events (Chromium DevTools protocol): drag right = to the deck
+  const cdp = await page.context().newCDPSession(page);
+  const touch = (
+    type: 'touchStart' | 'touchMove' | 'touchEnd',
+    x: number,
+    y: number,
+  ): Promise<unknown> =>
+    cdp.send('Input.dispatchTouchEvent', {
+      type,
+      touchPoints: type === 'touchEnd' ? [] : [{ x, y }],
+    });
+  const swipe = async (from: number, to: number, y: number): Promise<void> => {
+    await touch('touchStart', from, y);
+    const step = from < to ? 12 : -12;
+    for (let x = from; step > 0 ? x <= to : x >= to; x += step) {
+      await touch('touchMove', x, y);
+      await page.waitForTimeout(16);
+    }
+    await touch('touchEnd', 0, 0);
+  };
+  await swipe(60, 380, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('tab-deck')).toHaveAttribute('aria-current', 'page');
+  // A vertical drag over the deck grid scrolls it and does not switch the tab
+  await touch('touchStart', 200, 700);
+  for (let y = 700; y >= 480; y -= 12) {
+    await touch('touchMove', 206, y);
+    await page.waitForTimeout(16);
+  }
+  await touch('touchEnd', 0, 0);
+  await page.waitForTimeout(400);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  // Swipe left = back to the battle tab
+  await swipe(380, 60, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect(page.getByTestId('play-button')).toBeInViewport();
+
+  // The tab follows the finger: the marker changes before the touch ends, and back again
+  const drag = async (from: number, to: number, y: number): Promise<void> => {
+    const step = from < to ? 12 : -12;
+    for (let x = from; step > 0 ? x <= to : x >= to; x += step) {
+      await touch('touchMove', x, y);
+      await page.waitForTimeout(16);
+    }
+  };
+  await touch('touchStart', 60, 300);
+  await drag(60, 300, 300); // more than half a page to the right: deck
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('tab-deck')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('tab-battle')).not.toHaveAttribute('aria-current', 'page');
+  await drag(300, 150, 300); // back below half: battle again
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect(page.getByTestId('tab-battle')).toHaveAttribute('aria-current', 'page');
+  await touch('touchEnd', 0, 0);
+  await page.waitForTimeout(800);
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+  await touch('touchStart', 60, 300);
+  await drag(60, 300, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('tab-deck')).toHaveAttribute('aria-current', 'page');
+  await touch('touchEnd', 0, 0);
+  await expect.poll(scrollLeft).toBeLessThan(2);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('page-deck')).not.toHaveAttribute('inert', /.*/);
+  await swipe(380, 60, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+
+  // Tap a tab and swipe back at once: afterwards `data-tab` matches the visible page, which is not inert
+  await page.getByTestId('tab-deck').click();
+  await page.waitForTimeout(80);
+  await swipe(380, 60, 300);
+  await page.waitForTimeout(1200);
+  const restingTab = await pager.getAttribute('data-tab');
+  expect(restingTab === 'deck' || restingTab === 'battle').toBe(true);
+  const restingIndex = Math.round((await scrollLeft()) / (await width()));
+  expect(restingIndex).toBe(restingTab === 'deck' ? 0 : 1);
+  await expect(page.getByTestId(`page-${restingTab}`)).not.toHaveAttribute('inert', /.*/);
+  if (restingTab === 'deck') {
+    await page.getByTestId('tab-battle').click();
+    await expect(pager).toHaveAttribute('data-tab', 'battle');
+  }
+
+  // With the detail dialog open nothing swipes
+  await page.getByTestId('tab-deck').click();
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await page.getByTestId('deck-card-bat').click();
+  await expect(page.getByTestId('card-detail')).toBeVisible();
+  await swipe(380, 60, 300);
+  await page.waitForTimeout(400);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await page.getByTestId('card-detail-close').click();
+
+  // The page itself never scrolls sideways
+  expect(await page.evaluate(() => document.documentElement.scrollLeft)).toBe(0);
+  expect(errors).toEqual([]);
 });

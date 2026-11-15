@@ -24,25 +24,41 @@ export interface Point {
  * Space around the field in cells. Figures are wider and taller than a cell and the ones
  * in the outer rows and columns must not be cut off by the canvas edge.
  */
-export const FIELD_INSETS = { side: 0.3, top: 0.6, bottom: 0.2 } as const;
+export const FIELD_INSETS = { side: 0.3, top: 1.0, bottom: 0.2 } as const;
+
+/**
+ * Pixels at the top and bottom of the canvas that must stay free of the field, because the
+ * header and the status line of the battle screen lie there (D-043). Safe areas included.
+ */
+export interface EdgeInsets {
+  top: number;
+  bottom: number;
+}
+
+export const NO_EDGE_INSETS: EdgeInsets = { top: 0, bottom: 0 };
 
 /** Largest cell size that fits the whole field plus its insets into the given area. */
-export function fitCell(width: number, height: number): number {
+export function fitCell(width: number, height: number, edge: EdgeInsets = NO_EDGE_INSETS): number {
   const cellsW = GRID_COLS + 2 * FIELD_INSETS.side;
   const cellsH = GRID_ROWS + FIELD_INSETS.top + FIELD_INSETS.bottom;
-  return Math.max(0, Math.min(width / cellsW, height / cellsH));
+  const freeH = height - edge.top - edge.bottom;
+  return Math.max(0, Math.min(width / cellsW, freeH / cellsH));
 }
 
 /** Largest field that fits into a canvas of `width` x `height` (fixed aspect ratio), centred. */
-export function computeLayout(width: number, height: number): FieldLayout {
-  const cell = fitCell(width, height);
+export function computeLayout(
+  width: number,
+  height: number,
+  edge: EdgeInsets = NO_EDGE_INSETS,
+): FieldLayout {
+  const cell = fitCell(width, height, edge);
   const fieldW = cell * GRID_COLS;
   const fieldH = cell * GRID_ROWS;
   const usedH = fieldH + cell * (FIELD_INSETS.top + FIELD_INSETS.bottom);
   return {
     cell,
     left: (width - fieldW) / 2,
-    top: (height - usedH) / 2 + cell * FIELD_INSETS.top,
+    top: edge.top + (height - edge.top - edge.bottom - usedH) / 2 + cell * FIELD_INSETS.top,
     width: fieldW,
     height: fieldH,
   };

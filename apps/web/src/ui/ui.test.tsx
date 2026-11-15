@@ -8,7 +8,7 @@ import { BattleView, type BattleActions } from './BattleView.tsx';
 import { CardDetail } from './CardDetail.tsx';
 import { CardView } from './CardView.tsx';
 import { DeckScreen } from './DeckScreen.tsx';
-import { TabBar } from './TabBar.tsx';
+import { TAB_ORDER, TabBar } from './TabBar.tsx';
 import { TitleScreen } from './TitleScreen.tsx';
 import { START_DECK } from '../game/config.ts';
 
@@ -86,6 +86,14 @@ describe('TabBar', () => {
       /aria-current="page"[^>]*data-testid="tab-deck"|data-testid="tab-deck"[^>]*aria-current="page"/,
     );
     expect(html.match(/aria-current/g)).toHaveLength(1);
+  });
+
+  it('shows Deck left of Kampf', () => {
+    const html = renderToString(<TabBar tab="battle" onSelect={noop} />);
+    expect(html.indexOf('data-testid="tab-deck"')).toBeLessThan(
+      html.indexOf('data-testid="tab-battle"'),
+    );
+    expect(TAB_ORDER).toEqual(['deck', 'battle']);
   });
 });
 

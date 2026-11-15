@@ -1,5 +1,5 @@
 import { CARD_IDS, CARDS, DECK_SIZE, type CardId } from '@rumble-realms/engine';
-import { useEffect, useState, type ReactElement } from 'react';
+import { useEffect, useState, type CSSProperties, type ReactElement } from 'react';
 import { levelOf, useDeckStore } from '../game/deckStore.ts';
 import { t } from '../i18n/index.ts';
 import { CardDetail } from './CardDetail.tsx';
@@ -65,7 +65,9 @@ function Tile({
           <span className="tile__mark">{t('deck.inDeck')}</span>
         )}
       </div>
-      <div className="tile__name">{name}</div>
+      <div className="tile__name" style={{ '--len': name.length } as CSSProperties}>
+        {name}
+      </div>
     </div>
   );
 }

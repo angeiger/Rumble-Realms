@@ -9,7 +9,14 @@ import { Application, Container, Graphics } from 'pixi.js';
 import type { GameSession, SessionPhase } from '../game/types.ts';
 import { CANVAS_BACKGROUND, drawBackdrop } from './backdrop.ts';
 import { Effects, NUMBER_FONT } from './effects.ts';
-import { computeLayout, fieldToScreen, type FieldLayout, type Point } from './layout.ts';
+import {
+  NO_EDGE_INSETS,
+  computeLayout,
+  fieldToScreen,
+  type EdgeInsets,
+  type FieldLayout,
+  type Point,
+} from './layout.ts';
 import {
   FigureTextures,
   createEffectTextures,
@@ -28,6 +35,8 @@ export interface BattleRendererStats {
 
 export interface BattleRenderer {
   readonly stats: BattleRendererStats;
+  /** Space at the top and bottom edge of the canvas that stays free of the field. */
+  setEdgeInsets(insets: EdgeInsets): void;
   destroy(): void;
 }
 
@@ -42,6 +51,7 @@ export async function createBattleRenderer(
   host: HTMLElement,
   session: GameSession,
   isCancelled: () => boolean,
+  edge: EdgeInsets = NO_EDGE_INSETS,
 ): Promise<BattleRenderer | null> {
   const app = new Application();
   const width = Math.max(1, host.clientWidth);
@@ -72,7 +82,7 @@ export async function createBattleRenderer(
     app.destroy(DESTROY_RENDERER, { children: true });
     return null;
   }
-  return new Scene(app, host, session);
+  return new Scene(app, host, session, edge);
 }
 
 class Scene implements BattleRenderer {
@@ -86,6 +96,7 @@ class Scene implements BattleRenderer {
   private readonly effects: Effects;
   private readonly observer: ResizeObserver;
   private layout: FieldLayout;
+  private edge: EdgeInsets;
   private me: PlayerIndex;
   private battle: BattleState;
   private now = 0;
@@ -99,7 +110,8 @@ class Scene implements BattleRenderer {
   private readonly host: HTMLElement;
   private readonly session: GameSession;
 
-  constructor(app: Application, host: HTMLElement, session: GameSession) {
+  constructor(app: Application, host: HTMLElement, session: GameSession, edge: EdgeInsets) {
+    this.edge = edge;
     this.app = app;
     this.host = host;
     this.session = session;
@@ -129,7 +141,7 @@ class Scene implements BattleRenderer {
       typeof window.matchMedia === 'function' &&
       window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     this.battle = session.battle;
-    this.layout = computeLayout(app.screen.width, app.screen.height);
+    this.layout = computeLayout(app.screen.width, app.screen.height, this.edge);
     this.relayout();
 
     const canvas = app.canvas;
@@ -158,8 +170,15 @@ class Scene implements BattleRenderer {
     this.relayout();
   }
 
+  setEdgeInsets(insets: EdgeInsets): void {
+    if (this.destroyed) return;
+    if (insets.top === this.edge.top && insets.bottom === this.edge.bottom) return;
+    this.edge = insets;
+    this.relayout();
+  }
+
   private relayout(): void {
-    this.layout = computeLayout(this.app.screen.width, this.app.screen.height);
+    this.layout = computeLayout(this.app.screen.width, this.app.screen.height, this.edge);
     this.views.setLayout(this.layout);
     this.effects.setLayout(this.layout);
     this.figureTextures.setPixelsPerUnit(

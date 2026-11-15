@@ -102,3 +102,23 @@ describe('isOwnHalf', () => {
     expect(isOwnHalf(1, 11)).toBe(false);
   });
 });
+
+describe('computeLayout with edge insets', () => {
+  it('keeps the field clear of the header and the status line', () => {
+    for (const [w, h, top, bottom] of [
+      [412, 915, 56, 42],
+      [390, 844, 70, 76],
+      [1000, 700, 60, 40],
+    ] as const) {
+      const l = computeLayout(w, h, { top, bottom });
+      const headroom = l.cell * FIELD_INSETS.top;
+      const footroom = l.cell * FIELD_INSETS.bottom;
+      expect(l.top - headroom).toBeGreaterThanOrEqual(top - 1e-9);
+      expect(l.top + l.height + footroom).toBeLessThanOrEqual(h - bottom + 1e-9);
+      expect(l.width / l.height).toBeCloseTo(GRID_COLS / GRID_ROWS, 9);
+    }
+  });
+  it('is the old layout without insets', () => {
+    expect(computeLayout(412, 915, { top: 0, bottom: 0 })).toEqual(computeLayout(412, 915));
+  });
+});

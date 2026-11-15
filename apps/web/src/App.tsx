@@ -5,6 +5,7 @@ import { t } from './i18n/index.ts';
 import { BattleScreen } from './ui/BattleScreen.tsx';
 import { DeckScreen } from './ui/DeckScreen.tsx';
 import { TabBar } from './ui/TabBar.tsx';
+import { TabPager } from './ui/TabPager.tsx';
 import { TitleScreen } from './ui/TitleScreen.tsx';
 
 export interface AppViewProps {
@@ -16,7 +17,7 @@ export interface AppViewProps {
   onPlay: () => void;
 }
 
-/** The whole app for given state: battle without tab bar, or menu tabs with the tab bar. */
+/** The whole app for given state: battle without tab bar, or menu tabs (swipeable pages) with the tab bar. */
 export function AppView({ screen, tab, deck, levels, onTab, onPlay }: AppViewProps) {
   return (
     <div className="app-shell">
@@ -25,13 +26,14 @@ export function AppView({ screen, tab, deck, levels, onTab, onPlay }: AppViewPro
           <BattleScreen />
         ) : (
           <div className="menu">
-            <div className="menu__main">
-              {tab === 'deck' ? (
-                <DeckScreen />
-              ) : (
-                <TitleScreen onPlay={onPlay} deck={deck} levels={levels} />
-              )}
-            </div>
+            <TabPager
+              tab={tab}
+              onTab={onTab}
+              pages={{
+                deck: <DeckScreen />,
+                battle: <TitleScreen onPlay={onPlay} deck={deck} levels={levels} />,
+              }}
+            />
             <TabBar tab={tab} onSelect={onTab} />
           </div>
         )}

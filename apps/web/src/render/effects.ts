@@ -12,6 +12,8 @@ import { ARROW_SIZE, BULLET_SIZE, type EffectTextures } from './textures.ts';
 import type { NumberKind, NumberSink, UnitViews } from './unitViews.ts';
 
 const MAX_PARTICLES = 450;
+/** Numbers younger than this count as "at the same time" when fanning out. */
+const FAN_WINDOW_MS = 250;
 const MAX_PROJECTILES = 64;
 const MAX_NUMBERS = 48;
 const MAX_ZONES = 24;
@@ -489,13 +491,46 @@ export class Effects implements NumberSink {
     }
   }
 
+  /** A spark flying off the fuse of a burning TNT; livelier and brighter the closer the blast. */
+  fuseSpark(x: number, y: number, intensity: number): void {
+    const c = this.cell;
+    const a = Math.random() * Math.PI * 2;
+    const speed = c * (1.2 + 2.2 * Math.random()) * (0.7 + 0.6 * intensity);
+    this.spark(
+      x,
+      y,
+      Math.cos(a) * speed,
+      Math.sin(a) * speed - c * 1.2,
+      180 + 160 * Math.random(),
+      c * (0.34 + 0.26 * intensity),
+      Math.random() < 0.5 ? 0xffd23a : 0xff7a2b,
+    );
+  }
+
+  /**
+   * Many hits in the same instant (TNT blast) land on neighbouring units whose numbers
+   * would pile up: a fresh number near other fresh ones is fanned out sideways and upwards.
+   */
+  private fanOut(x: number, y: number): { dx: number; dy: number } {
+    const c = this.cell;
+    let near = 0;
+    for (const n of this.numbers) {
+      if (!n.active || n.life > FAN_WINDOW_MS) continue;
+      if (Math.abs(n.x - x) < c * 0.4 && Math.abs(n.y - y) < c * 0.3) near++;
+    }
+    if (near === 0) return { dx: 0, dy: 0 };
+    const side = near % 2 === 1 ? 1 : -1;
+    return { dx: side * Math.ceil(near / 2) * c * 0.17, dy: -(near % 3) * c * 0.11 };
+  }
+
   number(x: number, y: number, amount: number, kind: NumberKind): void {
     for (const n of this.numbers) {
       if (n.active) continue;
+      const fan = this.fanOut(x, y);
       n.active = true;
       n.life = 0;
-      n.x = x + (((amount * 13) % 7) - 3) * this.cell * 0.04;
-      n.y = y;
+      n.x = x + (((amount * 13) % 7) - 3) * this.cell * 0.04 + fan.dx;
+      n.y = y + fan.dy;
       n.text.text = kind === 'heal' ? `+${amount}` : String(amount);
       n.text.tint = NUMBER_COLORS[kind];
       n.text.visible = true;
@@ -641,7 +676,8 @@ export class Effects implements NumberSink {
       const rise = 1 - (1 - Math.min(1, t * 1.6)) * (1 - Math.min(1, t * 1.6));
       n.text.position.set(n.x, n.y - rise * c * 1.1 - t * c * 0.3);
       const pop = t < 0.15 ? 0.6 + (t / 0.15) * 0.7 : 1.3 - Math.min(0.3, (t - 0.15) * 0.6);
-      n.text.scale.set((c / 48) * pop);
+      // Half the former size (c / 48); the bitmap font stays at 36 px, so it is only scaled down.
+      n.text.scale.set((c / 96) * pop);
       n.text.alpha = t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35;
     }
   }
