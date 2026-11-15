@@ -516,11 +516,11 @@ export class Effects implements NumberSink {
     let near = 0;
     for (const n of this.numbers) {
       if (!n.active || n.life > FAN_WINDOW_MS) continue;
-      if (Math.abs(n.x - x) < c * 0.7 && Math.abs(n.y - y) < c * 0.6) near++;
+      if (Math.abs(n.x - x) < c * 0.4 && Math.abs(n.y - y) < c * 0.3) near++;
     }
     if (near === 0) return { dx: 0, dy: 0 };
     const side = near % 2 === 1 ? 1 : -1;
-    return { dx: side * Math.ceil(near / 2) * c * 0.32, dy: -(near % 3) * c * 0.2 };
+    return { dx: side * Math.ceil(near / 2) * c * 0.17, dy: -(near % 3) * c * 0.11 };
   }
 
   number(x: number, y: number, amount: number, kind: NumberKind): void {
@@ -676,7 +676,8 @@ export class Effects implements NumberSink {
       const rise = 1 - (1 - Math.min(1, t * 1.6)) * (1 - Math.min(1, t * 1.6));
       n.text.position.set(n.x, n.y - rise * c * 1.1 - t * c * 0.3);
       const pop = t < 0.15 ? 0.6 + (t / 0.15) * 0.7 : 1.3 - Math.min(0.3, (t - 0.15) * 0.6);
-      n.text.scale.set((c / 48) * pop);
+      // Half the former size (c / 48); the bitmap font stays at 36 px, so it is only scaled down.
+      n.text.scale.set((c / 96) * pop);
       n.text.alpha = t < 0.65 ? 1 : 1 - (t - 0.65) / 0.35;
     }
   }

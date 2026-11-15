@@ -459,6 +459,38 @@ test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) =>
   await expect(pager).toHaveAttribute('data-tab', 'battle');
   await expect(page.getByTestId('play-button')).toBeInViewport();
 
+  // The tab follows the finger: the marker changes before the touch ends, and back again
+  const drag = async (from: number, to: number, y: number): Promise<void> => {
+    const step = from < to ? 12 : -12;
+    for (let x = from; step > 0 ? x <= to : x >= to; x += step) {
+      await touch('touchMove', x, y);
+      await page.waitForTimeout(16);
+    }
+  };
+  await touch('touchStart', 60, 300);
+  await drag(60, 300, 300); // more than half a page to the right: deck
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('tab-deck')).toHaveAttribute('aria-current', 'page');
+  await expect(page.getByTestId('tab-battle')).not.toHaveAttribute('aria-current', 'page');
+  await drag(300, 150, 300); // back below half: battle again
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect(page.getByTestId('tab-battle')).toHaveAttribute('aria-current', 'page');
+  await touch('touchEnd', 0, 0);
+  await page.waitForTimeout(800);
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+  await touch('touchStart', 60, 300);
+  await drag(60, 300, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('tab-deck')).toHaveAttribute('aria-current', 'page');
+  await touch('touchEnd', 0, 0);
+  await expect.poll(scrollLeft).toBeLessThan(2);
+  await expect(pager).toHaveAttribute('data-tab', 'deck');
+  await expect(page.getByTestId('page-deck')).not.toHaveAttribute('inert', /.*/);
+  await swipe(380, 60, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+
   // Tap a tab and swipe back at once: afterwards `data-tab` matches the visible page, which is not inert
   await page.getByTestId('tab-deck').click();
   await page.waitForTimeout(80);

@@ -428,3 +428,48 @@ jeder endet mit einem Gate, das Andreas testet und freigibt. Stand der Vorarbeit
 - **Wischen:** Die Menüseiten liegen nebeneinander und rasten per CSS ein (`scroll-snap`). Im Kampf wird nicht
   gewischt, offene Dialoge sperren das Wischen. Nach jedem Tab-Wechsel gleicht der Pager den aktiven Tab mit der
   tatsächlich sichtbaren Seite ab, auch auf Browsern ohne `scrollend`-Ereignis (ältere iPhones).
+
+## Rückmeldung von Andreas zum zweiten M3a-Test (15.11.2026)
+
+Die Nummern D-063 bis D-067 stehen im Branch von M3b. Andreas ist mit M3a zufrieden (Tab-Wechsel, Lesbarkeit,
+Sicht auf beide Armeen, Animationen des Lauf-TNT). Seine Punkte:
+
+### D-068 Tab-Markierung folgt dem Wischen sofort (noch in M3a)
+
+Die Markierung in der Tab-Leiste wechselt, sobald die Seite beim Wischen zur Hälfte überschritten ist, und wartet
+nicht mehr auf das Ende der Wischbewegung. Beim Antippen bleibt alles wie bisher.
+
+### D-069 Schadens- und Heilzahlen halb so groß (noch in M3a)
+
+Die hüpfenden Zahlen im Kampf werden um 50 % verkleinert.
+
+### D-070 Aufstellung in zentrierten Reihen nach fester Rangfolge (ersetzt D-052, Umsetzung in M3b)
+
+- Die Einheiten stehen in Reihen, jede Reihe **mittig**. Kommen Einheiten dazu, wird die ganze Reihe neu zentriert:
+  drei Assassinen stehen in der Mitte der letzten Linie, mit der nächsten Karte stehen dort sechs, wieder mittig.
+  Die zufällige Spalte pro Karte entfällt.
+- Rangfolge von der Mitte des Feldes zur eigenen Grundlinie (von Andreas für die Grundkarten vorgegeben, für die
+  übrigen Karten sinngemäß ergänzt):
+  1. Skelette
+  2. Lauf-TNT, Pilzlinge
+  3. Ritter, Berserker, Steingolem
+  4. Heiler, dazu die Flieger (Fledermäuse, Drachenjunges) auf der Luftebene
+  5. alle Fernkämpfer: Bogenschütze, Musketier, Pyromantin, Nekromant, Frostschamane, Bombardierkäfer
+  6. ganz hinten immer die Assassinen
+- Annahmen für die Umsetzung: Jeder Rang belegt eigene Reihen, beginnend an der Grundlinie mit Rang 6. Ränge ohne
+  Einheiten belegen keine Reihe. Karten desselben Rangs teilen sich die Reihen, nach Karte gruppiert. Passen mehr
+  als 12 Einheiten nicht in eine Reihe, folgt eine weitere Reihe desselben Rangs davor; die unvollständige Reihe
+  steht vorne und ist ebenfalls zentriert. Bei ungerader Lücke steht die Reihe aus Sicht des Spielers eine halbe
+  Spalte links der Mitte. Was nicht mehr in die eigene Hälfte passt, verfällt wie bisher (D-055).
+- Das ist eine Regeländerung in der Engine und kommt deshalb mit M3b (dort gilt ohnehin `ENGINE_VERSION` 3).
+
+### D-071 Lauf-TNT: Ziel halten und schneller laufen (ändert D-050, Umsetzung in M3b)
+
+- Das Lauf-TNT wechselt sein Ziel zu oft. Künftig behält es sein Ziel, bis dieses stirbt, statt alle 0,5 s neu zu
+  wählen. Die Lunte hängt weiter nur davon ab, ob irgendein Gegner im Umkreis ist (D-050).
+- Tempo 2,0 statt 1,5 Felder/s (Annahme; damit die schnellste Einheit, Skelette haben 1,8). Feinabstimmung in der
+  Balance-Runde. Die Animationen bleiben, wie sie sind.
+
+### D-072 Gestaltung insgesamt später (bestätigt D-047)
+
+Am Design insgesamt soll noch einmal gearbeitet werden; das hat aus Andreas' Sicht Zeit (vorgesehen für M6).

@@ -40,6 +40,8 @@ export function TabPager({ tab, onTab, pages }: TabPagerProps): ReactElement {
   });
   /** Ends the programmatic window and schedules a check of the resting page (set in the effect below). */
   const endProgram = useRef<() => void>(() => undefined);
+  /** Tab the swipe itself reported (while scrolling); the tab effect must not scroll for it. */
+  const swipeTab = useRef<Tab | null>(null);
   const placed = useRef(false);
   const index = TAB_ORDER.indexOf(tab);
 
@@ -48,6 +50,12 @@ export function TabPager({ tab, onTab, pages }: TabPagerProps): ReactElement {
     const el = ref.current;
     if (el === null) return;
     const target = index * el.clientWidth;
+    if (swipeTab.current !== null) {
+      // The change came from the swipe: native scroll-snap brings the page to rest by itself.
+      const fromSwipe = swipeTab.current === TAB_ORDER[index];
+      swipeTab.current = null;
+      if (fromSwipe) return;
+    }
     if (!placed.current) {
       placed.current = true;
       el.scrollLeft = target;
@@ -90,6 +98,14 @@ export function TabPager({ tab, onTab, pages }: TabPagerProps): ReactElement {
     };
     const onScroll = (): void => {
       if (programmatic.current) return;
+      // The tab follows the swipe at once: as soon as another page is the nearest one.
+      if (el.clientWidth > 0) {
+        const next = TAB_ORDER[Math.round(el.scrollLeft / el.clientWidth)];
+        if (next !== undefined && next !== (swipeTab.current ?? tabRef.current)) {
+          swipeTab.current = next;
+          onTabRef.current(next);
+        }
+      }
       scheduleSettle();
     };
     const onScrollEnd = (): void => {
