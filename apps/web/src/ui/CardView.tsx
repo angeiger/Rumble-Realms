@@ -139,7 +139,7 @@ export function CardView({ card, level, testId, onTap, onInfo }: CardViewProps):
         </span>
         <span className="chip">
           <ClockIcon />
-          {s.interval === null ? '–' : `${formatNumber(s.interval)} s`}
+          {s.interval === null ? '–' : formatNumber(s.interval)}
         </span>
         <span className="chip">
           <SpeedIcon />

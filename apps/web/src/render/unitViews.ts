@@ -406,6 +406,7 @@ export class UnitViews {
     v.root.alpha = 1;
     v.root.scale.set(1);
     v.ring.visible = true;
+    v.shadow.visible = true;
     this.layers.floor.addChild(v.ring);
     if (CARDS[card].shadowJump !== undefined) this.layers.floor.addChild(v.marker);
     if (air) this.layers.floor.addChild(v.shadow);
@@ -565,6 +566,7 @@ export class UnitViews {
     if (v.root.visible === waiting) {
       v.root.visible = !waiting;
       v.ring.visible = !waiting;
+      v.shadow.visible = !waiting;
     }
     if (v.age < v.spawnMs) {
       const s = easeOutBack(v.age / v.spawnMs);

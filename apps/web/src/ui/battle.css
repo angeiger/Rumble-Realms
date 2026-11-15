@@ -309,10 +309,11 @@
   }
 }
 
-/* Hint about the last pick at the top edge of the field. */
+/* Hint about the last pick: in the middle of the field, just above the offer block (banner and
+   cards, centred on 50%), so it covers neither base line. The offset is half of that block. */
 .pick-hint {
   position: absolute;
-  top: calc(64px + env(safe-area-inset-top));
+  bottom: calc(50% + var(--offer-half-height, 112px));
   left: 0;
   right: 0;
   z-index: 3;

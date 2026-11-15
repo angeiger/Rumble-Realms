@@ -90,6 +90,23 @@ test('Draft: ein Tippen spielt, Info spielt nicht, Karten über dem Feld', async
   // Second pick
   await waitForMyTurn(page);
   const hint = await page.getByTestId('pick-hint').textContent();
+  // The hint sits in the middle third of the screen and does not overlap the offer cards or the screen edge
+  await page.waitForTimeout(500); // past the fade-in slide
+  const hintBox = await page
+    .getByTestId('pick-hint')
+    .locator('.pick-hint__text')
+    .first()
+    .boundingBox();
+  const offerBox = await page.getByTestId('offer-card-0').boundingBox();
+  const viewport = page.viewportSize() ?? { width: 412, height: 915 };
+  expect(hintBox).not.toBeNull();
+  expect(offerBox).not.toBeNull();
+  const hintMid = (hintBox?.y ?? 0) + (hintBox?.height ?? 0) / 2;
+  expect(hintMid).toBeGreaterThan(viewport.height / 3);
+  expect(hintMid).toBeLessThan((viewport.height * 2) / 3);
+  expect((hintBox?.y ?? 0) + (hintBox?.height ?? 0)).toBeLessThanOrEqual(offerBox?.y ?? 0);
+  expect(hintBox?.x ?? -1).toBeGreaterThanOrEqual(0);
+  expect((hintBox?.x ?? 0) + (hintBox?.width ?? 1e9)).toBeLessThanOrEqual(viewport.width);
   await page.getByTestId('offer-card-0').click();
   await expect(page.getByTestId('pick-hint')).not.toHaveText(hint ?? '');
 });
@@ -441,6 +458,21 @@ test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) =>
   await swipe(380, 60, 300);
   await expect(pager).toHaveAttribute('data-tab', 'battle');
   await expect(page.getByTestId('play-button')).toBeInViewport();
+
+  // Tap a tab and swipe back at once: afterwards `data-tab` matches the visible page, which is not inert
+  await page.getByTestId('tab-deck').click();
+  await page.waitForTimeout(80);
+  await swipe(380, 60, 300);
+  await page.waitForTimeout(1200);
+  const restingTab = await pager.getAttribute('data-tab');
+  expect(restingTab === 'deck' || restingTab === 'battle').toBe(true);
+  const restingIndex = Math.round((await scrollLeft()) / (await width()));
+  expect(restingIndex).toBe(restingTab === 'deck' ? 0 : 1);
+  await expect(page.getByTestId(`page-${restingTab}`)).not.toHaveAttribute('inert', /.*/);
+  if (restingTab === 'deck') {
+    await page.getByTestId('tab-battle').click();
+    await expect(pager).toHaveAttribute('data-tab', 'battle');
+  }
 
   // With the detail dialog open nothing swipes
   await page.getByTestId('tab-deck').click();

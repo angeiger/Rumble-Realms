@@ -38,6 +38,8 @@ export function TabPager({ tab, onTab, pages }: TabPagerProps): ReactElement {
     settle: null,
     program: null,
   });
+  /** Ends the programmatic window and schedules a check of the resting page (set in the effect below). */
+  const endProgram = useRef<() => void>(() => undefined);
   const placed = useRef(false);
   const index = TAB_ORDER.indexOf(tab);
 
@@ -54,9 +56,7 @@ export function TabPager({ tab, onTab, pages }: TabPagerProps): ReactElement {
     if (Math.abs(el.scrollLeft - target) < 2) return; // the swipe already got there
     programmatic.current = true;
     if (timers.current.program !== null) window.clearTimeout(timers.current.program);
-    timers.current.program = window.setTimeout(() => {
-      programmatic.current = false;
-    }, PROGRAMMATIC_MAX_MS);
+    timers.current.program = window.setTimeout(() => endProgram.current(), PROGRAMMATIC_MAX_MS);
     if (typeof el.scrollTo === 'function') {
       el.scrollTo({ left: target, behavior: prefersReducedMotion() ? 'auto' : 'smooth' });
     } else {
@@ -74,14 +74,27 @@ export function TabPager({ tab, onTab, pages }: TabPagerProps): ReactElement {
       const next = TAB_ORDER[Math.round(el.scrollLeft / el.clientWidth)];
       if (next !== undefined && next !== tabRef.current) onTabRef.current(next);
     };
-    const onScroll = (): void => {
-      if (programmatic.current) return;
+    const scheduleSettle = (): void => {
       if (t.settle !== null) window.clearTimeout(t.settle);
       t.settle = window.setTimeout(settle, SETTLE_MS);
     };
+    // End of the programmatic window (`scrollend` or timeout): the user may have swiped or
+    // interrupted the smooth scroll meanwhile, so check where the pager really rests. Debounced,
+    // so a second smooth scroll replacing the first reports no intermediate position.
+    endProgram.current = (): void => {
+      if (t.program !== null) window.clearTimeout(t.program);
+      t.program = null;
+      if (!programmatic.current) return;
+      programmatic.current = false;
+      scheduleSettle();
+    };
+    const onScroll = (): void => {
+      if (programmatic.current) return;
+      scheduleSettle();
+    };
     const onScrollEnd = (): void => {
       if (programmatic.current) {
-        programmatic.current = false;
+        endProgram.current();
         return;
       }
       if (t.settle !== null) window.clearTimeout(t.settle);

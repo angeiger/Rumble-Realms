@@ -409,3 +409,22 @@ jeder endet mit einem Gate, das Andreas testet und freigibt. Stand der Vorarbeit
 - M3b: Die erste Etappe (Sonderkarten, Upgrade-Gerüst, Statuseffekte, sechs Einheiten) wird noch zu Ende geführt
   und als Zwischenstand auf dem Branch `m3b-kampfmechanik` abgelegt. Weiter geht es dort erst nach der Freigabe von M3a.
 - M4: Das Datenbank-Schema liegt als Entwurf in Pull Request 5 und wird erst zu M4 gemergt.
+
+### D-062 Nachschliff von M3a im Detail (zu D-043, D-050, D-058, D-059)
+
+- **Angebot nur im eigenen Zug:** Die drei Karten liegen mittig über der Mittellinie. Wählt der Gegner, sind sie
+  ausgeblendet; unten links steht dann nur ein kurzer Hinweis. So bleibt das Feld frei, während der Gegner aufstellt.
+- **Zweite Wertezeile:** Die Angebotskarten zeigen oben LP und Schaden bzw. Heilung, darunter Reichweite, Intervall
+  und Tempo. Lange Kartennamen bekommen automatisch eine kleinere Schrift.
+- **Ränder:** Das Feld hält Kopfzeile und Statuszeile frei (gemessen, samt Safe Areas) und ist im Draft und im Kampf
+  gleich groß. Der Kopfabstand im Layout beträgt jetzt 1,0 statt 0,6 Felder, damit Flieger in der hintersten Reihe
+  nicht unter die Kopfzeile ragen; die Felder sind dadurch rund 1,6 % kleiner. Außerhalb des Feldes liegt eine Wiese
+  mit Buschrand statt einer dunklen Fläche.
+- **Aufstellung im Draft:** Rückt die Formation nach, gleiten die Einheiten in 250 ms auf ihr neues Feld. Zu
+  Rundenbeginn erscheinen viele Einheiten gestaffelt über rund 0,4 s statt alle im selben Bild.
+- **Lunte und Sprungziel:** Das Lauf-TNT blinkt bei brennender Lunte rot-weiß, schwillt an und sprüht Funken. Beim
+  Assassinen markiert ein roter Schein das Feld, zu dem er springen wird. Beides ist reine Anzeige; die Regeln aus
+  D-049 und D-050 sind unverändert.
+- **Wischen:** Die Menüseiten liegen nebeneinander und rasten per CSS ein (`scroll-snap`). Im Kampf wird nicht
+  gewischt, offene Dialoge sperren das Wischen. Nach jedem Tab-Wechsel gleicht der Pager den aktiven Tab mit der
+  tatsächlich sichtbaren Seite ab, auch auf Browsern ohne `scrollend`-Ereignis (ältere iPhones).
