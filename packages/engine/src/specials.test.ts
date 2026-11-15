@@ -117,10 +117,16 @@ describe('offers with special cards (SPEC 4.3)', () => {
         }
       }
     }
-    // tnt has two implemented upgrades (1 and 2).
-    expect([...seen.keys()].sort()).toEqual(['tnt.armored_crate', 'tnt.short_fuse']);
-    const [a, b] = [...seen.values()] as [number, number];
-    expect(Math.abs(a - b) / (a + b)).toBeLessThan(0.15);
+    // All three tnt upgrades are implemented.
+    expect([...seen.keys()].sort()).toEqual([
+      'tnt.armored_crate',
+      'tnt.daughter_tnt',
+      'tnt.short_fuse',
+    ]);
+    const counts = [...seen.values()];
+    const lo = Math.min(...counts);
+    const hi = Math.max(...counts);
+    expect((hi - lo) / (hi + lo)).toBeLessThan(0.15);
   });
 
   it('uses exactly DECK_SIZE - 1 + 2 * OFFER_SIZE draws per offer, whatever the result', () => {
@@ -169,9 +175,9 @@ describe('offers with special cards (SPEC 4.3)', () => {
   });
 
   it('offers only unlocked, inactive and implemented upgrades', () => {
-    const deck: CardId[] = ['archer', 'skeleton', 'knight', 'bat'];
-    // archer: only the unimplemented upgrades 0 and 1; skeleton: rattle gang; knight: none implemented.
-    const unlocked = { archer: 0b011, skeleton: 0b100, knight: 0b111 };
+    const deck: CardId[] = ['archer', 'skeleton', 'whelp', 'bat'];
+    // Only skeleton: rattle gang is unlocked (all 48 upgrades are implemented now).
+    const unlocked = { skeleton: 0b100 };
     let offered = 0;
     for (let seed = 0; seed < 40; seed++) {
       const s = createMatch({
@@ -197,8 +203,9 @@ describe('offers with special cards (SPEC 4.3)', () => {
     }
     expect(offered).toBeGreaterThan(20);
     expect(selectableUpgrades('skeleton', 4, 4)).toEqual([]);
-    expect(selectableUpgrades('tnt', 7, 2)).toEqual([2]);
-    expect(selectableUpgrades('archer', 7, 0)).toEqual([2]);
+    expect(selectableUpgrades('tnt', 7, 2)).toEqual([0, 2]);
+    expect(selectableUpgrades('archer', 7, 0)).toEqual([0, 1, 2]);
+    expect(selectableUpgrades('whelp', 7, 0)).toEqual([0, 1, 2]);
   });
 
   it('do not depend on the field', () => {
@@ -369,9 +376,8 @@ describe('the seven implemented upgrades', () => {
     expect(unitStats('tnt', 1, 2).speed).toBe(120);
     expect(unitStats('whelp', 1, 2).maxHp).toBe(770);
     expect(unitStats('whelp', 5, 2).maxHp).toBe(1078); // 550 * 140 % * 140 %
-    // Not implemented yet: no effect (Chitinpanzer +60 % HP, Feueratem +1 range).
-    expect(unitStats('beetle', 1, 4).maxHp).toBe(350);
-    expect(unitStats('whelp', 1, 1).range).toBe(2);
+    expect(unitStats('beetle', 1, 4).maxHp).toBe(560); // Chitinpanzer: 350 * 160 %
+    expect(unitStats('whelp', 1, 1).range).toBe(3); // Feueratem: +1 range
   });
 
   it('Adlerauge: the archer shoots from 7 fields instead of walking closer', () => {

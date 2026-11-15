@@ -96,9 +96,10 @@ export function effectiveAttackInterval(u: UnitState, interval: number, tick: nu
   return idiv(interval * BPS + rest - 1, rest);
 }
 
-/** Damage `amount` of `u` after its damage bonus. */
+/** Damage `amount` of `u` after its own damage factor (powerBps) and its damage bonus. */
 export function outgoingDamage(u: UnitState, amount: number, tick: number): number {
-  return u.dmgBonusUntil > tick ? applyBps(amount, BPS + u.dmgBonusBps) : amount;
+  const base = u.powerBps === BPS ? amount : applyBps(amount, u.powerBps);
+  return u.dmgBonusUntil > tick ? applyBps(base, BPS + u.dmgBonusBps) : base;
 }
 
 /** Damage over time in tick `tick` for an effect started at `start` (D-025); 0 outside it. */

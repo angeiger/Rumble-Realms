@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { CARD_IDS } from './cards.ts';
 import { UPGRADES } from './upgrades.ts';
 
-/** The seven upgrades implemented in M3b-1. */
+/** The upgrades implemented so far (M3b-1 and M3b-2). */
 const IMPLEMENTED = [
   'archer.eagle_eye',
   'tnt.short_fuse',
@@ -11,6 +11,47 @@ const IMPLEMENTED = [
   'bat.swarm',
   'golem.stone_skin',
   'whelp.ember_scales',
+  'archer.fire_arrows',
+  'pyromancer.inferno',
+  'assassin.poison',
+  'bat.ultrasound',
+  'frost_shaman.ice_block',
+  'frost_shaman.ice_armor',
+  'beetle.chitin_armor',
+  'bat.bloodthirst',
+  'musketeer.headshot',
+  'berserker.blood_frenzy',
+  'berserker.unstoppable',
+  'pyromancer.heat_shield',
+  'knight.shield',
+  'berserker.whirlwind',
+  'healer.heal_circle',
+  'healer.blessing',
+  'knight.charge',
+  'musketeer.bayonet',
+  'archer.volley',
+  'musketeer.pierce',
+  'skeleton.bone_hail',
+  'tnt.daughter_tnt',
+  'golem.rubble',
+  'necromancer.soul_harvest',
+  'necromancer.bone_army',
+  'skeleton.undead',
+  'healer.revive',
+  'shroomling.mycelium',
+  'pyromancer.meteor',
+  'golem.earthquake',
+  'frost_shaman.frost_nova',
+  'whelp.growth',
+  'beetle.acid_pool',
+  'assassin.shadow_step',
+  'assassin.smoke_bomb',
+  'knight.taunt',
+  'beetle.double_load',
+  'shroomling.giant_mushroom',
+  'shroomling.contagious',
+  'necromancer.lich_form',
+  'whelp.fire_breath',
 ];
 
 describe('upgrade data (SPEC 5.4)', () => {
@@ -38,7 +79,7 @@ describe('upgrade data (SPEC 5.4)', () => {
     }
   });
 
-  it('marks exactly the seven upgrades of this step as implemented', () => {
+  it('marks exactly the finished upgrades as implemented', () => {
     const implemented = CARD_IDS.flatMap((card) =>
       UPGRADES[card].filter((u) => u.implemented).map((u) => u.id),
     );

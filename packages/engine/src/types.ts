@@ -253,6 +253,38 @@ export interface UnitState {
   /** Deals `dmgBonusBps` more damage until `dmgBonusUntil`. */
   dmgBonusBps: number;
   dmgBonusUntil: number;
+
+  // --- Upgrade counters (reset with every new unit, i.e. every round) ---
+  /** Attacks, shots, shells and heals started so far, bayonet stabs excluded (headshot). */
+  attacks: number;
+  /** Own single-target hits that landed so far (frost shaman ice block). */
+  hits: number;
+  /** Direct hits that are still ignored completely (pyromancer heat shield). */
+  ignoreHits: number;
+  /** Remaining triggers of the berserker's unstoppable (once per round). */
+  unstoppableLeft: number;
+  /** True after a step was started, until the next melee attack (knight charge). */
+  moved: boolean;
+  /** Factor on all own damage, basis points (10000 = normal; daughter TNT, mini golems). */
+  powerBps: number;
+  /** Remaining revives of a healer in this round (Wiederbelebung). */
+  reviveLeft: number;
+  /** Tick of the next timed upgrade ability (meteor, earthquake, frost nova, growth); -1 = none. */
+  abilityTick: number;
+  /** Growth stacks gained so far (whelp). */
+  stacks: number;
+  /** Assassin shadow step: first tick at which it may jump again. */
+  jumpReadyTick: number;
+  /** Riesenpilz: this shroomling is the giant of its group (3x HP and damage). */
+  giant: boolean;
+  /** Lich-Form: the necromancer has returned as a flying ghost (this round only). */
+  ghost: boolean;
+  /**
+   * Ansteckend: hit by a contagious spore cloud while tick < sporedUntil; dying then
+   * releases a cloud of `sporedDps` damage per second for the enemy (always the other player).
+   */
+  sporedUntil: number;
+  sporedDps: number;
 }
 
 export interface ProjectileState {
@@ -265,6 +297,11 @@ export interface ProjectileState {
   card: CardId;
   /** Upgrade bit mask of the shooter at launch. */
   up: number;
+  /** Level of the shooter (scales on-hit effects such as burn). */
+  level: number;
+  /** Cell of the shooter at launch (direction of a piercing shot). */
+  fromX: number;
+  fromY: number;
   /** Artillery: target cell fixed at launch; -1 for homing shots. */
   x: number;
   y: number;
@@ -287,6 +324,8 @@ export interface ZoneState {
   hitsAir: boolean;
   startTick: number;
   endTick: number;
+  /** Ansteckend: units it damages count as spored; their cloud deals this per second (0 = no). */
+  contagiousDps: number;
 }
 
 export type BattleEndReason = 'elimination' | 'timeout';
@@ -334,6 +373,7 @@ export interface BattleState {
  * - `damage`: `amount` is the hit point loss after armour and shield (0 if everything was
  *   absorbed; it may exceed the remaining hit points). None while invulnerable.
  * - `summon`: `unit` appeared on (x, y), summoned by `summoner`.
+ * - `breath`: whelp fire breath, a cone from (x, y) towards (tx, ty) with `range` fields.
  */
 export type BattleEvent =
   | { type: 'attack'; unit: number; target: number }
@@ -346,7 +386,20 @@ export type BattleEvent =
   | { type: 'death'; unit: number }
   | { type: 'explosion'; unit: number; x: number; y: number; radius: number }
   | { type: 'jump'; unit: number; fromX: number; fromY: number; x: number; y: number }
-  | { type: 'zone'; id: number; x: number; y: number; radius: number; endTick: number };
+  | { type: 'zone'; id: number; x: number; y: number; radius: number; endTick: number }
+  | {
+      type: 'breath';
+      unit: number;
+      /** Origin cell (the whelp). */
+      x: number;
+      y: number;
+      /** Main target and its cell: the cone's direction. */
+      target: number;
+      tx: number;
+      ty: number;
+      /** Reach in fields. */
+      range: number;
+    };
 
 // ---------------------------------------------------------------------------
 // Match

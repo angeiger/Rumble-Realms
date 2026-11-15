@@ -1,7 +1,8 @@
 /** Battle state basics: the field, occupancy and spawning. No simulation logic in here. */
 import * as balance from '../data/balance.ts';
 import { CARDS } from '../data/cards.ts';
-import { unitStats } from '../upgrades.ts';
+import { applyBps } from '../math.ts';
+import { summonInterval, unitStats } from '../upgrades.ts';
 import type { BattleState, CardId, Layer, PlayerIndex, RngState, UnitState } from '../types.ts';
 import { ENGINE_VERSION } from '../version.ts';
 
@@ -78,9 +79,10 @@ export function spawnUnit(
   x: number,
   y: number,
   id?: number,
+  layer: Layer = CARDS[card].layer,
 ): UnitState {
   const def = CARDS[card];
-  if (!isFree(b, def.layer, x, y)) {
+  if (!isFree(b, layer, x, y)) {
     throw new Error(`spawnUnit: cell ${x},${y} is not free for ${card}`);
   }
   let unitId: number;
@@ -102,7 +104,7 @@ export function spawnUnit(
     owner,
     card,
     level,
-    layer: def.layer,
+    layer,
     x,
     y,
     tx: x,
@@ -127,7 +129,7 @@ export function spawnUnit(
     range: stats.range,
     armorBps: stats.armorBps,
     summonerId: 0,
-    summonTick: def.summon === undefined ? -1 : b.tick + def.summon.intervalTicks,
+    summonTick: def.summon === undefined ? -1 : b.tick + summonInterval(card, up),
     slowBps: 0,
     slowUntil: 0,
     atkSlowBps: 0,
@@ -139,15 +141,40 @@ export function spawnUnit(
     poisonDps: 0,
     poisonStart: 0,
     poisonUntil: 0,
-    shield: 0,
+    shield: stats.shield,
     invulnUntil: 0,
     untargetableUntil: 0,
     dmgBonusBps: 0,
     dmgBonusUntil: 0,
+    attacks: 0,
+    hits: 0,
+    ignoreHits: stats.ignoreHits,
+    unstoppableLeft: stats.unstoppableLeft,
+    moved: false,
+    powerBps: balance.BPS,
+    reviveLeft: stats.reviveLeft,
+    abilityTick: stats.abilityDelay < 0 ? -1 : b.tick + stats.abilityDelay,
+    stacks: 0,
+    jumpReadyTick: 0,
+    giant: false,
+    ghost: false,
+    sporedUntil: 0,
+    sporedDps: 0,
   };
   b.units.push(unit);
-  b.occ[occIndex(def.layer, x, y)] = unit.id;
+  b.occ[occIndex(layer, x, y)] = unit.id;
   return unit;
+}
+
+/**
+ * Riesenpilz: makes a freshly spawned unit a giant (hit points and damage times `hpBps` /
+ * `damageBps`). Its death cloud stays normal (cloud damage ignores powerBps).
+ */
+export function makeGiant(u: UnitState, hpBps: number, damageBps: number): void {
+  u.maxHp = applyBps(u.maxHp, hpBps);
+  u.hp = u.maxHp;
+  u.powerBps = applyBps(u.powerBps, damageBps);
+  u.giant = true;
 }
 
 /** Deep copy of any engine state (plain JSON data). */

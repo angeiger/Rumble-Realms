@@ -10,10 +10,13 @@
  */
 import { FORMATION_ROW_WEIGHT, GRID_COLS, GRID_ROWS, HALF_ROWS } from './data/balance.ts';
 import { CARDS } from './data/cards.ts';
-import { spawnUnit } from './battle/state.ts';
+import { makeGiant, spawnUnit } from './battle/state.ts';
+import { hasUpgrade, refParam, upgradeRef } from './upgrades.ts';
 import type { ArmyEntry, MatchState, PlayerIndex, Zone } from './types.ts';
 
 /** Groups from the base line towards the middle (D-052). */
+const GIANT = upgradeRef('shroomling.giant_mushroom');
+
 export const FORMATION_GROUPS: readonly Zone[] = ['back', 'mid', 'front'];
 
 /** A unit's cell in absolute field coordinates. */
@@ -131,7 +134,15 @@ export function rebuildField(state: MatchState): number[] {
   b.upgrades = [{ ...state.activeUpgrades[0] }, { ...state.activeUpgrades[1] }];
   for (const cell of cells) {
     const entry = entryOf.get(cell.id) as ArmyEntry;
-    spawnUnit(b, entry.player, entry.card, entry.level, cell.x, cell.y, cell.id);
+    const unit = spawnUnit(b, entry.player, entry.card, entry.level, cell.x, cell.y, cell.id);
+    // Riesenpilz: the first unit of every group of the card's base count in the entry.
+    if (
+      entry.card === GIANT.card &&
+      hasUpgrade(b.upgrades[entry.player][entry.card] ?? 0, GIANT.index) &&
+      entry.unitIds.indexOf(cell.id) % CARDS[entry.card].count === 0
+    ) {
+      makeGiant(unit, refParam(GIANT, 'hpBps'), refParam(GIANT, 'damageBps'));
+    }
   }
   b.nextUnitId = state.nextUnitId;
   const forfeited = [...layouts[0].forfeited, ...layouts[1].forfeited];
