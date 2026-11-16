@@ -48,6 +48,36 @@ import { hasUpgrade, summonMax, unitCount, unitStats } from './upgrades.ts';
 /** Stream number for bot decisions; 1..4 are used by the match (rng.ts). */
 export const STREAM_BOT = 5;
 
+/**
+ * First stream number of `botPickRng`: decision `pickIndex` uses stream
+ * BOT_PICK_STREAM_BASE + pickIndex. Far above the match streams 1..4 and STREAM_BOT, so the
+ * ranges can never overlap (room for 65 536 further fixed streams below it).
+ */
+export const BOT_PICK_STREAM_BASE = 0x10000;
+/** Highest `pickIndex` `botPickRng` accepts (a match has fewer than 50 picks). */
+export const BOT_PICK_INDEX_MAX = 0xffff;
+
+/**
+ * Random stream of ONE bot decision (D-084): derived from the match seed and the global index
+ * of the pick in the match (`state.picks.length` before the pick). Every decision has its own,
+ * independent stream, so a single decision can be recomputed (and checked by the server)
+ * without replaying the bot's earlier decisions; the bot's luck never carries over from one
+ * pick to the next.
+ *
+ * Distinct (seed, pickIndex) give distinct generator states: for a fixed seed every state word
+ * of `seedRng` is a bijection of the stream number (rng.ts), and the streams
+ * BOT_PICK_STREAM_BASE .. BOT_PICK_STREAM_BASE + BOT_PICK_INDEX_MAX are disjoint from the match
+ * streams. Throws for a pickIndex outside 0..BOT_PICK_INDEX_MAX or an invalid seed.
+ */
+export function botPickRng(seed: number, pickIndex: number): RngState {
+  if (!Number.isInteger(pickIndex) || pickIndex < 0 || pickIndex > BOT_PICK_INDEX_MAX) {
+    throw new Error(
+      `botPickRng: pickIndex must be an integer 0..${BOT_PICK_INDEX_MAX}, got ${pickIndex}`,
+    );
+  }
+  return seedRng(seed, BOT_PICK_STREAM_BASE + pickIndex);
+}
+
 type Strategy = (state: MatchState, offer: Offer, rng: RngState) => number;
 
 /** Deep copy of a match state (plain JSON data, D-019). The copy shares nothing. */
