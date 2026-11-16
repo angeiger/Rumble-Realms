@@ -1,6 +1,6 @@
 # Rumble Realms – Coding-Protokoll für den Coding-Agenten
 
-Version 1.2 · Stand 14.11.2026 · Auftraggeber: Andreas
+Version 1.3 · Stand 16.11.2026 · Auftraggeber: Andreas
 
 > **An den Agenten:** Dieses Dokument ist die verbindliche Spezifikation. Lies es vollständig, bevor du Code schreibst. Lege es als `docs/SPEC.md` ins Repository. Wo es eine Frage offen lässt: triff eine vernünftige Annahme, halte sie in `docs/DECISIONS.md` fest und arbeite weiter. Frag nur bei Entscheidungen, die Geld kosten, etwas veröffentlichen oder nicht rückgängig zu machen sind.
 
@@ -120,18 +120,28 @@ rumble-realms/
 - Auswahl: **Tippen** hebt eine Karte hervor und zeigt ihre Werte; **zweites Tippen oder Button „Ausspielen“** bestätigt. Langes Drücken zeigt die Detailansicht.
 - Zeitlimit pro Pick gegen echte Spieler: 15 s, danach automatischer Zufallspick. Bots wählen nach ~1 s (für das Spielgefühl).
 
-### 4.4 Platzierung (automatisch nach Rolle)
+### 4.4 Aufstellung (automatisch, in zentrierten Reihen)
 
-Die Einheiten werden automatisch in der eigenen Hälfte platziert. Reihen gezählt von der eigenen Grundlinie (0) zur Mitte (11):
+Die Einheiten werden automatisch in der eigenen Hälfte aufgestellt, so nah an der eigenen Grundlinie wie möglich. Reihen gezählt von der eigenen Grundlinie (0) zur Mitte (11). Die Aufstellung wird nach jedem Pick und zu Beginn jeder Runde aus der ganzen Armee neu berechnet; früher gespielte Einheiten können dabei weiterrücken. Sie braucht keinen Zufall.
 
-| Zone | Reihen | Rollen |
-|---|---|---|
-| Vorne | 8–11 | Tank, Nahkampf, Schwarm, Bombe |
-| Mitte | 4–7 | Support, Assassine, Flieger |
-| Hinten | 0–3 | Fernkampf, Magier, Artillerie, Beschwörer |
+Jede Karte gehört zu einem **Rang**. Die Ränge folgen von der Grundlinie zur Feldmitte aufeinander:
 
-- Pro Karte wird eine Spalte als Zentrum zufällig (Seed) gewählt; die Einheiten besetzen die nächstgelegenen freien Felder ihrer Ebene in der Zone (Abstand zum Zentrum, Gleichstand → kleinere Spalte, dann kleinere Reihe).
-- Zone voll → Überlauf in die angrenzende Zone (Richtung Grundlinie). Hälfte voll → überzählige Einheiten verfallen (mit kurzer Anzeige).
+| Rang (von hinten) | Karten, in dieser Reihenfolge nebeneinander |
+|---|---|
+| 1 (Grundlinie) | Assassine |
+| 2 | Bogenschütze, Musketier, Pyromantin, Nekromant, Frostschamane, Bombardierkäfer |
+| 3 | Heiler; auf der Luftebene darüber: Fledermäuse, Drachenjunges |
+| 4 | Ritter, Berserker, Steingolem |
+| 5 | Lauf-TNT, Pilzlinge |
+| 6 (vorne) | Skelette |
+
+- Jeder Rang belegt eigene Reihen. Ein Rang ohne Einheiten belegt keine Reihe; der nächste Rang beginnt direkt davor.
+- Innerhalb eines Rangs stehen die Karten in der Reihenfolge der Tabelle nebeneinander, aus Sicht des Spielers von links nach rechts; Einheiten derselben Karte in der Reihenfolge, in der sie gespielt wurden.
+- Eine Reihe fasst 12 Einheiten. Hat ein Rang mehr, stehen die vollen Reihen hinten und der Rest in einer weiteren Reihe davor.
+- **Jede Reihe steht mittig.** Kommen Einheiten dazu, wird die Reihe neu zentriert. Bleibt eine ungerade Zahl von Feldern frei, steht die Reihe aus Sicht des Spielers ein halbes Feld links der Mitte.
+- Flieger stehen auf der Luftebene über dem Rang der Heiler und werden für sich zentriert. Der Rang ist so tief wie die vollere der beiden Ebenen.
+- Einheiten, deren Reihe nicht mehr in die eigene Hälfte passt, verfallen (mit kurzer Anzeige).
+- Die Angabe „Zone“ (vorne, Mitte, hinten) in Abschnitt 5.2 beschreibt nur noch grob, wo eine Einheit steht; maßgeblich ist der Rang.
 
 ### 4.5 Sonderkarten
 
@@ -161,35 +171,37 @@ Ideen für später (Meilenstein 6, nicht im MVP = Minimum Viable Product):
 
 | ID | Name | Anzahl | Rolle / Zone | LP | Schaden | Intervall | Reichweite | Tempo | Ziele | Seltenheit | Arena |
 |---|---|---|---|---|---|---|---|---|---|---|---|
-| `archer` | Bogenschütze | 3 | Fernkampf / hinten | 120 | 30 | 1,0 | 5 | 1,0 | Boden + Luft | Gewöhnlich | 1 |
-| `knight` | Ritter | 2 | Tank / vorne | 600 | 60 | 1,2 | 1 | 0,8 | Boden | Gewöhnlich | 1 |
-| `tnt` | Lauf-TNT | 2 | Bombe / vorne | 150 | 250 (Fläche r 1,5) | einmalig | Kontakt | 1,5 | Boden | Selten | 1 |
-| `skeleton` | Skelette | 5 | Schwarm / vorne | 60 | 20 | 0,7 | 1 | 1,8 | Boden | Gewöhnlich | 1 |
-| `healer` | Heiler | 2 | Support / Mitte | 200 | heilt 40 | 1,5 | 3 | 0,9 | Verbündete | Selten | 1 |
-| `musketeer` | Musketier | 1 | Fernkampf / hinten | 400 | 140 | 2,5 | 8 | 0,9 | Boden + Luft | Selten | 1 |
-| `bat` | Fledermäuse | 3 | Flieger / Mitte | 70 | 22 | 0,8 | 1 | 1,6 | Boden + Luft | Gewöhnlich | 1 |
-| `assassin` | Assassine | 3 | Nahkampf / Mitte | 200 | 40 | 0,9 | 1 | 1,4 | Boden | Selten | 2 |
+| `archer` | Bogenschütze | 3 | Fernkampf / hinten | 120 | 24 | 1,0 | 5 | 1,0 | Boden + Luft | Gewöhnlich | 1 |
+| `knight` | Ritter | 2 | Tank / vorne | 560 | 60 | 1,2 | 1 | 0,8 | Boden | Gewöhnlich | 1 |
+| `tnt` | Lauf-TNT | 3 | Bombe / vorne | 180 | 250 (Fläche r 1,5) | einmalig | Lunte ab 2 Feldern | 2,0 | Boden | Selten | 1 |
+| `skeleton` | Skelette | 5 | Schwarm / vorne | 210 | 27 | 0,7 | 1 | 1,8 | Boden | Gewöhnlich | 1 |
+| `healer` | Heiler | 2 | Support / Mitte | 230 | heilt 50 | 1,5 | 3 | 0,9 | Verbündete | Selten | 1 |
+| `musketeer` | Musketier | 1 | Fernkampf / hinten | 360 | 105 | 2,5 | 8 | 0,9 | Boden + Luft | Selten | 1 |
+| `bat` | Fledermäuse | 3 | Flieger / Mitte | 90 | 26 | 0,8 | 1 | 1,6 | Boden + Luft | Gewöhnlich | 1 |
+| `assassin` | Assassine | 3 | Nahkampf / Mitte | 250 | 46 | 0,9 | 1 | 1,4 | Boden | Selten | 2 |
 | `berserker` | Berserker | 1 | Tank-Nahkampf / vorne | 900 | 70 | 1,4 → 0,6 | 1 | 0,9 | Boden | Episch | 2 |
-| `shroomling` | Pilzlinge | 4 | Schwarm / vorne | 90 | 18 | 1,0 | 1 | 1,0 | Boden | Gewöhnlich | 2 |
-| `pyromancer` | Pyromantin | 1 | Magier / hinten | 280 | 70 (Fläche r 1) | 1,8 | 4 | 0,9 | Boden + Luft | Selten | 2 |
+| `shroomling` | Pilzlinge | 4 | Schwarm / vorne | 200 | 28 | 1,0 | 1 | 1,0 | Boden | Gewöhnlich | 2 |
+| `pyromancer` | Pyromantin | 1 | Magier / hinten | 250 | 58 (Fläche r 1) | 1,8 | 4 | 0,9 | Boden + Luft | Selten | 2 |
 | `necromancer` | Nekromant | 1 | Beschwörer / hinten | 300 | 25 | 1,2 | 3 | 0,8 | Boden + Luft | Episch | 2 |
-| `beetle` | Bombardierkäfer | 1 | Artillerie / hinten | 350 | 160 (Fläche r 1,5) | 5,0 | ganzes Feld | 0,4 | Boden | Episch | 3 |
+| `beetle` | Bombardierkäfer | 1 | Artillerie / hinten | 350 | 110 (Fläche r 1) | 6,0 | ganzes Feld | 0,4 | Boden | Episch | 3 |
 | `golem` | Steingolem | 1 | Tank / vorne | 1600 | 90 | 2,0 | 1 | 0,5 | Boden | Episch | 3 |
-| `frost_shaman` | Frostschamane | 1 | Support / hinten | 260 | 35 + 30 % langsamer (2 s) | 1,5 | 5 | 0,9 | Boden + Luft | Selten | 4 |
-| `whelp` | Drachenjunges | 1 | Flieger / Mitte | 550 | 55 (Fläche r 1) | 1,6 | 2 | 1,1 | Boden + Luft | Episch | 5 |
+| `frost_shaman` | Frostschamane | 1 | Support / hinten | 360 | 54 + 30 % langsamer (2 s) | 1,2 | 5 | 0,9 | Boden + Luft | Selten | 4 |
+| `whelp` | Drachenjunges | 1 | Flieger / Mitte | 400 | 44 (Fläche r 1) | 1,8 | 2 | 1,1 | Boden + Luft | Episch | 5 |
 
 Fliegend: `bat`, `whelp` (Luftebene, nur von Fernkampf angreifbar).
 
+Die Werte sind der Stand nach der ersten Balance-Runde (16.11.2026, `docs/DECISIONS.md` D-078). Maßgeblich im Code ist `packages/engine/src/data/cards.ts`.
+
 ### 5.3 Besonderheiten der Grundeinheiten
 
-- **Lauf-TNT:** läuft zum nächsten Bodengegner. Explodiert, sobald ein Gegner angrenzt (auch diagonal) **oder** wenn es durch Schaden stirbt. Zerstört sich dabei selbst. Kein Eigenschaden für Verbündete.
+- **Lauf-TNT:** läuft zum nächsten Bodengegner und behält dieses Ziel, bis es stirbt oder nicht mehr anvisierbar ist. Kommt ein Bodengegner bis auf 2 Felder heran, brennt die Lunte (1,25 s); das TNT läuft dabei weiter. Ist am Ende der Lunte noch ein Gegner im Umkreis, explodiert es; sonst erlischt die Lunte und beginnt beim nächsten Mal von vorn. Stirbt es durch Schaden, explodiert es sofort. Zerstört sich dabei selbst. Kein Eigenschaden für Verbündete.
 - **Heiler:** heilt die verbündete Einheit mit dem niedrigsten LP-Anteil in Reichweite 3; läuft dorthin, wenn niemand in Reichweite ist. Ohne verletzte Verbündete folgt er der nächsten verbündeten Einheit mit 2 Feldern Abstand. Sind keine Verbündeten mehr übrig, läuft er zum nächsten Gegner und greift im Nahkampf mit 10 Schaden an (damit Runden enden).
-- **Assassine:** Fähigkeit „Schattensprung“ zu **Beginn jeder Kampfphase**: 2 s Animation (sichtbar aufladend, in dieser Zeit angreifbar), dann Teleport auf ein freies Feld neben dem **am weitesten entfernten** Bodengegner. Ist dort kein Feld frei, nächstes freies Feld zu diesem Gegner. Danach normaler Nahkampf.
-- **Musketier:** weniger Schaden pro Sekunde als drei Bogenschützen (56 vs. 90), dafür viel größere Reichweite und mehr Schaden pro Schuss.
+- **Assassine:** Fähigkeit „Schattensprung“ zu **Beginn jeder Kampfphase**: 2,5 s Animation (sichtbar aufladend, in dieser Zeit angreifbar), dann Teleport auf das Feld, auf dem der bei Kampfbeginn **am weitesten entfernte** Bodengegner zu Kampfbeginn stand. Ist das Feld belegt, nächstgelegenes freies Bodenfeld. Danach normaler Nahkampf.
+- **Musketier:** weniger Schaden pro Sekunde als drei Bogenschützen (42 vs. 72), dafür viel größere Reichweite und mehr Schaden pro Schuss.
 - **Fledermäuse:** fliegend; können Boden und Luft angreifen; nur von Fernkampf-Einheiten treffbar.
 - **Berserker:** Angriffsintervall sinkt linear mit fehlenden LP: `Intervall = 1,4 − 0,8 × (1 − LP / maxLP)`. Lebensraub 25 % des verursachten Schadens.
-- **Pilzlinge:** Beim Tod entsteht eine Sporenwolke (r 1, 15 Schaden/s für 3 s, nur Gegner).
-- **Nekromant:** beschwört alle 4 s ein Skelett (Level des Nekromanten, max. 4 gleichzeitig) auf einem freien Nachbarfeld; greift zusätzlich selbst an.
+- **Pilzlinge:** Beim Tod entsteht eine Sporenwolke (r 1, 25 Schaden/s für 3 s, nur Gegner).
+- **Nekromant:** beschwört alle 4 s ein Skelett (Level des Nekromanten, max. 4 gleichzeitig) auf einem freien Nachbarfeld; greift zusätzlich selbst an. Ein beschworenes Skelett ist schwächer als ein Skelett aus der Karte „Skelette“: 30 % der LP und 75 % des Schadens (Level 1: 63 LP, 20 Schaden). Das gilt auch für die Skelette aus „Knochenarmee“ und „Seelenernte“. Beschworene Skelette sehen anders aus als Karten-Skelette, damit man sie unterscheiden kann.
 - **Bombardierkäfer:** Reichweite über das ganze Feld. Schießt ein langsames Geschoss (Flugzeit 1,5 s) auf das **Feld**, auf dem das Ziel beim Abschuss steht – bewegliche Ziele können ausweichen. Mindestreichweite 2. (Name angelehnt an den echten Bombardierkäfer, der eine heiße chemische Reaktion verspritzt.)
 - **Steingolem:** sehr langsam, sehr viele LP.
 - **Frostschamane:** Treffer verlangsamen Bewegung und Angriffstempo des Ziels um 30 % für 2 s (erneuert, stapelt nicht).
@@ -227,7 +239,7 @@ Die Engine muss bei gleichem **Seed + gleichen Picks + gleicher Engine-Version**
 
 - Fester Takt: **20 Ticks pro Sekunde** (50 ms). Alle Zeiten intern in Ticks.
 - **Nur Ganzzahlen** in der Simulation: Positionen in Milli-Feldern, LP als Ganzzahl, Prozente als Basispunkte (1 % = 100). Distanzvergleiche über **quadrierte** Abstände, keine Wurzeln, kein `Math.sin/cos`.
-- Zufall nur über einen eigenen Seed-Zufallsgenerator (z. B. `xoshiro128**`), getrennte Streams für Angebote, Platzierung und Kampf.
+- Zufall nur über einen eigenen Seed-Zufallsgenerator (z. B. `xoshiro128**`), getrennte Streams für Angebote und Kampf (die Aufstellung braucht keinen Zufall, Abschnitt 4.4).
 - Feste Verarbeitungsreihenfolge: Einheiten sortiert nach `unitId` (aufsteigend, beim Spawn vergeben). Tode werden **am Ende** eines Ticks gemeinsam verarbeitet (gleichzeitige Tode möglich).
 - `ENGINE_VERSION` als Konstante; jedes gespeicherte Match enthält sie.
 - Test: Gleicher Input → gleicher Zustands-Hash nach dem Kampf (Abschnitt 12).
@@ -394,7 +406,7 @@ Ziel: vom ersten Öffnen bis zum ersten echten Kampf unter 3 Minuten.
 - **Unit-Tests (Vitest):** Zielwahl, Bewegung/Reservierung, jede Einheitenfähigkeit, jedes Upgrade, Sonderkarten, Draft-Reihenfolge inkl. Verlierer-Bonus, Leben und Rundenende, Elo-Formel, Pack-Wahrscheinlichkeiten, Level-Kosten.
 - **Determinismus-Test:** 200 zufällige Matches je zweimal simulieren → identische Hashes. Zusätzlich ein gespeichertes „Golden Replay“, dessen Hash sich nur mit bewusster Erhöhung von `ENGINE_VERSION` ändern darf.
 - **Robustheitstest:** 10 000 Zufallsmatches ohne Absturz, ohne Endlosschleife, jede Runde endet spätestens nach 90 s.
-- **Balance-Tool (`tools/sim-cli`):** simuliert jede Karte gegen jede (gleiches Level, gleiche Anzahl Picks) und ganze Decks gegeneinander; schreibt eine Siegquoten-Matrix nach `docs/BALANCE.md`. Ziel: keine Einzelkarte mit > 60 % Siegquote über alle Paarungen.
+- **Balance-Tool (`tools/sim-cli`):** simuliert ganze Matches mit zufälligen Decks aus vier Karten sowie feste Decks gegeneinander und schreibt die Ergebnisse nach `docs/BALANCE.md`. **Maßstab ist die Siegquote je Karte im Deck:** Ziel 45–55 %, auffällig unter 42 % oder über 58 %. Der Vergleich jeder Karte gegen jede (gleiches Level, gleiche Anzahl Picks) bleibt als Zusatzinformation im Bericht, ist aber kein Ziel mehr: Im Duell einzelner Karten gewinnen Flieger zwangsläufig gegen alles ohne Fernkampf, und Heiler können allein nicht gewinnen.
 - **Ende-zu-Ende (Playwright, mobiles Viewport):** Onboarding als Gast → Benutzername → Botkampf gewinnen → Pack öffnen → Level-Up.
 
 ---

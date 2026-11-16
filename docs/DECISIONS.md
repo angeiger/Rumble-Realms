@@ -804,3 +804,21 @@ Offen für spätere Meilensteine:
 - **Leistung am Gerät:** In langen Matches leben bis zu 180 Einheiten gleichzeitig (Ziel der SPEC 15: etwa 100).
   „Schwer“ rechnet in der VM im Mittel 160 ms pro Entscheidung, in späten Runden bis 0,8 s (D-079).
 - **Feldgröße (D-060)** und **Gestaltung insgesamt (D-072)** wie vereinbart später.
+
+## Rückmeldung von Andreas zum Gate-Bericht von M3b (16.11.2026)
+
+### D-081 Zustimmung zu den offenen Entscheidungen, SPEC auf Version 1.3
+
+- **Balance-Ziel:** bestätigt. Gemessen wird in Decks, nicht Karte gegen Karte (D-078). SPEC 12 nennt jetzt die
+  Siegquote je Karte im Deck als Maßstab (Ziel 45 bis 55 %).
+- **Neue Kartenwerte und schwächere beschworene Skelette:** bestätigt (D-077, D-078). Die Tabelle in SPEC 5.2 und
+  die Texte in 5.3 zeigen jetzt die neuen Werte. Bei der Gelegenheit sind dort auch die schon in M3a freigegebenen
+  Regeln nachgetragen: Assassine (D-049), Lunte und Zielwahl des Lauf-TNT (D-050, D-071, D-076).
+- **Beschworene Skelette sehen anders aus** als Karten-Skelette (Wunsch von Andreas): eigene Figur mit violetten
+  Knochen, grün leuchtenden Augen, zwei kleinen Hörnern und einem Dolch statt der Keule, dazu auf 78 % der Größe
+  gezeichnet. Tunika und Ring behalten die Teamfarbe. Die Darstellung erkennt sie daran, dass sie einen Beschwörer
+  haben; die Engine ist dafür nicht geändert. Der Zombie eines beschworenen Skeletts (Upgrade „Untot“) sieht aus
+  wie jeder andere Zombie: Die Engine merkt sich nicht, aus welcher Art Skelett er entstand.
+- **Upgrades im Testmodus (D-073):** bestätigt.
+- **Aufstellung (D-070, D-075):** bestätigt. SPEC 4.4 beschreibt jetzt die Aufstellung in zentrierten Reihen nach
+  Rang, so wie sie umgesetzt ist; die alte Zonen-Tabelle mit Zufallsspalte ist entfernt.
