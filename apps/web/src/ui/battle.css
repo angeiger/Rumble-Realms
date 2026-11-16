@@ -515,3 +515,131 @@
   align-items: stretch;
   gap: 16px;
 }
+
+/* Active upgrades next to the lives (SPEC 4.5): one mini figure per unit, one dot per upgrade. */
+.upg-strip {
+  flex: 0 1 auto;
+  min-width: 0;
+  max-width: 42vw;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  padding: 0 2px;
+  border: 0;
+  border-radius: 8px;
+  background: rgb(9 13 36 / 0.45);
+  color: inherit;
+  cursor: pointer;
+  pointer-events: auto;
+  /* Many upgrades: scroll sideways instead of growing taller or wider. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.upg-strip::-webkit-scrollbar {
+  display: none;
+}
+
+/* The touch target is taller than the visible strip. */
+.upg-strip {
+  position: relative;
+}
+
+.upg-strip::after {
+  content: '';
+  position: absolute;
+  inset: -11px -4px;
+}
+
+.upg-chip {
+  flex: none;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+}
+
+.upg-chip .figure {
+  height: 20px;
+  width: auto;
+  aspect-ratio: 100 / 110;
+  pointer-events: none;
+}
+
+.upg-chip__dots {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.upg-chip__dot {
+  width: 5px;
+  height: 5px;
+  border: 1px solid var(--outline);
+  border-radius: 50%;
+  background: var(--gold);
+}
+
+.upg-list {
+  max-height: 100%;
+  overflow-y: auto;
+}
+
+.upg-list__title {
+  padding-inline: 20px;
+  font-size: 1.3rem;
+}
+
+.upg-list__items {
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.upg-list__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 8px;
+  border-radius: 12px;
+  background: #efe4b8;
+}
+
+.upg-list__fig {
+  flex: none;
+  width: 40px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+  border: 3px solid var(--outline);
+  border-radius: 10px;
+  background: var(--team-blue);
+}
+
+.upg-list__fig .figure {
+  height: 34px;
+  width: auto;
+  aspect-ratio: 100 / 110;
+}
+
+.upg-list__body {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.upg-list__name {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  line-height: 1.15;
+}
+
+.upg-list__text {
+  font-size: 0.8rem;
+  font-weight: 700;
+  line-height: 1.25;
+}

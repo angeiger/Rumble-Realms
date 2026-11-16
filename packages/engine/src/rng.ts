@@ -10,8 +10,7 @@ import type { RngState } from './types.ts';
 export const STREAM_MATCH = 1;
 /** Card offers during the draft. */
 export const STREAM_OFFERS = 2;
-/** Center column of a placed card. */
-export const STREAM_PLACEMENT = 3;
+// Stream 3 was the center column of a placed card until D-070; the number stays unused.
 /** Random decisions inside the battle simulation. */
 export const STREAM_BATTLE = 4;
 

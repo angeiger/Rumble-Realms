@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { CARDS } from '@rumble-realms/engine';
 import { setLocale } from '../i18n/index.ts';
 import {
   formatNumber,
@@ -23,16 +24,32 @@ describe('card stats', () => {
   });
 
   it('reads the level 1 table of SPEC 5.2', () => {
+    const healAmount = (CARDS.healer.attack as { amount: number }).amount;
     const knight = getCardStats('knight', 1);
-    expect(knight).toMatchObject({ hp: 600, effect: 60, interval: 1.2, rangeKind: 'melee' });
+    expect(knight).toMatchObject({
+      hp: CARDS.knight.hp,
+      effect: 60,
+      interval: 1.2,
+      rangeKind: 'melee',
+    });
     const archer = getCardStats('archer', 1);
     expect(archer).toMatchObject({ count: 3, range: 5, rangeKind: 'ranged', target: 'groundAir' });
-    expect(getCardStats('healer', 1)).toMatchObject({ effectKind: 'heal', effect: 40 });
+    expect(getCardStats('healer', 1)).toMatchObject({ effectKind: 'heal', effect: healAmount });
     expect(getCardStats('tnt', 1)).toMatchObject({ interval: null, rangeKind: 'contact' });
   });
 
+  it('reads the artillery beetle: whole-field range, 6 s interval', () => {
+    const beetle = CARDS.beetle.attack as { damage: number; intervalTicks: number };
+    expect(getCardStats('beetle', 1)).toMatchObject({
+      effect: beetle.damage,
+      interval: beetle.intervalTicks / 20,
+      rangeKind: 'field',
+      target: 'ground',
+    });
+  });
+
   it('applies the level', () => {
-    expect(getCardStats('knight', 3).hp).toBe(720);
+    expect(getCardStats('knight', 3).hp).toBe(Math.floor((CARDS.knight.hp * 12) / 10));
   });
 
   it('formats numbers with a decimal comma in German', () => {

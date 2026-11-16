@@ -1,7 +1,8 @@
 /** Battle state basics: the field, occupancy and spawning. No simulation logic in here. */
 import * as balance from '../data/balance.ts';
 import { CARDS } from '../data/cards.ts';
-import { scaleByLevel } from '../math.ts';
+import { applyBps } from '../math.ts';
+import { summonInterval, unitStats } from '../upgrades.ts';
 import type { BattleState, CardId, Layer, PlayerIndex, RngState, UnitState } from '../types.ts';
 import { ENGINE_VERSION } from '../version.ts';
 
@@ -9,7 +10,7 @@ import { ENGINE_VERSION } from '../version.ts';
 // simulation (see the note in sim.ts).
 const { GRID_CELLS, GRID_COLS, GRID_ROWS } = balance;
 
-/** An empty field. `rng` is the battle stream of the match (unused by the M1 units). */
+/** An empty field without upgrades. `rng` is the battle stream of the match (unused so far). */
 export function createBattle(rng: RngState): BattleState {
   const occ: number[] = [];
   for (let i = 0; i < 2 * GRID_CELLS; i++) occ.push(0);
@@ -25,6 +26,7 @@ export function createBattle(rng: RngState): BattleState {
     zones: [],
     occ,
     rng: [rng[0], rng[1], rng[2], rng[3]],
+    upgrades: [{}, {}],
     result: null,
   };
 }
@@ -66,7 +68,8 @@ export function unitById(b: BattleState, id: number): UnitState | undefined {
  * Without `id` the unit gets the next free id of the field. With `id` (the army set-up,
  * D-053) it keeps that id, which must be higher than every id on the field, so `units`
  * stays sorted; `nextUnitId` then moves past it.
- * Throws if the cell is outside the field or already taken on the unit's layer.
+ * Stats (HP, speed, range, armour) come from the level and the owner's active upgrades of
+ * `card` in `b.upgrades`. Throws if the cell is outside the field or already taken.
  */
 export function spawnUnit(
   b: BattleState,
@@ -76,9 +79,10 @@ export function spawnUnit(
   x: number,
   y: number,
   id?: number,
+  layer: Layer = CARDS[card].layer,
 ): UnitState {
   const def = CARDS[card];
-  if (!isFree(b, def.layer, x, y)) {
+  if (!isFree(b, layer, x, y)) {
     throw new Error(`spawnUnit: cell ${x},${y} is not free for ${card}`);
   }
   let unitId: number;
@@ -92,13 +96,15 @@ export function spawnUnit(
     unitId = id;
     if (b.nextUnitId <= id) b.nextUnitId = id + 1;
   }
-  const maxHp = scaleByLevel(def.hp, level);
+  const up = b.upgrades[owner][card] ?? 0;
+  const stats = unitStats(card, level, up);
+  const maxHp = stats.maxHp;
   const unit: UnitState = {
     id: unitId,
     owner,
     card,
     level,
-    layer: def.layer,
+    layer,
     x,
     y,
     tx: x,
@@ -118,10 +124,59 @@ export function spawnUnit(
     jumpX: -1,
     jumpY: -1,
     fuseTick: -1,
+    up,
+    speed: stats.speed,
+    range: stats.range,
+    armorBps: stats.armorBps,
+    summonerId: 0,
+    summonTick: def.summon === undefined ? -1 : b.tick + summonInterval(card, up),
+    slowBps: 0,
+    slowUntil: 0,
+    atkSlowBps: 0,
+    atkSlowUntil: 0,
+    stunUntil: 0,
+    frozenUntil: 0,
+    burnDps: 0,
+    burnStart: 0,
+    burnUntil: 0,
+    poisonDps: 0,
+    poisonStart: 0,
+    poisonUntil: 0,
+    shield: stats.shield,
+    invulnUntil: 0,
+    untargetableUntil: 0,
+    dmgBonusBps: 0,
+    dmgBonusUntil: 0,
+    attacks: 0,
+    hits: 0,
+    ignoreHits: stats.ignoreHits,
+    unstoppableLeft: stats.unstoppableLeft,
+    moved: false,
+    powerBps: balance.BPS,
+    reviveLeft: stats.reviveLeft,
+    abilityTick: stats.abilityDelay < 0 ? -1 : b.tick + stats.abilityDelay,
+    stacks: 0,
+    jumpReadyTick: 0,
+    giant: false,
+    ghost: false,
+    sporedUntil: 0,
+    sporedDps: 0,
+    variant: 'normal',
   };
   b.units.push(unit);
-  b.occ[occIndex(def.layer, x, y)] = unit.id;
+  b.occ[occIndex(layer, x, y)] = unit.id;
   return unit;
+}
+
+/**
+ * Riesenpilz: makes a freshly spawned unit a giant (hit points and damage times `hpBps` /
+ * `damageBps`). Its death cloud stays normal (cloud damage ignores powerBps).
+ */
+export function makeGiant(u: UnitState, hpBps: number, damageBps: number): void {
+  u.maxHp = applyBps(u.maxHp, hpBps);
+  u.hp = u.maxHp;
+  u.powerBps = applyBps(u.powerBps, damageBps);
+  u.giant = true;
 }
 
 /** Deep copy of any engine state (plain JSON data). */

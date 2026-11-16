@@ -429,9 +429,118 @@ jeder endet mit einem Gate, das Andreas testet und freigibt. Stand der Vorarbeit
   gewischt, offene Dialoge sperren das Wischen. Nach jedem Tab-Wechsel gleicht der Pager den aktiven Tab mit der
   tatsächlich sichtbaren Seite ab, auch auf Browsern ohne `scrollend`-Ereignis (ältere iPhones).
 
+## M3b – Volle Kampfmechanik, Zwischenstand (15.11.2026)
+
+### D-063 Einmalige Ausnahme vom Gate-Protokoll am 15.11.2026
+
+Andreas hat am 15.11. erlaubt, an M3b weiterzuarbeiten, bis sich sein Nutzungslimit zurücksetzt (etwa 13:50 UTC),
+obwohl M3a noch nicht freigegeben war. Danach gilt wieder D-061: Weiter an M3b erst nach der Freigabe von M3a.
+
+### D-064 Auslegungen zu den Upgrades (SPEC 5.4)
+
+Die SPEC lässt bei vielen Upgrades Einzelheiten offen. So sind sie umgesetzt:
+
+- **Skalierung:** Brand und Gift aus Upgrades, der Rückschaden des Chitinpanzers, der Schild des Ritters und der
+  Knochenhagel skalieren mit dem Kartenlevel wie Schaden bzw. LP. Für Schaden gilt auch der Sudden Death.
+- **Inferno:** Alle Einheiten, die der Flächentreffer der Pyromantin trifft, brennen, nicht nur das Hauptziel.
+- **Eisblock:** Gezählt werden die Treffer des Schützen. Ist er beim Einschlag nicht mehr auf dem Feld, zählt der
+  Treffer nicht.
+- **Eisrüstung, Chitinpanzer, Gift, Ultraschall:** wirken bei jedem Nahkampftreffer, auch wenn ein Schild den
+  Schaden ganz aufnimmt.
+- **Hitzeschild:** Als Treffer zählen Angriffe, Schüsse, Granaten, Flächentreffer und Explosionen. Brand, Gift,
+  Wolken, Pfützen und Rückschaden zählen nicht. Während einer Unverwundbarkeit wird keine Ladung verbraucht.
+- **Unbändig:** löst nur aus, wenn der Berserker den Treffer überlebt. Ein Treffer, der allein tödlich ist, tötet
+  ihn (D-031).
+- **Wirbelwind:** trifft alle angrenzenden Gegner, auch nicht anvisierbare (wie Flächenschaden).
+- **Heilkreis:** Verbündete im Radius 2 um das geheilte Ziel bekommen je 60 %; das Ziel selbst und der Heiler
+  bekommen nichts zusätzlich. **Segen** gilt für jeden Geheilten.
+- **Wiederbelebung:** Jeder Heiler hat eine eigene Ladung pro Runde; stehen mehrere in Reichweite, ist der mit der
+  kleinsten Nummer dran. Die Wiederbelebte ist eine neue Einheit nur für diese Runde und bringt selbst keine Ladung mit.
+- **Bajonett:** Der Musketier sticht nur sein aktuelles Ziel, wenn es angrenzt. Ein Stich ist kein Schuss, der
+  **Kopfschuss** bleibt also für den ersten echten Schuss der Runde.
+- **Durchschlag:** „Dahinter“ ist das Feld einen Schritt hinter dem Ziel, in Schussrichtung vom Feld des Schützen
+  aus, auf beiden Ebenen. Beim Kopfschuss bekommt der Gegner dahinter die Hälfte des dreifachen Schadens.
+- **Salve:** Die zusätzlichen Pfeile gehen an die nächstgelegenen anderen Gegner in Reichweite.
+- **Ansturm:** Als Bewegung zählt jeder begonnene Schritt seit dem letzten Treffer.
+- **Spott:** wird jeden Tick geprüft und bindet nur Gegner, die den Ritter überhaupt angreifen können (Ebene,
+  anvisierbar, Mindestabstand der Artillerie).
+- **Untot:** Der Zombie liegt sofort auf dem Feld des Skeletts, ist aber 2 s lang betäubt, nicht anvisierbar und
+  unverwundbar. Er steht nur einmal auf und behält den Knochenhagel.
+- **Tochter-TNT, Geröll:** Beschwörungen nur für die laufende Runde (D-053 bleibt unberührt). Mini-Golems haben
+  20 % der LP und des Schadens, Tempo und Reichweite bleiben; sie zerfallen selbst nicht weiter.
+- **Seelenernte:** beachtet die Obergrenze lebender Skelette und verändert den Beschwörungstakt nicht.
+- **Meteor:** zielt auf den Gegner, um den herum (r 1,5) die meisten Gegner stehen; bei Gleichstand die kleinere Nummer.
+- **Zeitfähigkeiten** (Meteor, Erdstoß, Frostnova, Wachstum): pausieren, solange die Einheit betäubt oder
+  eingefroren ist. Die Frostnova löst zum ersten Mal bei Kampfbeginn aus.
+- **Wachstum:** +15 % Schaden pro Stufe, die Stufen addieren sich (höchstens +45 %). Die Größe ist nur Anzeige.
+- **Doppelladung:** Gibt es kein zweites gültiges Ziel, gehen beide Geschosse auf dasselbe Ziel.
+- **Schattenschritt:** Der Assassine springt nur aus dem Stand; mitten in einem Schritt wartet er dessen Ende ab.
+- **Eisrüstung:** Die Stärke steht nicht in der SPEC; Annahme 30 % für 2 s wie der Grundangriff des Frostschamanen.
+- **Riesenpilz:** Pro gespielter Karte wird der erste Pilzling (kleinste Nummer) zum Riesen, beim Doppelpack der
+  erste jeder Vierergruppe, also zwei.
+- **Ansteckend:** „Vergiftet“ ist, wer in der letzten Sekunde Schaden durch eine Sporenwolke des Pilzling-Spielers
+  bekommen hat. Stirbt er so, hinterlässt er selbst eine Sporenwolke, die wieder ansteckt (Kettenreaktion gewollt).
+  Die Stärke der Folgewolken richtet sich nach dem Level des Pilzlings, dessen Wolke die Kette begonnen hat.
+- **Lich-Form:** Der Nekromant kehrt beim ersten Tod der Runde auf seinem Feld als fliegender Geist mit 50 % LP
+  zurück (ist das Luftfeld belegt, auf dem nächsten freien). Er greift weiter an, behält seine lebenden Skelette
+  und beschwört weiter. Ein Nekromant mit Lich-Form und sein Geist werden nicht zusätzlich vom Heiler wiederbelebt.
+  In der nächsten Runde steht er wieder normal am Boden.
+- **Feueratem:** Kegel mit 45° halbem Öffnungswinkel in Richtung des Hauptziels, Länge gleich der Reichweite (+1),
+  wirkt sofort ohne Geschoss. Jeder Getroffene bekommt den vollen Schaden, auch nicht anvisierbare Gegner.
+
+### D-065 Bots „Mittel“ und „Schwer“ (SPEC 8.1)
+
+- **Mittel** bewertet jeden Platz des Angebots aus den Kartendaten (LP, Schaden pro Sekunde, Fläche, Reichweite,
+  Ziele, Anzahl), nicht aus einer Namenstabelle, und gewichtet das mit einem Konter-Faktor gegen die Armee, die der
+  Gegner in diesem Match schon gespielt hat. Das Deck des Gegners kennt er nicht. Aufrüstungen bewertet er pauschal
+  mit 30 % des Werts der betroffenen Einheiten (schon gespielte plus noch zu erwartende).
+- **Schwer** spielt für jeden Platz sechsmal den Rest der Runde auf einer Kopie des Spielstands durch: eigene und
+  gegnerische Folge-Picks zufällig, dann der Kampf. Die Kopie bekommt eigene Zufallsströme für Angebote, Aufstellung
+  und Kampf. Mit den echten Strömen würde der Bot künftige Angebote und den Kampfzufall vorab kennen.
+- Der echte Spielstand und seine Zufallsströme bleiben bei jeder Bot-Entscheidung unverändert (Test über den
+  Zustands-Hash).
+- Rechenzeit „Schwer“ in der VM: rund 70 ms pro Entscheidung, etwa 90 ms in späten Runden.
+- Bot-Decks: Mittel nutzt Karten bis Arena 2, Schwer bis Arena 3; je drei Profile.
+- Der Stärketest (40 Matches je Paarung) dauert rund 70 s und läuft nur mit `BOT_STRENGTH=1`.
+
+### D-066 Balance-Tool (SPEC 12)
+
+- Neuer Befehl `pnpm sim balance`, schreibt `docs/BALANCE.md`. Gleicher Seed ergibt dieselbe Datei.
+- **Karte gegen Karte:** ein einzelner Kampf, beide Seiten mit gleich vielen Picks derselben Karte, ohne
+  Sonderkarten und Upgrades, jeder Seed mit getauschten Seiten. Der Draft bietet dafür keinen Weg, das Tool trägt die
+  Armee deshalb direkt in den Spielstand ein.
+- **Ganze Matches:** Siegquote des Siegers von Runde 1 (D-057), Rundenzahl, Kampfdauer, Zeitlimit, Einheitenzahl pro
+  Seite und Runde, verfallene Einheiten, vorderste Reihe (D-060), Anteil der Sonderkarten, aktive Upgrades.
+- **Deck gegen Deck:** acht thematische Decks, jedes gegen jedes, Level 1 mit allen Upgrades freigeschaltet.
+- Reine Support-Karten (Heiler) verlieren im Vergleich Karte gegen Karte zwangsläufig. Für sie braucht die
+  Balance-Runde einen anderen Maßstab, z. B. die Karte zusammen mit einer festen Begleitkarte.
+
+### D-067 Stand von M3b am 15.11.2026 und offene Punkte
+
+Fertig und geprüft (Lint, Typecheck, 485 Engine-Tests, 104 Client-Tests, 1500 Zufallsmatches ohne Absturz):
+alle 48 Upgrades mit je einem gezielten Test und einem Kombinationstest pro Karte, Sonderkarten, alle 16 Einheiten,
+Bots „Mittel“ und „Schwer“, Balance-Tool. `ENGINE_VERSION` bleibt 3, bis M3b freigegeben wird; das Referenz-Match
+ist neu erzeugt.
+
+Noch offen für M3b:
+
+- **Oberfläche:** Auswahl der Bot-Stufe, Aufrüstungs- und Doppelpack-Karten im Angebot, Symbole der aktiven Upgrades
+  neben den Leben (SPEC 4.5), die sechs neuen Einheiten im Deck-Tab.
+- **Darstellung:** Effekte für die neuen Ereignisse und Zustände (Feueratem, Meteor, Erdstoß, Frostnova, Schild,
+  Brand, Gift, Einfrieren, Riesenpilz, Geist, Zombie, Wolken und Pfützen).
+- **Bot „Mittel“:** Bei zwei Testdecks gewinnt er nur 53 % bzw. 55 % gegen „Leicht“, weil er zu einseitig spielt.
+- **Balance-Runde:** großer Lauf des Balance-Tools und Anpassung der Werte. Erste Hinweise aus kleinen Stichproben:
+  Der Sieger von Runde 1 gewinnt etwa zwei Drittel der Matches (D-057); im Mittel sind am Matchende 2,0 Upgrades pro
+  Spieler aktiv (Ziel 1 bis 3, SPEC 4.3).
+- **Feldgröße und Leistung (D-060):** In 1500 Matches verfiel keine Einheit; höchstens 111 Einheiten pro Seite bei
+  Kampfbeginn. Im Kampf kamen aber bis zu 296 Beschwörungen in einer Runde dazu (Skelette, Zombies, Mini-Golems).
+  Zu prüfen ist, wie viele davon gleichzeitig leben und ob das Handy das flüssig darstellt.
+- **Zusammenführen:** Der Branch enthält den Nachschliff von M3a noch nicht. Nach der Freigabe von M3a wird `main`
+  hineingemergt.
+
 ## Rückmeldung von Andreas zum zweiten M3a-Test (15.11.2026)
 
-Die Nummern D-063 bis D-067 stehen im Branch von M3b. Andreas ist mit M3a zufrieden (Tab-Wechsel, Lesbarkeit,
+Andreas ist mit M3a zufrieden (Tab-Wechsel, Lesbarkeit,
 Sicht auf beide Armeen, Animationen des Lauf-TNT). Seine Punkte:
 
 ### D-068 Tab-Markierung folgt dem Wischen sofort (noch in M3a)
@@ -473,3 +582,243 @@ Die hüpfenden Zahlen im Kampf werden um 50 % verkleinert.
 ### D-072 Gestaltung insgesamt später (bestätigt D-047)
 
 Am Design insgesamt soll noch einmal gearbeitet werden; das hat aus Andreas' Sicht Zeit (vorgesehen für M6).
+
+## M3b – Fortsetzung nach der Freigabe von M3a (15.11.2026)
+
+Andreas hat M3a am 15.11. freigegeben (Pull Request 4). `main` ist in den Branch `m3b-kampfmechanik` gemergt.
+
+### D-073 Upgrades im Testmodus (zu D-048, SPEC 7.3)
+
+- Bis es in M4 die echte Sammlung gibt, sind beim Spieler alle drei Upgrades jeder Karte freigeschaltet. In der
+  Detailansicht im Deck-Tab lässt sich jedes Upgrade einzeln aus- und wieder einschalten (ohne Kosten), damit man
+  Upgrades gezielt testen kann. Die Auswahl wird wie Deck und Level im Browser gespeichert.
+- Bots haben die Upgrades, die zu ihrem Kartenlevel passen (SPEC 7.3): „Leicht“ (Level 1) keine, „Mittel“ (Level 2)
+  Upgrade 1, „Schwer“ (Level 3) Upgrades 1 und 2.
+- Die Bot-Stufe wählt man auf dem Kampf-Tab; die Wahl wird im Browser gespeichert. Der Gegner ist ein zufälliges
+  Profil dieser Stufe.
+
+### D-074 Was die Engine der Darstellung zusätzlich mitteilt
+
+Die Darstellung liest den Kampfzustand und die Ereignisse, verändert aber nichts (SPEC 6.4). Damit sie die neuen
+Fähigkeiten unterscheiden kann, liefert die Engine reine Anzeige-Angaben mit, die keine Regel auswertet:
+
+- Flächentreffer (`impact`) tragen ihre Art: Käfergeschoss, Flächenschuss, Erdstoß, Frostnova, Meteor.
+- Wolken und Pfützen (`zone`) tragen ihre Art: Sporen oder Säure.
+- Jede Einheit trägt ihre Herkunft (`variant`): normal, Zombie, Tochter-TNT, Mini-Golem, wiederbelebt.
+  Riesenpilz und Geist hatten schon eigene Merker.
+- `frozenUntil` unterscheidet „in Eis eingefroren“ (Eisblock, Frostnova) von „betäubt“ (Ansturm, liegender Zombie).
+
+### D-075 Aufstellung in zentrierten Reihen: Umsetzung (zu D-070)
+
+- Die Rangfolge steht als Liste in den Kartendaten (`FORMATION_RANKS`). Innerhalb eines Rangs stehen die Karten in
+  der Reihenfolge dieser Liste nebeneinander (z. B. Bogenschützen, dann Musketiere, Pyromantinnen, Nekromanten,
+  Frostschamanen, Bombardierkäfer), aus Sicht des Spielers von links nach rechts; Einheiten derselben Karte in der
+  Reihenfolge, in der sie gespielt wurden.
+- Volle Reihen (12 Einheiten) stehen hinten, der Rest steht mittig in der Reihe davor.
+- Flieger stehen auf der Luftebene über dem Rang der Heiler und werden für sich zentriert. Der Rang ist so tief wie
+  die vollere der beiden Ebenen.
+- Die Aufstellung braucht keinen Zufall mehr. Die Zufallsspalte pro Karte und der eigene Zufallsstrom für die
+  Platzierung sind entfernt; Angebote und Kampf sind davon unberührt.
+- Die Angabe „Zone“ (vorne, Mitte, hinten) aus SPEC 5.2 bleibt in den Kartendaten stehen, bestimmt aber nicht mehr
+  die Aufstellung.
+
+### D-076 Lauf-TNT hält sein Ziel: Umsetzung (zu D-071)
+
+Das Lauf-TNT wählt nur dann ein neues Ziel, wenn sein Ziel tot oder nicht mehr anvisierbar ist (Rauchbombe).
+Ein Ritter mit Spott zieht es weiterhin auf sich. Tempo 2,0 Felder/s, mit „Kurze Lunte“ 3,2 Felder/s.
+
+## M3b – Erste Balance-Runde (15.11.2026)
+
+### D-077 Beschworene Skelette sind schwächer als Skelette aus der Karte (ergänzt SPEC 5.3)
+
+- Der Nekromant beschwört laut SPEC „ein Skelett“. Bisher hatte es genau die Werte der Karte „Skelette“. Damit
+  hingen beide Karten aneinander: Jede Stärkung der Skelette (in der Balance-Runde nötig, D-078) machte den
+  Nekromanten deutlich zu stark (bis 64 % Siegquote im Deck).
+- Neu: Ein beschworenes Skelett hat **30 % der LP und 75 % des Schadens** eines Karten-Skeletts, auf Level 1 also
+  63 LP und 20 Schaden. Das entspricht den ursprünglichen Skelett-Werten der SPEC (60 LP, 20 Schaden), für die der
+  Nekromant ausgelegt war. Die beiden Faktoren stehen in den Kartendaten (`summon.hpBps`, `summon.damageBps`).
+- Der Nekromant selbst behält alle Werte der SPEC (300 LP, alle 4 s, höchstens 4 Skelette). Das gilt auch für die
+  Skelette aus „Knochenarmee“ und „Seelenernte“.
+- **Untot:** Der Zombie hat 40 % der LP des Skeletts, aus dem er entsteht, und dessen Schaden. Der Zombie eines
+  beschworenen Skeletts ist also entsprechend schwächer; für Karten-Skelette ändert sich nichts.
+
+### D-078 Erste Balance-Runde: neue Kartenwerte (ändert SPEC 5.2 und 5.3)
+
+**Maßstab.** Die SPEC nennt als Ziel „keine Einzelkarte über 60 % über alle Paarungen“ im Vergleich Karte gegen
+Karte. Dieser Vergleich taugt für dieses Spiel nur als Zusatzinformation: Dort kämpft eine Armee aus einer einzigen
+Karte gegen eine andere, das kommt im Spiel mit Decks aus vier Karten nie vor. Flieger gewinnen dabei zwangsläufig
+gegen alle neun Karten ohne Fernkampf, Heiler können allein nie gewinnen, und Schwärme überrennen einzelne
+Fernkämpfer, denen die Frontlinie fehlt. Maßgeblich ist deshalb die **Siegquote je Karte im Deck**: viele ganze
+Matches mit zufälligen Decks aus vier Karten und Zufallspicks; jede Karte bekommt das Ergebnis des Spielers, in
+dessen Deck sie steckt. Ziel 45 bis 55 %, auffällig unter 42 % oder über 58 %.
+
+**Ergebnis** (`docs/BALANCE.md`, 4000 Matches, Level 1, alle Upgrades freigeschaltet): Alle 16 Karten liegen
+zwischen 45,4 % (Skelette) und 54,8 % (Bogenschütze). Ohne Upgrades (eigene Messung, 4000 Matches) liegen sie
+zwischen 42,3 % (Skelette) und 56,4 % (Bogenschütze). Vor der Runde reichte die Spanne von 38 % (Skelette,
+Frostschamane) bis 69 % (Bombardierkäfer).
+
+**Neue Werte auf Level 1** (nicht genannte Werte bleiben wie in der SPEC):
+
+| Karte           | Wert der SPEC                               | Neu                                            |
+| --------------- | ------------------------------------------- | ---------------------------------------------- |
+| Bogenschütze    | Schaden 30                                  | Schaden 24                                     |
+| Ritter          | 600 LP                                      | 560 LP                                         |
+| Lauf-TNT        | 2 Stück, 150 LP, Tempo 1,5                  | 3 Stück, 180 LP, Tempo 2,0 (D-071)             |
+| Skelette        | 60 LP, Schaden 20                           | 210 LP, Schaden 27                             |
+| Heiler          | 200 LP, heilt 40                            | 230 LP, heilt 50                               |
+| Musketier       | 400 LP, Schaden 140                         | 360 LP, Schaden 105                            |
+| Fledermäuse     | 70 LP, Schaden 22                           | 90 LP, Schaden 26                              |
+| Assassine       | 200 LP, Schaden 40                          | 250 LP, Schaden 46                             |
+| Pilzlinge       | 90 LP, Schaden 18, Sporenwolke 15 Schaden/s | 200 LP, Schaden 28, Sporenwolke 25 Schaden/s   |
+| Pyromantin      | 280 LP, Schaden 70                          | 250 LP, Schaden 58                             |
+| Nekromant       | beschwört Skelette mit den Werten der Karte | beschworene Skelette 63 LP, Schaden 20 (D-077) |
+| Bombardierkäfer | Schaden 160, Fläche r 1,5, Intervall 5,0 s  | Schaden 110, Fläche r 1, Intervall 6,0 s       |
+| Frostschamane   | 260 LP, Schaden 35, Intervall 1,5 s         | 360 LP, Schaden 54, Intervall 1,2 s            |
+| Drachenjunges   | 550 LP, Schaden 55, Intervall 1,6 s         | 400 LP, Schaden 44, Intervall 1,8 s            |
+
+Berserker und Steingolem sind unverändert, ebenso alle Zahlen der Upgrades (SPEC 5.4).
+
+**Anmerkungen.**
+
+- Die Schwarmkarten (Skelette, Pilzlinge) brauchten die größten Änderungen. Mit den Werten der SPEC sterben sie an
+  Flächenschaden und im Beschuss, bevor sie etwas ausrichten; ihre Siegquote reagiert nur schwach auf LP und
+  Schaden. Getestet und verworfen: langsamere Skelette, mehr Skelette pro Karte bei weniger LP (7 Stück mit 120 LP
+  bzw. 6 Stück mit 150 LP bringen dasselbe wie 5 Stück mit 180 LP; die Anzahl 5 bleibt, damit Feld und Leistung
+  nicht zusätzlich belastet werden).
+- Der Musketier bleibt wie in der SPEC beschrieben schwächer pro Sekunde als drei Bogenschützen (42 gegen 72),
+  bei viel größerer Reichweite.
+- Im Vergleich Karte gegen Karte (Bericht, Abschnitt 1) liegen weiterhin mehrere Karten über 60 %, jetzt auch die
+  Skelette. Das Ziel der SPEC 12 ist dort nicht erfüllt und nach der Begründung oben auch nicht sinnvoll erfüllbar.
+  **Bitte um Andreas' Zustimmung**, das Ziel durch die Siegquote im Deck zu ersetzen.
+- **Decks ohne Luftabwehr:** Im Vergleich der acht festen Decks (Abschnitt 4) gewinnt ein Deck ohne Fernkämpfer nie
+  gegen ein Deck mit Fliegern („Sprengtrupp“ gegen „Luftwaffe“ 0 %, „Bollwerk“ gegen „Luftwaffe“ 3 %). Das folgt
+  aus der Regel der SPEC, dass nur Fernkämpfer Flieger treffen, und ist kein Wertproblem. Die Deck-Paarungen sind
+  insgesamt sehr einseitig (Stein-Schere-Papier). Offen für eine spätere Runde: ob das so gewollt ist oder ob z. B.
+  jeder Spieler im Deck-Tab gewarnt wird, wenn sein Deck keine Flieger treffen kann.
+- **Früher Vorsprung (D-057):** In 1000 Spiegel-Matches (beide dasselbe Deck) gewinnt der Sieger von Runde 1 das
+  Match in 54 % der Fälle. Bei voneinander unabhängigen Runden wären es 66 %. Der Verlierer-Bonus gleicht den
+  Vorsprung also mehr als aus; ein Eingriff ist nicht nötig.
+- **Upgrades pro Spiel:** im Mittel 2,1 aktive Upgrades pro Spieler am Matchende (Ziel der SPEC 4.3: 1 bis 3). Die
+  Wahrscheinlichkeiten für Sonderkarten bleiben, wie sie sind.
+- **Feldgröße und Leistung (D-060):** In 1000 Zufallsmatches verfiel keine Einheit. Zu Kampfbeginn stehen
+  höchstens 116 Einheiten pro Seite; gleichzeitig leben im Kampf höchstens 180 Einheiten (beide Seiten zusammen,
+  Runde 7), im Mittel der Runde 7 rund 107, in Runde 4 rund 58. Das Leistungsziel der SPEC 15 nennt etwa 100
+  Einheiten. Lange Matches liegen darüber; ob das Handy das flüssig darstellt, muss der Test am Gerät zeigen.
+- Das Balance-Tool hat einen neuen Befehl `pnpm sim tune`, der Faktoren für LP und Schaden vorschlägt. Er hat bei
+  der Suche geholfen, die endgültigen Werte sind von Hand gesetzt und nachgemessen.
+
+## M3b – Bots nach der Balance-Runde (15.11.2026)
+
+### D-079 Bot „Mittel“ schätzt den Kampf, „Schwer“ rechnet die Schätzung mit ein (ersetzt die Heuristik aus D-065)
+
+**Anlass.** Mit der alten Heuristik (Kartenwert mal Konter-Faktor) spielte „Mittel“ zu einseitig. Gegen „Leicht“
+gewann er mit dem Startdeck nur 12 % der Matches, im Mittel über sechs Decks 62 % (D-067).
+
+**Mittel.** Der Bot simuliert weiterhin nichts. Er schätzt für jeden Platz des Angebots einen Kampf der eigenen
+Armee (mit dieser Karte) gegen die Armee des Gegners und nimmt den Platz mit dem größten erwarteten LP-Vorsprung am
+Kampfende. Beide Seiten verlieren LP im Tempo des gegnerischen Schadens, bis eine Seite vernichtet ist oder das
+Zeitlimit erreicht ist. Alle Gewichte stehen in `packages/engine/src/data/bots.ts` (`MEDIUM_HEURISTIC`). Die Regeln:
+
+- **Frontbreite:** Am Boden kämpfen höchstens 8 Nahkämpfer gleichzeitig, weitere bringen nur LP. Für Flieger im
+  Nahkampf gilt 24. Dadurch mischt der Bot von selbst, statt nur die stärkste Karte zu stapeln.
+- **Boden und Luft getrennt:** Wer eine Ebene nicht treffen kann, zählt gegen sie nicht.
+- **Schaden:** Es kommen 50 % des Nennschadens an (Laufwege, Zielwechsel, überzähliger Schaden). Fernkämpfer bekommen
+  10 % mehr je Feld Reichweite und schießen zusätzlich, solange der Gegner noch anläuft (höchstens 10 s).
+  Flächenschaden trifft mehr Ziele, je mehr Gegner es gibt (gedeckelt).
+- **Explosionen** (Lauf-TNT, Sporenwolke) zählen einmalig und treffen höchstens 25 % der gegnerischen LP einer Ebene.
+- **Heilung** hebt höchstens 50 % des eingehenden Schadens auf und nur, wenn es außer Heilern jemanden zu heilen
+  gibt.
+- **Beschwörungen** zählen mit ihren verringerten Werten (D-077) und im Mittel 75 % der Höchstzahl.
+- **Unbekanntes Gegnerdeck:** Zu den gespielten Karten des Gegners nimmt der Bot anfangs zwei Picks an, gleichmäßig
+  über alle 16 Karten verteilt. Mit jeder Karte, die der Gegner spielt, schrumpft diese Annahme, nach zwei Karten ist
+  sie weg. Das Deck des Gegners kennt der Bot weiterhin nicht.
+- **Ungleiche Armeen:** Vor dem Vergleich wird die Gegnerarmee zur Hälfte an die LP der eigenen Armee angeglichen
+  (LP, Schaden und Heilung je Einheit; die Zahl der Einheiten bleibt). Sonst wären in einer klar verlorenen oder
+  klar gewonnenen Runde alle Plätze fast gleich viel wert, obwohl die Mischung für die späteren Runden zählt.
+- **Doppelpack:** doppelte Zahl an Einheiten; durch die Frontbreite oft weniger als doppelt so viel wert.
+- **Aufrüstung:** Gewinn für die schon gespielten Einheiten der Karte plus für die noch erwarteten Kopien
+  (verbleibende Picks mal bisheriger Anteil der Karte, zur Hälfte gezählt). Früh im Match lohnt eine Aufrüstung
+  also mehr als spät, und nur bei Karten, die der Bot auch spielt. Mehr Einheiten, mehr LP, Reichweite, Rüstung,
+  Schild und Flächenheilung rechnet die Schätzung genau, alle anderen Upgrades pauschal mit 60 % mehr Schaden.
+
+**Schwer.** Der Bot spielt wie bisher für jeden Platz sechsmal den Rest der Runde durch (D-065). Das allein reicht
+gegen den neuen „Mittel“ nicht mehr: Die Simulation sieht nur die laufende Runde, die Armee wächst aber über das
+ganze Match (gemessen 47,5 % mit dem Testdeck, 37,5 % mit dem Startdeck). Deshalb zählt „Schwer“ zum Ergebnis der
+Simulationen die Schätzung von „Mittel“ dazu: je Simulation 15 000 Punkte für einen geschätzten Vorsprung in Höhe
+aller LP auf dem Feld (eine Simulation bringt zwischen −1000 und 3000 Punkte). Das Gewicht steht in `BOT_LEVELS`
+(`estimateWeight`). Getestet und verworfen: mehr Simulationen (12 statt 6: 55 % bei doppelter Rechenzeit),
+Folge-Picks in der Simulation nach der Schätzung statt zufällig (37,5 %), Simulation nur zwischen den zwei besten
+Plätzen von „Mittel“ (51 %).
+
+**Messwerte „Mittel“ gegen „Leicht“** (gleiches Deck, Level 2, Seiten abwechselnd, je 200 Matches):
+
+| Deck                                                | ohne Upgrades vorher | nachher | alle Upgrades vorher | nachher |
+| --------------------------------------------------- | -------------------- | ------- | -------------------- | ------- |
+| Nekromant, Skelette, Fledermäuse, Berserker         | 52,5 %               | 92,0 %  | 73,0 %               | 95,0 %  |
+| Bogenschützen, Ritter, Skelette, Heiler             | 12,0 %               | 87,5 %  | 44,0 %               | 90,5 %  |
+| Bogenschützen, Musketier, Pyromantin, Frostschamane | 81,0 %               | 99,5 %  | 82,5 %               | 90,5 %  |
+| Ritter, Steingolem, Bombardierkäfer, Heiler         | 40,0 %               | 82,5 %  | 46,0 %               | 75,5 %  |
+| Lauf-TNT, Berserker, Assassine, Skelette            | 99,0 %               | 96,0 %  | 93,5 %               | 93,5 %  |
+| Fledermäuse, Drachenjunges, Bogenschützen, Heiler   | 89,5 %               | 97,5 %  | 82,5 %               | 85,0 %  |
+| **Mittel**                                          | 62,3 %               | 92,5 %  | 70,3 %               | 88,3 %  |
+
+Abgestimmt wurde auf einem Satz von Seeds, geprüft auf einem anderen und auf vier weiteren Decks (67 bis 100 %).
+
+**Messwerte „Schwer“ gegen „Mittel“** (gleiches Deck, Level 2, Seiten abwechselnd):
+
+| Deck                                        | nur Simulation (40 Matches) | mit Schätzung (50 Matches) |
+| ------------------------------------------- | --------------------------- | -------------------------- |
+| Nekromant, Skelette, Fledermäuse, Berserker | 47,5 %                      | 70,0 %                     |
+| Bogenschützen, Ritter, Skelette, Heiler     | 37,5 %                      | 74,0 %                     |
+| Ritter, Steingolem, Bombardierkäfer, Heiler | 70,0 %                      | 72,0 %                     |
+
+Andere Gewichte lagen in den ersten beiden Decks etwas darunter (3000 Punkte: 66 % und 64 %; 60 000 Punkte: 68 % und
+66 %); der Unterschied liegt bei 50 Matches aber im Bereich des Zufalls.
+
+**Rechenzeit in der VM:** „Mittel“ rund 0,2 ms pro Entscheidung, „Schwer“ rund 160 ms (Spitzen bis 0,8 s in späten
+Runden mit großen Armeen). Auf dem Handy ist mit dem Drei- bis Fünffachen zu rechnen; das zeigt der Test am Gerät.
+
+**Offen:** Die Gewichte sind gegen „Leicht“ bzw. „Mittel“ abgestimmt, nicht gegen Menschen. Wie stark sich die
+Stufen für einen Spieler anfühlen, muss der Test zeigen. Nach jeder größeren Balance-Änderung sollte der Stärketest
+(`BOT_STRENGTH=1`, siehe `bots.test.ts`) neu laufen.
+
+### D-080 Stand von M3b zum Gate (ersetzt die Liste offener Punkte in D-067)
+
+Fertig und geprüft (Lint, Typecheck, 514 Engine-Tests, 160 Client-Tests, 17 Tests des Balance-Tools, 12 Browser-Tests,
+Bot-Stärketest, 2000 Zufallsmatches ohne Absturz): Oberfläche und Effekte für alle Sonderkarten, Upgrades und
+neuen Einheiten, Aufstellung in zentrierten Reihen (D-070, D-075), Lauf-TNT (D-071, D-076), erste Balance-Runde
+(D-077, D-078), Bots „Mittel“ und „Schwer“ (D-079). `ENGINE_VERSION` bleibt 3, bis M3b freigegeben ist; das
+Referenz-Match ist mit den neuen Kartenwerten neu erzeugt.
+
+Entscheidungen, die Andreas' Zustimmung brauchen:
+
+- **Balance-Ziel (D-078):** Siegquote je Karte im Deck (45 bis 55 %) statt „keine Karte über 60 %“ im Vergleich
+  Karte gegen Karte (SPEC 12).
+- **Neue Kartenwerte (D-078)** und **schwächere beschworene Skelette (D-077):** Beides weicht von den Tabellen der
+  SPEC 5.2 und 5.3 ab. Nach der Freigabe werden die Tabellen der SPEC angepasst.
+- **Upgrades im Testmodus (D-073)** und **Reihenfolge innerhalb eines Rangs (D-075).**
+
+Offen für spätere Meilensteine:
+
+- **Decks ohne Luftabwehr** verlieren fast immer gegen Flieger; die Deck-Paarungen sind sehr einseitig (D-078).
+- **Leistung am Gerät:** In langen Matches leben bis zu 180 Einheiten gleichzeitig (Ziel der SPEC 15: etwa 100).
+  „Schwer“ rechnet in der VM im Mittel 160 ms pro Entscheidung, in späten Runden bis 0,8 s (D-079).
+- **Feldgröße (D-060)** und **Gestaltung insgesamt (D-072)** wie vereinbart später.
+
+## Rückmeldung von Andreas zum Gate-Bericht von M3b (16.11.2026)
+
+### D-081 Zustimmung zu den offenen Entscheidungen, SPEC auf Version 1.3
+
+- **Balance-Ziel:** bestätigt. Gemessen wird in Decks, nicht Karte gegen Karte (D-078). SPEC 12 nennt jetzt die
+  Siegquote je Karte im Deck als Maßstab (Ziel 45 bis 55 %).
+- **Neue Kartenwerte und schwächere beschworene Skelette:** bestätigt (D-077, D-078). Die Tabelle in SPEC 5.2 und
+  die Texte in 5.3 zeigen jetzt die neuen Werte. Bei der Gelegenheit sind dort auch die schon in M3a freigegebenen
+  Regeln nachgetragen: Assassine (D-049), Lunte und Zielwahl des Lauf-TNT (D-050, D-071, D-076).
+- **Beschworene Skelette sehen anders aus** als Karten-Skelette (Wunsch von Andreas): eigene Figur mit violetten
+  Knochen, grün leuchtenden Augen, zwei kleinen Hörnern und einem Dolch statt der Keule, dazu auf 78 % der Größe
+  gezeichnet. Tunika und Ring behalten die Teamfarbe. Die Darstellung erkennt sie daran, dass sie einen Beschwörer
+  haben; die Engine ist dafür nicht geändert. Der Zombie eines beschworenen Skeletts (Upgrade „Untot“) sieht aus
+  wie jeder andere Zombie: Die Engine merkt sich nicht, aus welcher Art Skelett er entstand.
+- **Upgrades im Testmodus (D-073):** bestätigt.
+- **Aufstellung (D-070, D-075):** bestätigt. SPEC 4.4 beschreibt jetzt die Aufstellung in zentrierten Reihen nach
+  Rang, so wie sie umgesetzt ist; die alte Zonen-Tabelle mit Zufallsspalte ist entfernt.

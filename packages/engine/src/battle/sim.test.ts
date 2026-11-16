@@ -23,6 +23,24 @@ const SUDDEN_DEATH_TICK = 1200; // 60 s
 const TIME_LIMIT = 1800; // 90 s
 const RETARGET = 10; // 0.5 s
 
+// Card values come from the data, so a balance round does not break the rules tested here.
+const KNIGHT_HP = CARDS.knight.hp;
+const KNIGHT_HIT = 60; // the knight's damage (unchanged by the balance rounds)
+
+/** Damage of a level 1 attack of `card`, from the card data. */
+function hitOf(card: CardId): number {
+  const a = CARDS[card].attack;
+  if (!('damage' in a)) throw new Error(`${card} has no damage`);
+  return a.damage;
+}
+
+const ARCHER_HIT = hitOf('archer');
+
+/** Level scaling of SPEC 6.3: +10 % per level, rounded down. */
+function atLevel(base: number, level: number): number {
+  return Math.floor((base * (9 + level)) / 10);
+}
+
 function d2(ax: number, ay: number, bx: number, by: number): number {
   return (ax - bx) * (ax - bx) + (ay - by) * (ay - by);
 }
@@ -122,7 +140,7 @@ describe('target selection (SPEC 6.2)', () => {
       run(b, 1);
       expect([k.x, k.y, k.tx, k.ty, k.targetId]).toEqual([5, 5, 5, 5, 0]);
     }
-    expect(k.hp).toBeLessThan(600); // the bat arrived and attacked meanwhile
+    expect(k.hp).toBeLessThan(KNIGHT_HP); // the bat arrived and attacked meanwhile
   });
 });
 
@@ -143,8 +161,8 @@ describe('reach (D-022)', () => {
     const k = put(b, 0, 'knight', 5, 10);
     const e = put(b, 1, 'knight', 5 + dx, 10 + dy);
     run(b, 1);
-    expect(e.hp).toBe(540);
-    expect(k.hp).toBe(540);
+    expect(e.hp).toBe(KNIGHT_HP - KNIGHT_HIT);
+    expect(k.hp).toBe(KNIGHT_HP - KNIGHT_HIT);
   });
 
   it.each([
@@ -158,7 +176,7 @@ describe('reach (D-022)', () => {
     put(b, 0, 'knight', 5, 10);
     const e = put(b, 1, 'knight', 5 + dx, 10 + dy);
     const log = run(b, 1);
-    expect(e.hp).toBe(600);
+    expect(e.hp).toBe(KNIGHT_HP);
     expect(eventsOf(log, 'attack')).toEqual([]);
   });
 
@@ -216,19 +234,20 @@ describe('attacks (D-024)', () => {
         expect(u.hp).toBe(expected);
       }
     }
-    expect(put(field(), 0, 'knight', 0, 0, { level: 5 }).maxHp).toBe(840); // 140 %
+    expect(put(field(), 0, 'knight', 0, 0, { level: 5 }).maxHp).toBe(Math.floor(KNIGHT_HP * 1.4)); // 140 %
   });
 
   it.each([
-    ['knight', 1, 60],
-    ['knight', 2, 66],
-    ['knight', 3, 72],
-    ['knight', 5, 84],
-    ['bat', 2, 24], // 24.2
-    ['skeleton', 4, 26],
-    ['archer', 4, 39],
-    ['musketeer', 3, 168],
-  ] as const)('%s level %i deals %i damage per hit', (card, level, damage) => {
+    ['knight', 1],
+    ['knight', 2],
+    ['knight', 3],
+    ['knight', 5],
+    ['bat', 2],
+    ['skeleton', 4],
+    ['archer', 4],
+    ['musketeer', 3],
+  ] as const)('%s level %i deals the level 1 damage plus 10 % per level per hit', (card, level) => {
+    const damage = atLevel(hitOf(card), level);
     const b = field();
     put(b, 0, card, 5, 10, { level });
     const target = dummy(b, 1, 'knight', 5, 11);
@@ -248,10 +267,10 @@ describe('attacks (D-024)', () => {
     expect(flight).toBeGreaterThanOrEqual(8);
     expect(flight).toBeLessThanOrEqual(9);
     run(b, shot!.impactTick - b.tick);
-    expect(target.hp).toBe(600);
+    expect(target.hp).toBe(KNIGHT_HP);
     const log = run(b, 1);
-    expect(target.hp).toBe(570);
-    expect(damageTo(log, target.id)).toEqual([{ tick: shot!.impactTick, amount: 30 }]);
+    expect(target.hp).toBe(KNIGHT_HP - ARCHER_HIT);
+    expect(damageTo(log, target.id)).toEqual([{ tick: shot!.impactTick, amount: ARCHER_HIT }]);
     expect(b.projectiles).toEqual([]);
   });
 
@@ -259,7 +278,7 @@ describe('attacks (D-024)', () => {
     const b = field();
     const a = put(b, 0, 'archer', 5, 2);
     put(b, 0, 'knight', 5, 6);
-    const victim = put(b, 1, 'skeleton', 5, 7); // 60 HP, killed by the knight in tick 0
+    const victim = put(b, 1, 'skeleton', 5, 7, { hp: 1 }); // killed by the knight in tick 0
     put(b, 1, 'knight', 11, 23);
     const first = run(b, 1);
     expect(eventsOf(first, 'shot').map((e) => [e.unit, e.target])).toEqual([[a.id, victim.id]]);
@@ -278,7 +297,7 @@ describe('attacks (D-024)', () => {
     a.hp = 0; // the archer is killed right after firing
     run(b, shot!.impactTick - b.tick + 1);
     expect(unitById(b, a.id)).toBeUndefined();
-    expect(target.hp).toBe(570);
+    expect(target.hp).toBe(KNIGHT_HP - ARCHER_HIT);
   });
 });
 
@@ -322,14 +341,25 @@ describe('end of round (SPEC 4.2)', () => {
   it('declares the side with units left the winner', () => {
     const b = field();
     put(b, 0, 'knight', 5, 10);
-    put(b, 1, 'skeleton', 5, 11);
+    put(b, 1, 'skeleton', 5, 11, { hp: 1 });
     run(b, 1);
-    expect(b.result).toEqual({ winner: 0, reason: 'elimination', ticks: 1, hp: [580, 0] });
+    const skeletonHit = hitOf('skeleton');
+    expect(b.result).toEqual({
+      winner: 0,
+      reason: 'elimination',
+      ticks: 1,
+      hp: [KNIGHT_HP - skeletonHit, 0],
+    });
 
     const c = field();
-    put(c, 0, 'skeleton', 5, 10);
+    put(c, 0, 'skeleton', 5, 10, { hp: 1 });
     put(c, 1, 'knight', 5, 11);
-    expect(simulateToEnd(c)).toEqual({ winner: 1, reason: 'elimination', ticks: 1, hp: [0, 580] });
+    expect(simulateToEnd(c)).toEqual({
+      winner: 1,
+      reason: 'elimination',
+      ticks: 1,
+      hp: [0, KNIGHT_HP - skeletonHit],
+    });
   });
 
   function suddenDeathField(startTick: number): BattleState {
@@ -353,8 +383,8 @@ describe('end of round (SPEC 4.2)', () => {
 
   it('adds 50 % to shots fired in sudden death', () => {
     for (const [tick, expected] of [
-      [SUDDEN_DEATH_TICK - 50, 30],
-      [SUDDEN_DEATH_TICK, 45],
+      [SUDDEN_DEATH_TICK - 50, ARCHER_HIT],
+      [SUDDEN_DEATH_TICK, Math.floor(ARCHER_HIT * 1.5)],
     ] as const) {
       const b = suddenDeathField(tick);
       dummy(b, 0, 'archer', 5, 10);
@@ -372,7 +402,7 @@ describe('end of round (SPEC 4.2)', () => {
     const [shot] = eventsOf(run(b, 1), 'shot');
     expect(shot!.impactTick).toBeGreaterThanOrEqual(SUDDEN_DEATH_TICK);
     run(b, 3);
-    expect(target.maxHp - target.hp).toBe(45);
+    expect(target.maxHp - target.hp).toBe(Math.floor(ARCHER_HIT * 1.5));
   });
 
   it('adds 50 % to explosions in sudden death', () => {
@@ -390,9 +420,10 @@ describe('end of round (SPEC 4.2)', () => {
     put(b, 1, 'knight', 0, 0); // bait
     const victim = put(b, 1, 'knight', 5, 11); // cannot attack anything, stands in the cloud
     run(b, 70);
-    // 45 damage over 3 s, +50 % = 67.5; rounding may cost or add one point.
-    expect(victim.maxHp - victim.hp).toBeGreaterThanOrEqual(66);
-    expect(victim.maxHp - victim.hp).toBeLessThanOrEqual(68);
+    // Cloud damage over 3 s, +50 %; rounding may cost or add a point per second.
+    const cloud = CARDS.shroomling.deathCloud!.damagePerSecond * 3 * 1.5;
+    expect(victim.maxHp - victim.hp).toBeGreaterThanOrEqual(cloud - 2);
+    expect(victim.maxHp - victim.hp).toBeLessThanOrEqual(cloud + 1);
   });
 
   it('ends at the time limit with the higher HP sum as winner', () => {
@@ -475,6 +506,11 @@ describe('events (D-020)', () => {
       for (const e of events) {
         if (e.type === 'death') died.add(e.unit);
         if (e.type === 'jump') jumped.add(e.unit);
+        // Summoned in this tick: count as present (area damage may already hit them).
+        if (e.type === 'summon') {
+          const u = b.units.find((x) => x.id === e.unit) ?? { id: e.unit, card: e.card };
+          before.set(e.unit, { ...(u as (typeof b.units)[number]) });
+        }
       }
       for (const e of events) {
         seen.add(e.type);
@@ -521,6 +557,22 @@ describe('events (D-020)', () => {
           case 'zone':
             expect(e.endTick).toBe(tick + 60);
             break;
+          case 'lob': {
+            const u = before.get(e.unit)!;
+            expect(u.card).toBe('beetle');
+            expect(e.impactTick).toBe(tick + 30);
+            break;
+          }
+          case 'impact':
+            expect(e.radius).toBeGreaterThan(0);
+            expect(e.x >= 0 && e.y >= 0).toBe(true);
+            break;
+          case 'summon': {
+            expect(before.get(e.summoner)!.card).toBe('necromancer');
+            expect(e.card).toBe('skeleton');
+            expect(e.unit).toBeGreaterThan(e.summoner);
+            break;
+          }
         }
       }
     }
@@ -530,7 +582,19 @@ describe('events (D-020)', () => {
     const seen = new Set<BattleEvent['type']>();
     for (let seed = 0; seed < 60; seed++) checkEvents(randomBattle(seed), seen);
     expect([...seen].sort()).toEqual(
-      ['attack', 'damage', 'death', 'explosion', 'heal', 'jump', 'shot', 'zone'].sort(),
+      [
+        'attack',
+        'damage',
+        'death',
+        'explosion',
+        'heal',
+        'impact',
+        'jump',
+        'lob',
+        'shot',
+        'summon',
+        'zone',
+      ].sort(),
     );
   });
 
@@ -572,7 +636,7 @@ describe('determinism (SPEC 6.1)', () => {
     }
   });
 
-  it('uses random fields that contain all ten units', () => {
+  it('uses random fields that contain all 16 units', () => {
     // Guard for the generator used above: otherwise some units would never be covered.
     const cards = new Set<CardId>();
     for (let seed = 0; seed < 100; seed++)

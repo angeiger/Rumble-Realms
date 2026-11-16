@@ -35,6 +35,8 @@ export interface PlayerInfo {
   deck: CardId[];
   /** Card levels, same meaning as in the engine config. */
   levels: Partial<Record<CardId, number>>;
+  /** Unlocked upgrades per card, bit mask 0..7 (bit i = upgrade i). Missing = none. */
+  upgrades: Partial<Record<CardId, number>>;
 }
 
 export interface SessionSnapshot {
@@ -59,6 +61,11 @@ export interface SessionSnapshot {
   /** finished only. */
   winner: Winner | null;
   speed: BattleSpeed;
+  /**
+   * Upgrades activated so far in this match per player (bit masks per card, bit i = upgrade i),
+   * for the symbols next to the lives (SPEC 4.5). Indexed by PlayerIndex.
+   */
+  activeUpgrades: [Partial<Record<CardId, number>>, Partial<Record<CardId, number>>];
 }
 
 /** What happened during one `advance` call. */

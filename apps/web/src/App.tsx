@@ -1,4 +1,5 @@
-import type { CardId } from '@rumble-realms/engine';
+import type { BotLevelId, CardId } from '@rumble-realms/engine';
+import { useBotStore } from './game/botStore.ts';
 import { type CardLevels, useDeckStore } from './game/deckStore.ts';
 import { type Screen, type Tab, useGameStore } from './game/store.ts';
 import { t } from './i18n/index.ts';
@@ -13,12 +14,23 @@ export interface AppViewProps {
   tab: Tab;
   deck: readonly CardId[];
   levels: CardLevels;
+  botLevel: BotLevelId;
+  onBotLevel: (level: BotLevelId) => void;
   onTab: (tab: Tab) => void;
   onPlay: () => void;
 }
 
 /** The whole app for given state: battle without tab bar, or menu tabs (swipeable pages) with the tab bar. */
-export function AppView({ screen, tab, deck, levels, onTab, onPlay }: AppViewProps) {
+export function AppView({
+  screen,
+  tab,
+  deck,
+  levels,
+  botLevel,
+  onBotLevel,
+  onTab,
+  onPlay,
+}: AppViewProps) {
   return (
     <div className="app-shell">
       <div className="app-column">
@@ -31,7 +43,15 @@ export function AppView({ screen, tab, deck, levels, onTab, onPlay }: AppViewPro
               onTab={onTab}
               pages={{
                 deck: <DeckScreen />,
-                battle: <TitleScreen onPlay={onPlay} deck={deck} levels={levels} />,
+                battle: (
+                  <TitleScreen
+                    onPlay={onPlay}
+                    deck={deck}
+                    levels={levels}
+                    botLevel={botLevel}
+                    onBotLevel={onBotLevel}
+                  />
+                ),
               }}
             />
             <TabBar tab={tab} onSelect={onTab} />
@@ -55,12 +75,16 @@ export function App() {
   const startMatch = useGameStore((s) => s.startMatch);
   const deck = useDeckStore((s) => s.deck);
   const levels = useDeckStore((s) => s.levels);
+  const botLevel = useBotStore((s) => s.level);
+  const setBotLevel = useBotStore((s) => s.setLevel);
   return (
     <AppView
       screen={screen}
       tab={tab}
       deck={deck}
       levels={levels}
+      botLevel={botLevel}
+      onBotLevel={setBotLevel}
       onTab={setTab}
       onPlay={startMatch}
     />

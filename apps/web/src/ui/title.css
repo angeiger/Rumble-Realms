@@ -53,3 +53,62 @@
 .title-screen .logo {
   margin-bottom: 8px;
 }
+
+/* Bot level (D-073): three big buttons, the chosen one clearly marked. */
+.bot-picker {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  max-width: 340px;
+}
+
+.bot-picker__label {
+  font-family: var(--font-display);
+  font-size: 1rem;
+  text-shadow: 0 2px 0 var(--outline);
+}
+
+.bot-picker__buttons {
+  display: flex;
+  gap: 8px;
+  width: 100%;
+}
+
+.bot-picker__btn {
+  flex: 1;
+  min-height: 48px;
+  padding: 6px 4px;
+  border: 4px solid var(--outline);
+  border-radius: 14px;
+  background: #3b4a86;
+  color: var(--cream);
+  font-family: var(--font-display);
+  font-size: 1.05rem;
+  box-shadow: 0 4px 0 var(--outline);
+  cursor: pointer;
+  opacity: 0.75;
+  transition:
+    transform 0.15s var(--ease-spring),
+    background 0.15s;
+}
+
+.bot-picker__btn:active {
+  transform: translateY(2px);
+}
+
+.bot-picker__btn--on {
+  background: var(--gold);
+  color: var(--outline);
+  opacity: 1;
+  box-shadow:
+    0 0 0 3px var(--cream),
+    0 4px 0 3px var(--outline);
+}
+
+.bot-picker__info {
+  font-size: 0.85rem;
+  font-weight: 800;
+  opacity: 0.85;
+}

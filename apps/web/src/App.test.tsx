@@ -9,6 +9,8 @@ const base: AppViewProps = {
   tab: 'battle',
   deck: START_DECK,
   levels: {},
+  botLevel: 'easy',
+  onBotLevel: () => undefined,
   onTab: () => undefined,
   onPlay: () => undefined,
 };

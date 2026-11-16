@@ -12,11 +12,13 @@ import type { BattleSpeed, SessionSnapshot } from '../game/types.ts';
 import { EdgeInsetsContext } from '../render/BattleCanvas.tsx';
 import { NO_EDGE_INSETS, type EdgeInsets } from '../render/layout.ts';
 import { CardDetail } from './CardDetail.tsx';
+import { ActiveUpgrades } from './ActiveUpgrades.tsx';
 import { cardName } from './CardView.tsx';
 import { DraftBar } from './DraftBar.tsx';
 import { Hearts } from './Hearts.tsx';
 import { CloseIcon } from './icons.tsx';
 import { ResultView } from './ResultView.tsx';
+import { upgradeName } from './upgradeText.ts';
 
 export interface BattleActions {
   play: (slot: number) => void;
@@ -38,10 +40,23 @@ export function LastPickHint({ snapshot }: { snapshot: SessionSnapshot }): React
   if (snapshot.phase !== 'draft' || pick === null) return null;
   const card = cardName(pick.card);
   const count = pick.spawned.length + pick.forfeited;
-  const text =
-    pick.player === snapshot.me
+  const mine = pick.player === snapshot.me;
+  const name = snapshot.players[pick.player].name;
+  let text: string;
+  if (pick.kind === 'upgrade') {
+    const upgrade = upgradeName(pick.card, pick.upgrade ?? 0);
+    text = mine
+      ? t('hint.youUpgrade', { card, upgrade })
+      : t('hint.opponentUpgrade', { name, card, upgrade });
+  } else if (pick.kind === 'double') {
+    text = mine
+      ? t('hint.youDouble', { card, count })
+      : t('hint.opponentDouble', { name, card, count });
+  } else {
+    text = mine
       ? t('hint.youPlay', { card, count })
-      : t('hint.opponentPlays', { name: snapshot.players[pick.player].name, card, count });
+      : t('hint.opponentPlays', { name, card, count });
+  }
   const key = `${snapshot.round}:${snapshot.picksLeft[0]}:${snapshot.picksLeft[1]}`;
   return (
     <div className="pick-hint" key={key} data-testid="pick-hint">
@@ -116,7 +131,7 @@ function useEdgeInsets(): {
 
 /** Whole battle screen for one snapshot. Pure: all state of the game comes in via props. */
 export function BattleView({ snapshot, actions, field }: BattleViewProps): ReactElement {
-  const [detail, setDetail] = useState<CardId | null>(null);
+  const [detail, setDetail] = useState<{ card: CardId; upgrade?: number | undefined } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const { insets, headerRef, probeRef } = useEdgeInsets();
   const { me, phase } = snapshot;
@@ -129,6 +144,12 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
   const level = (card: CardId): number => snapshot.players[me].levels[card] ?? 1;
   const livesPill = (
     <div className="lives-pill">
+      <ActiveUpgrades
+        masks={snapshot.activeUpgrades[me]}
+        name={t('battle.you')}
+        team="own"
+        testId="upgrades-me"
+      />
       <Hearts
         lives={snapshot.lives[me]}
         breaking={lostLife(me)}
@@ -169,6 +190,12 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
               label={t('battle.livesOf', { name: oppName, lives: snapshot.lives[opp] })}
             />
             <span className="bot-badge">{t('battle.bot')}</span>
+            <ActiveUpgrades
+              masks={snapshot.activeUpgrades[opp]}
+              name={oppName}
+              team="enemy"
+              testId="upgrades-opponent"
+            />
           </div>
         </div>
         <span className="chip chip--round" data-testid="round-number">
@@ -200,7 +227,7 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
           <DraftBar
             snapshot={snapshot}
             onPlay={actions.play}
-            onInfo={setDetail}
+            onInfo={(card, upgrade) => setDetail({ card, upgrade })}
             trailing={livesPill}
           />
         ) : (
@@ -209,7 +236,12 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
       </div>
 
       {detail !== null && (
-        <CardDetail card={detail} level={level(detail)} onClose={() => setDetail(null)} />
+        <CardDetail
+          card={detail.card}
+          level={level(detail.card)}
+          highlightUpgrade={detail.upgrade}
+          onClose={() => setDetail(null)}
+        />
       )}
 
       {leaving && (

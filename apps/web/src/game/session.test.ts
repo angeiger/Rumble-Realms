@@ -1,4 +1,11 @@
-import { BOT_PROFILES, hashState, type BotProfile, type MatchState } from '@rumble-realms/engine';
+import {
+  BOT_PROFILES,
+  hashState,
+  upgradesForLevel,
+  BOT_LEVELS,
+  type BotProfile,
+  type MatchState,
+} from '@rumble-realms/engine';
 import { describe, expect, it } from 'vitest';
 import {
   BOT_THINK_MS,
@@ -461,5 +468,119 @@ describe('determinism', () => {
     expect(a.length).toBeGreaterThan(100);
     expect(a).toEqual(b);
     expect(run(12, [37, 120, 250, 16])).not.toEqual(a);
+    // Three full matches with a state hash after every step: slow on a busy machine.
+  }, 60_000);
+});
+
+describe('upgrades', () => {
+  const profile = (level: 'easy' | 'medium' | 'hard'): BotProfile =>
+    BOT_PROFILES.find((p) => p.level === level) as BotProfile;
+
+  it('the human has no unlocked upgrades unless given; the snapshot is empty at the start', () => {
+    const { session, match } = createLocalSessionHandle(opts());
+    expect(session.getSnapshot().players[0].upgrades).toEqual({
+      archer: 0,
+      knight: 0,
+      skeleton: 0,
+      healer: 0,
+    });
+    expect(session.getSnapshot().activeUpgrades).toEqual([{}, {}]);
+    expect(match.config.players[0].upgrades).toEqual(session.getSnapshot().players[0].upgrades);
+  });
+
+  it('passes the human upgrades on to the engine and ignores invalid masks', () => {
+    const { session, match } = createLocalSessionHandle(
+      opts(1, { playerUpgrades: { archer: 7, knight: 5, skeleton: 8, healer: -1, tnt: 3 } }),
+    );
+    expect(match.config.players[0].upgrades).toEqual({
+      archer: 7,
+      knight: 5,
+      skeleton: 0,
+      healer: 0,
+    });
+    expect(session.getSnapshot().players[0].upgrades).toEqual({
+      archer: 7,
+      knight: 5,
+      skeleton: 0,
+      healer: 0,
+    });
+  });
+
+  it('gives the bot the upgrades of its card level (D-073)', () => {
+    for (const level of ['easy', 'medium', 'hard'] as const) {
+      const bot = profile(level);
+      const { session, match } = createLocalSessionHandle(opts(1, { bot }));
+      const want = upgradesForLevel(BOT_LEVELS[level].cardLevel);
+      for (const card of bot.deck) {
+        expect(session.getSnapshot().players[1].upgrades[card], `${level} ${card}`).toBe(want);
+        expect(match.config.players[1].upgrades?.[card]).toBe(want);
+      }
+    }
+    expect(upgradesForLevel(BOT_LEVELS.easy.cardLevel)).toBe(0);
+    expect(upgradesForLevel(BOT_LEVELS.medium.cardLevel)).toBe(1);
+    expect(upgradesForLevel(BOT_LEVELS.hard.cardLevel)).toBe(3);
+  });
+
+  it('an upgrade pick shows up in the next snapshot, which is a new frozen object', () => {
+    let found = false;
+    for (let seed = 1; seed < 400 && !found; seed++) {
+      const { session, match } = createLocalSessionHandle(
+        opts(seed, { playerUpgrades: { archer: 7, knight: 7, skeleton: 7, healer: 7 } }),
+      );
+      toHumanTurn(session);
+      for (let guard = 0; guard < 6 && session.getSnapshot().phase === 'draft'; guard++) {
+        const before = session.getSnapshot();
+        if (before.turn !== 0) {
+          session.advance(100);
+          continue;
+        }
+        const slot = before.offer?.findIndex((o) => o.kind === 'upgrade') ?? -1;
+        if (slot < 0) {
+          session.play(0);
+          continue;
+        }
+        const offered = before.offer?.[slot];
+        if (offered?.kind !== 'upgrade') continue;
+        session.play(slot);
+        const after = session.getSnapshot();
+        expect(after).not.toBe(before);
+        expect(Object.isFrozen(after.activeUpgrades)).toBe(true);
+        expect(Object.isFrozen(after.activeUpgrades[0])).toBe(true);
+        expect(after.activeUpgrades[0][offered.card]! & (1 << offered.upgrade)).not.toBe(0);
+        expect(after.activeUpgrades[0]).toEqual(match.activeUpgrades[0]);
+        expect(after.activeUpgrades[0]).not.toBe(match.activeUpgrades[0]);
+        expect(after.lastPick).toMatchObject({ kind: 'upgrade', card: offered.card });
+        expect(before.activeUpgrades[0]).toEqual({});
+        found = true;
+        break;
+      }
+    }
+    expect(found).toBe(true);
+  });
+
+  it('the bot picks upgrades only from what its level owns', () => {
+    for (const level of ['easy', 'medium', 'hard'] as const) {
+      const bot = profile(level);
+      const { session, match } = createLocalSessionHandle(opts(7, { bot }));
+      stepUntil(session, (n) => n.phase === 'finished');
+      const owned = upgradesForLevel(BOT_LEVELS[level].cardLevel);
+      for (const mask of Object.values(match.activeUpgrades[1])) {
+        expect(mask & ~owned, level).toBe(0);
+      }
+      if (level === 'easy') expect(match.activeUpgrades[1]).toEqual({});
+    }
+  });
+
+  it('an equal session (same options) ends with the same state hash for every bot level', () => {
+    for (const level of ['easy', 'medium', 'hard'] as const) {
+      const run = (): string => {
+        const { session, match } = createLocalSessionHandle(
+          opts(11, { bot: profile(level), playerUpgrades: { archer: 7 } }),
+        );
+        stepUntil(session, (n) => n.phase === 'finished');
+        return hashState(match);
+      };
+      expect(run()).toBe(run());
+    }
   });
 });

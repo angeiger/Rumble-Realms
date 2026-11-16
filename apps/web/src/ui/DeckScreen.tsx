@@ -1,15 +1,18 @@
 import { CARD_IDS, CARDS, DECK_SIZE, type CardId } from '@rumble-realms/engine';
 import { useEffect, useState, type CSSProperties, type ReactElement } from 'react';
-import { levelOf, useDeckStore } from '../game/deckStore.ts';
+import { levelOf, upgradesOf, useDeckStore } from '../game/deckStore.ts';
 import { t } from '../i18n/index.ts';
 import { CardDetail } from './CardDetail.tsx';
 import { cardName, useLongPress } from './CardView.tsx';
+import { maskIndices } from './upgradeText.ts';
 import { FigureImage } from './FigureImage.tsx';
 import { preloadFigures } from '../render/figureImages.ts';
 
 interface TileProps {
   card: CardId;
   level: number;
+  /** Unlocked upgrades (bit mask); shown as small symbols. */
+  upgradeMask: number;
   testId: string;
   /** Slot tiles show the place number instead of the "in deck" mark. */
   slotNumber?: number;
@@ -23,6 +26,7 @@ interface TileProps {
 function Tile({
   card,
   level,
+  upgradeMask,
   testId,
   slotNumber,
   inDeck = false,
@@ -60,6 +64,17 @@ function Tile({
       <div className="tile__art">
         <FigureImage card={card} />
         <span className="tile__level">{t('detail.level', { level })}</span>
+        <span
+          className="tile__upgrades"
+          data-testid="tile-upgrades"
+          data-count={maskIndices(upgradeMask).length}
+          role="img"
+          aria-label={t('deck.upgradesUnlocked', { count: maskIndices(upgradeMask).length })}
+        >
+          {maskIndices(upgradeMask).map((i) => (
+            <span className="tile__upgrade" key={i} />
+          ))}
+        </span>
         {slotNumber !== undefined && <span className="tile__slot">{slotNumber}</span>}
         {inDeck && slotNumber === undefined && (
           <span className="tile__mark">{t('deck.inDeck')}</span>
@@ -77,7 +92,9 @@ export function DeckScreen(): ReactElement {
   const deck = useDeckStore((s) => s.deck);
   const levels = useDeckStore((s) => s.levels);
   const setSlot = useDeckStore((s) => s.setSlot);
+  const upgrades = useDeckStore((s) => s.upgrades);
   const setLevel = useDeckStore((s) => s.setLevel);
+  const toggleUpgrade = useDeckStore((s) => s.toggleUpgrade);
   const [slot, setSlotChoice] = useState<number | null>(null);
   const [detail, setDetail] = useState<CardId | null>(null);
 
@@ -109,6 +126,7 @@ export function DeckScreen(): ReactElement {
               key={i}
               card={card}
               level={levelOf(levels, card)}
+              upgradeMask={upgradesOf(upgrades, card)}
               testId={`deck-slot-${i}`}
               slotNumber={i + 1}
               selected={slot === i}
@@ -129,6 +147,7 @@ export function DeckScreen(): ReactElement {
               key={card}
               card={card}
               level={levelOf(levels, card)}
+              upgradeMask={upgradesOf(upgrades, card)}
               testId={`deck-card-${card}`}
               inDeck={deck.includes(card)}
               onTap={() => pickCard(card)}
@@ -144,6 +163,8 @@ export function DeckScreen(): ReactElement {
           level={levelOf(levels, detail)}
           onClose={() => setDetail(null)}
           onLevelChange={(level) => setLevel(detail, level)}
+          upgradeMask={upgradesOf(upgrades, detail)}
+          onToggleUpgrade={(index) => toggleUpgrade(detail, index)}
         />
       )}
     </main>

@@ -1,4 +1,4 @@
-import type { CardId } from '@rumble-realms/engine';
+import type { CardId, OfferKind } from '@rumble-realms/engine';
 import { useEffect, useRef, useState, type ReactElement, type ReactNode } from 'react';
 import { t } from '../i18n/index.ts';
 import type { SessionSnapshot } from '../game/types.ts';
@@ -8,7 +8,8 @@ export interface DraftBarProps {
   snapshot: SessionSnapshot;
   /** One tap plays the card at once (D-044). */
   onPlay: (slot: number) => void;
-  onInfo: (card: CardId) => void;
+  /** `upgrade` is set for an upgrade card: the detail view highlights that upgrade. */
+  onInfo: (card: CardId, upgrade?: number) => void;
   /** Shown at the right end of the status line (the player's lives). */
   trailing?: ReactNode;
 }
@@ -23,6 +24,8 @@ function picksText(count: number): string {
 interface Ghost {
   slot: number;
   card: CardId;
+  kind: OfferKind;
+  upgrade: number;
   level: number;
   id: number;
 }
@@ -62,6 +65,8 @@ export function DraftBar({ snapshot, onPlay, onInfo, trailing }: DraftBarProps):
     setGhost({
       slot,
       card: slotData.card,
+      kind: slotData.kind,
+      upgrade: slotData.kind === 'upgrade' ? slotData.upgrade : 0,
       level: players[me].levels[slotData.card] ?? 1,
       id: counter.current,
     });
@@ -98,9 +103,14 @@ export function DraftBar({ snapshot, onPlay, onInfo, trailing }: DraftBarProps):
                   <CardView
                     card={slot.card}
                     level={players[me].levels[slot.card] ?? 1}
+                    kind={slot.kind}
+                    upgrade={slot.kind === 'upgrade' ? slot.upgrade : 0}
+                    activeMask={snapshot.activeUpgrades[me][slot.card] ?? 0}
                     testId={`offer-card-${i}`}
                     onTap={() => play(i)}
-                    onInfo={() => onInfo(slot.card)}
+                    onInfo={() =>
+                      onInfo(slot.card, slot.kind === 'upgrade' ? slot.upgrade : undefined)
+                    }
                   />
                 </div>
               ))}
@@ -112,7 +122,13 @@ export function DraftBar({ snapshot, onPlay, onInfo, trailing }: DraftBarProps):
                 aria-hidden="true"
                 data-testid="played-ghost"
               >
-                <CardView card={ghost.card} level={ghost.level} />
+                <CardView
+                  card={ghost.card}
+                  level={ghost.level}
+                  kind={ghost.kind}
+                  upgrade={ghost.upgrade}
+                  activeMask={snapshot.activeUpgrades[me][ghost.card] ?? 0}
+                />
               </div>
             )}
           </div>

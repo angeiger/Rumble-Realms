@@ -16,7 +16,7 @@ import {
   startBattle,
 } from './match.ts';
 import { layoutArmy } from './placement.ts';
-import { nextInt, seedRng, STREAM_BATTLE, STREAM_MATCH, STREAM_PLACEMENT } from './rng.ts';
+import { nextInt, seedRng, STREAM_BATTLE, STREAM_MATCH } from './rng.ts';
 import type {
   ArmyEntry,
   BattleResult,
@@ -185,7 +185,8 @@ describe('offers', () => {
           const cards = offer.slots.map((slot) => slot.card);
           expect(new Set(cards).size).toBe(OFFER_SIZE);
           for (const slot of offer.slots) {
-            expect(slot.kind).toBe('spawn');
+            // No upgrades are unlocked in this config, so only double packs can appear.
+            expect(['spawn', 'double']).toContain(slot.kind);
             expect(s.config.players[player].deck).toContain(slot.card);
           }
           applyPick(s, seed % OFFER_SIZE);
@@ -225,20 +226,25 @@ describe('offers', () => {
     expect(distinct.size).toBeGreaterThan(15);
   });
 
-  it('do not depend on placement', () => {
+  it('do not depend on what stands on the field', () => {
     const a = createMatch(config(9));
     const b = createMatch(config(9));
-    b.rng.placement = seedRng(12345, 3);
-    let positionsDiffer = false;
+    // b starts with an army a does not have, so the two fields differ all the time.
+    b.army.push({
+      player: 0,
+      card: 'knight',
+      level: 1,
+      round: 1,
+      double: false,
+      unitIds: [900, 901],
+    });
+    b.nextUnitId = 902;
     while (a.phase === 'draft') {
       expect(getOffer(b)).toEqual(getOffer(a));
       applyPick(a, 1);
       applyPick(b, 1);
-      const ua = a.battle.units.map((u) => `${u.x},${u.y}`).join(';');
-      const ub = b.battle.units.map((u) => `${u.x},${u.y}`).join(';');
-      if (ua !== ub) positionsDiffer = true;
+      expect(b.battle.units.length).toBe(a.battle.units.length + 2);
     }
-    expect(positionsDiffer).toBe(true);
   });
 
   it('getOffer and currentPlayer throw outside the draft', () => {
@@ -259,19 +265,22 @@ describe('applyPick', () => {
       const offer = getOffer(s);
       const slot = (s.picks.length * 2) % OFFER_SIZE;
       const card = offer.slots[slot]?.card as CardId;
+      const kind = offer.slots[slot]?.kind;
+      const n = CARDS[card].count * (kind === 'double' ? 2 : 1);
       const before = s.battle.units.length;
       applyPick(s, slot);
       const pick = s.lastPick;
       expect(pick).toEqual({
         player,
         slot,
+        kind,
         card,
         spawned: pick?.spawned,
         forfeited: 0,
       });
-      expect(pick?.spawned).toHaveLength(CARDS[card].count);
-      expect(s.battle.units.length).toBe(before + CARDS[card].count);
-      total += CARDS[card].count;
+      expect(pick?.spawned).toHaveLength(n);
+      expect(s.battle.units.length).toBe(before + n);
+      total += n;
       for (const id of pick?.spawned ?? []) {
         const u = s.battle.units.find((unit) => unit.id === id);
         expect(u?.owner).toBe(player);
@@ -301,14 +310,14 @@ describe('applyPick', () => {
       applyPick(s, slot);
     }
     const expectedHp: Partial<Record<CardId, number>> = {
-      knight: 720, // 600 * 120 %
-      bat: 98, // 70 * 140 %
-      archer: 120,
-      healer: 200,
-      tnt: 150,
-      skeleton: 60,
-      musketeer: 400,
-      assassin: 200,
+      knight: Math.floor((CARDS.knight.hp * 12) / 10), // level 3: +20 %
+      bat: Math.floor((CARDS.bat.hp * 14) / 10), // level 5: +40 %
+      archer: CARDS.archer.hp,
+      healer: CARDS.healer.hp,
+      tnt: CARDS.tnt.hp,
+      skeleton: CARDS.skeleton.hp,
+      musketeer: CARDS.musketeer.hp,
+      assassin: CARDS.assassin.hp,
     };
     expect(s.battle.units.length).toBeGreaterThan(0);
     for (const u of s.battle.units) {
@@ -429,6 +438,13 @@ describe('endRound', () => {
       owner: 0,
       sourceId: 1,
       targetId: 2,
+      card: 'archer',
+      up: 0,
+      level: 1,
+      fromX: 0,
+      fromY: 0,
+      x: -1,
+      y: -1,
       damage: 5,
       launchTick: 499,
       impactTick: 505,
@@ -545,29 +561,28 @@ describe('growing army (D-046, D-053)', () => {
     expect(b.nextUnitId).toBe(state.nextUnitId);
   }
 
-  it('records every pick with its random column, round, level and fresh unit ids', () => {
+  it('records every pick with its round, level and fresh unit ids', () => {
     const s = createMatch(config(11));
-    const placement = seedRng(11, STREAM_PLACEMENT);
     let nextId = 1;
     while (s.phase === 'draft') {
       const player = currentPlayer(s);
       const card = getOffer(s).slots[1]?.card as CardId;
+      const kind = getOffer(s).slots[1]?.kind;
+      const double = kind === 'double';
       applyPick(s, 1);
       const entry = s.army[s.army.length - 1] as ArmyEntry;
       const ids: number[] = [];
-      for (let i = 0; i < CARDS[card].count; i++) ids.push(nextId++);
+      for (let i = 0; i < CARDS[card].count * (double ? 2 : 1); i++) ids.push(nextId++);
       expect(entry).toEqual({
         player,
         card,
         level: s.config.players[player].levels[card] ?? 1,
-        column: nextInt(placement, GRID_COLS),
         round: 1,
+        double,
         unitIds: ids,
       });
-      // Exactly one draw of the placement stream per pick.
-      expect(s.rng.placement).toEqual(placement);
       expect(s.nextUnitId).toBe(nextId);
-      expect(s.lastPick).toEqual({ player, slot: 1, card, spawned: ids, forfeited: 0 });
+      expect(s.lastPick).toEqual({ player, slot: 1, kind, card, spawned: ids, forfeited: 0 });
     }
     expect(s.army).toHaveLength(6);
   });
@@ -652,60 +667,51 @@ describe('growing army (D-046, D-053)', () => {
     let seed = 0;
     while (currentPlayer(createMatch(config(seed))) !== 0) seed++;
     const s = createMatch(config(seed));
-    // Player 0 already has 29 skeleton cards: 145 ground units for 144 cells.
+    // Player 0 already has 29 skeleton cards: 145 skeletons, one more than 12 full rows.
     let id = 1;
     for (let i = 0; i < 29; i++) {
       const unitIds = [id, id + 1, id + 2, id + 3, id + 4];
       id += 5;
-      s.army.push({ player: 0, card: 'skeleton', level: 1, column: 5, round: 1, unitIds });
+      s.army.push({ player: 0, card: 'skeleton', level: 1, round: 1, double: false, unitIds });
     }
     s.nextUnitId = id;
-    const offer = getOffer(s);
-    // A front card comes after the skeletons in army order and finds no cell at all.
-    const slot = offer.slots.findIndex((x) => CARDS[x.card].zone === 'front');
-    const card = offer.slots[slot]?.card as CardId;
-    applyPick(s, slot);
+    // More skeletons join the end of the same rank (D-070) and find no row at all.
+    s.draft.offer = { player: 0, slots: [{ kind: 'spawn', card: 'skeleton' }] };
+    applyPick(s, 0);
     expect(s.lastPick).toEqual({
       player: 0,
-      slot,
-      card,
+      slot: 0,
+      kind: 'spawn',
+      card: 'skeleton',
       spawned: [],
-      forfeited: CARDS[card].count,
+      forfeited: CARDS.skeleton.count,
     });
     expect(s.battle.units.filter((u) => u.owner === 0)).toHaveLength(GRID_COLS * HALF_ROWS);
     expectFieldMatchesArmy(s);
   });
 
-  it('draws one column per pick whatever the field looks like', () => {
-    const full = createMatch(config(16));
-    const empty = createMatch(config(16));
-    for (let i = 0; i < 40; i++) {
-      full.army.push({
-        player: 0,
-        card: 'knight',
-        level: 1,
-        column: i % GRID_COLS,
-        round: 1,
-        unitIds: [1000 + 2 * i, 1001 + 2 * i],
-      });
-      full.army.push({
-        player: 1,
-        card: 'bat',
-        level: 1,
-        column: i % GRID_COLS,
-        round: 1,
-        unitIds: [2000 + 3 * i, 2001 + 3 * i, 2002 + 3 * i],
-      });
+  it('pushes the ranks in front out of the half when a rank behind them grows', () => {
+    let seed = 0;
+    while (currentPlayer(createMatch(config(seed))) !== 0) seed++;
+    const s = createMatch(config(seed));
+    // 28 skeleton cards and 2 archer cards: 140 skeletons in 12 rows behind them would
+    // need 13 rows together with the archers' row.
+    let id = 1;
+    for (let i = 0; i < 28; i++) {
+      const unitIds = [id, id + 1, id + 2, id + 3, id + 4];
+      id += 5;
+      s.army.push({ player: 0, card: 'skeleton', level: 1, round: 1, double: false, unitIds });
     }
-    full.nextUnitId = 3000;
-    while (empty.phase === 'draft') {
-      applyPick(full, 0);
-      applyPick(empty, 0);
-      expect(full.rng.placement).toEqual(empty.rng.placement);
-      expect(full.army[full.army.length - 1]?.column).toBe(
-        empty.army[empty.army.length - 1]?.column,
-      );
-    }
+    s.nextUnitId = id;
+    s.draft.offer = { player: 0, slots: [{ kind: 'spawn', card: 'archer' }] };
+    applyPick(s, 0);
+    // The archers stand in the base line; the skeletons keep rows 1-11 (132 of 140).
+    expect(s.lastPick?.spawned).toHaveLength(CARDS.archer.count);
+    expect(s.lastPick?.forfeited).toBe(0);
+    const own = s.battle.units.filter((u) => u.owner === 0);
+    expect(own.filter((u) => u.card === 'archer').map((u) => u.y)).toEqual([0, 0, 0]);
+    expect(own.filter((u) => u.card === 'skeleton')).toHaveLength(11 * GRID_COLS);
+    expectFieldMatchesArmy(s);
   });
 });
 

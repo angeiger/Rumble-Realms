@@ -1,15 +1,14 @@
 /**
- * Match flow: lives, rounds, draft order, offers and the growing army (SPEC 4.2, 4.3,
- * D-020, D-046, D-053).
+ * Match flow: lives, rounds, draft order, offers with special cards, upgrades and the
+ * growing army (SPEC 4.2, 4.3, 4.5, D-020, D-046, D-053).
  *
  * The state is mutated in place (D-019). Random numbers come from separate streams
- * (D-029): coin flips from `match`, offers from `offers`, center columns from `placement`,
- * so e.g. a different placement never changes the offers.
+ * (D-029): coin flips from `match`, offers from `offers`, the battle from its own
+ * stream. The formation is not random (D-070).
  */
 import { createBattle } from './battle/state.ts';
 import {
   DECK_SIZE,
-  GRID_COLS,
   LOSER_BONUS_PICKS,
   MAX_LEVEL,
   OFFER_SIZE,
@@ -17,16 +16,16 @@ import {
   START_LIVES,
 } from './data/balance.ts';
 import { CARDS } from './data/cards.ts';
-import { rebuildField } from './placement.ts';
 import {
-  nextInt,
-  seedRng,
-  shuffle,
-  STREAM_BATTLE,
-  STREAM_MATCH,
-  STREAM_OFFERS,
-  STREAM_PLACEMENT,
-} from './rng.ts';
+  DOUBLE_CHANCE_BPS,
+  MAX_SPECIALS_PER_OFFER,
+  SPECIAL_ROLL_RANGE,
+  UPGRADE_CHANCE_BPS,
+  UPGRADE_ROLL_RANGE,
+} from './data/specials.ts';
+import { ALL_UPGRADES_MASK } from './data/upgrades.ts';
+import { rebuildField } from './placement.ts';
+import { nextInt, seedRng, shuffle, STREAM_BATTLE, STREAM_MATCH, STREAM_OFFERS } from './rng.ts';
 import type {
   ArmyEntry,
   BattleState,
@@ -34,10 +33,13 @@ import type {
   MatchConfig,
   MatchState,
   Offer,
+  OfferSlot,
+  PickInfo,
   PlayerConfig,
   PlayerIndex,
   RoundOutcome,
 } from './types.ts';
+import { selectableUpgrades, unitCount } from './upgrades.ts';
 import { ENGINE_VERSION } from './version.ts';
 
 function isCardId(value: unknown): value is CardId {
@@ -70,7 +72,31 @@ function validatePlayer(p: PlayerConfig, index: number): PlayerConfig {
     }
     levels[card] = level;
   }
-  return { deck, levels };
+  const result: PlayerConfig = { deck, levels };
+  if (p.upgrades !== undefined) {
+    if (p.upgrades === null || typeof p.upgrades !== 'object' || Array.isArray(p.upgrades)) {
+      throw new Error(`createMatch: ${who} upgrades must be an object`);
+    }
+    const upgrades: Partial<Record<CardId, number>> = {};
+    for (const [card, mask] of Object.entries(p.upgrades) as [string, unknown][]) {
+      if (!isCardId(card)) {
+        throw new Error(`createMatch: ${who} has upgrades for unknown card ${card}`);
+      }
+      if (
+        typeof mask !== 'number' ||
+        !Number.isInteger(mask) ||
+        mask < 0 ||
+        mask > ALL_UPGRADES_MASK
+      ) {
+        throw new Error(
+          `createMatch: ${who} upgrades of ${card} must be a bit mask 0..${ALL_UPGRADES_MASK}, got ${String(mask)}`,
+        );
+      }
+      upgrades[card] = mask;
+    }
+    result.upgrades = upgrades;
+  }
+  return result;
 }
 
 /** Pick order of a round: alternating, `first` begins; leftover picks go to the end. */
@@ -101,17 +127,41 @@ function coinFlip(state: MatchState): PlayerIndex {
 }
 
 /**
- * Draws the offer for the pick that is due: OFFER_SIZE distinct deck cards in random slot
- * order. Shuffles a copy of the whole deck, so every offer uses DECK_SIZE - 1 draws.
+ * Draws the offer for the pick that is due (SPEC 4.3): OFFER_SIZE distinct deck cards in
+ * random slot order (a shuffled copy of the whole deck: DECK_SIZE - 1 draws), then exactly
+ * two draws per slot, used or not: the kind roll (below DOUBLE_CHANCE_BPS a double pack,
+ * below DOUBLE_CHANCE_BPS + UPGRADE_CHANCE_BPS an upgrade card) and the upgrade roll (index
+ * into the selectable upgrades, modulo their number). Without a selectable upgrade the slot
+ * stays a normal card; after MAX_SPECIALS_PER_OFFER special cards all further slots do.
+ * So every offer uses the same number of draws and never depends on the field.
  */
 function makeOffer(state: MatchState): Offer {
   const player = state.draft.order[state.draft.pickIndex] as PlayerIndex;
-  const cards = [...state.config.players[player].deck];
-  shuffle(state.rng.offers, cards);
-  return {
-    player,
-    slots: cards.slice(0, OFFER_SIZE).map((card) => ({ kind: 'spawn', card })),
-  };
+  const rng = state.rng.offers;
+  const cfg = state.config.players[player];
+  const cards = [...cfg.deck];
+  shuffle(rng, cards);
+  const unlocked = cfg.upgrades ?? {};
+  const active = state.activeUpgrades[player];
+  const slots: OfferSlot[] = [];
+  let specials = 0;
+  for (const card of cards.slice(0, OFFER_SIZE)) {
+    const kindRoll = nextInt(rng, SPECIAL_ROLL_RANGE);
+    const upgradeRoll = nextInt(rng, UPGRADE_ROLL_RANGE);
+    let slot: OfferSlot = { kind: 'spawn', card };
+    if (specials < MAX_SPECIALS_PER_OFFER) {
+      if (kindRoll < DOUBLE_CHANCE_BPS) {
+        slot = { kind: 'double', card };
+      } else if (kindRoll < DOUBLE_CHANCE_BPS + UPGRADE_CHANCE_BPS) {
+        const options = selectableUpgrades(card, unlocked[card] ?? 0, active[card] ?? 0);
+        const upgrade = options[upgradeRoll % Math.max(1, options.length)];
+        if (upgrade !== undefined) slot = { kind: 'upgrade', card, upgrade };
+      }
+    }
+    if (slot.kind !== 'spawn') specials++;
+    slots.push(slot);
+  }
+  return { player, slots };
 }
 
 /** Validates the config and sets up round 1 (coin flip, draft order, first offer, empty field). */
@@ -141,9 +191,9 @@ export function createMatch(cfg: MatchConfig): MatchState {
     rng: {
       match: seedRng(seed, STREAM_MATCH),
       offers: seedRng(seed, STREAM_OFFERS),
-      placement: seedRng(seed, STREAM_PLACEMENT),
     },
     army: [],
+    activeUpgrades: [{}, {}],
     nextUnitId: 1,
     battle: createBattle(seedRng(seed, STREAM_BATTLE)),
     winner: null,
@@ -181,10 +231,14 @@ export function getOffer(state: MatchState): Offer {
 }
 
 /**
- * Plays the card in `slot` of the current offer: adds it to the army with a random center
- * column (exactly one draw of the placement stream, D-030) and fresh unit ids, sets up the
- * whole field again (D-052), records the pick and moves on. After the last pick of the
+ * Plays the card in `slot` of the current offer and moves on; after the last pick of the
  * round the phase switches to `battle`.
+ * - normal card / double pack: adds it to the army; a double pack has twice the units
+ *   (SPEC 4.5).
+ * - upgrade card: activates the upgrade for the rest of the match (SPEC 4.5); no new army
+ *   entry.
+ * Then every army entry gets fresh unit ids up to its current unit count (new cards, or
+ * more units through an upgrade) and the whole field is set up again (D-070).
  */
 export function applyPick(state: MatchState, slot: number): MatchState {
   const offer = requireDraft(state, 'applyPick');
@@ -192,19 +246,35 @@ export function applyPick(state: MatchState, slot: number): MatchState {
     throw new Error(`applyPick: slot must be an integer 0..${offer.slots.length - 1}, got ${slot}`);
   }
   const player = offer.player;
-  const card = (offer.slots[slot] as Offer['slots'][number]).card;
-  const level = state.config.players[player].levels[card] ?? 1;
-  const column = nextInt(state.rng.placement, GRID_COLS);
-  // Never hand out an id twice, even if the field numbered units beyond the match counter.
-  let nextId = Math.max(state.nextUnitId, state.battle.nextUnitId);
-  const unitIds: number[] = [];
-  for (let i = 0; i < CARDS[card].count; i++) unitIds.push(nextId++);
-  state.nextUnitId = nextId;
-  const entry: ArmyEntry = { player, card, level, column, round: state.round, unitIds };
-  state.army.push(entry);
+  const chosen = offer.slots[slot] as OfferSlot;
+  const card = chosen.card;
+  if (chosen.kind === 'upgrade') {
+    const active = state.activeUpgrades[player];
+    active[card] = (active[card] ?? 0) | (1 << chosen.upgrade);
+  } else {
+    const entry: ArmyEntry = {
+      player,
+      card,
+      level: state.config.players[player].levels[card] ?? 1,
+      round: state.round,
+      double: chosen.kind === 'double',
+      unitIds: [],
+    };
+    state.army.push(entry);
+  }
+  const added = reserveUnitIds(state);
   const forfeited = rebuildField(state);
-  const spawned = unitIds.filter((id) => !forfeited.includes(id));
-  state.lastPick = { player, slot, card, spawned, forfeited: unitIds.length - spawned.length };
+  const spawned = added.filter((id) => !forfeited.includes(id));
+  const pick: PickInfo = {
+    player,
+    slot,
+    kind: chosen.kind,
+    card,
+    spawned,
+    forfeited: added.length - spawned.length,
+  };
+  if (chosen.kind === 'upgrade') pick.upgrade = chosen.upgrade;
+  state.lastPick = pick;
   state.picks.push(slot);
   state.draft.pickIndex++;
   if (state.draft.pickIndex >= state.draft.order.length) {
@@ -214,6 +284,27 @@ export function applyPick(state: MatchState, slot: number): MatchState {
     state.draft.offer = makeOffer(state);
   }
   return state;
+}
+
+/**
+ * Gives every army entry as many unit ids as it needs now (`unitCount` with the owner's
+ * active upgrades), in army order, with fresh ids that were never used in this match.
+ * Returns the new ids in the order they were handed out.
+ */
+function reserveUnitIds(state: MatchState): number[] {
+  // Never hand out an id twice, even if the field numbered units beyond the match counter.
+  let nextId = Math.max(state.nextUnitId, state.battle.nextUnitId);
+  const added: number[] = [];
+  for (const entry of state.army) {
+    const mask = state.activeUpgrades[entry.player][entry.card] ?? 0;
+    const need = unitCount(entry.card, mask, entry.double);
+    while (entry.unitIds.length < need) {
+      entry.unitIds.push(nextId);
+      added.push(nextId++);
+    }
+  }
+  state.nextUnitId = nextId;
+  return added;
 }
 
 /** The field to simulate. Throws unless all picks of the round are done. */

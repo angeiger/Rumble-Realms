@@ -2,19 +2,31 @@
  * Effects: particles, projectiles, floating numbers, lingering zones and screen shake.
  * Everything comes from pools with fixed upper bounds; nothing is allocated per frame.
  */
-import type { BattleState, CardId } from '@rumble-realms/engine';
+import type { BattleState, CardId, ImpactKind, ZoneKind } from '@rumble-realms/engine';
 import { BitmapText, Container, Sprite, type Texture } from 'pixi.js';
 import { INTRO_MS } from '../game/config.ts';
 import type { FieldLayout } from './layout.ts';
 import { PALETTE } from './palette.ts';
 import { clamp } from './motion.ts';
 import { ARROW_SIZE, BULLET_SIZE, type EffectTextures } from './textures.ts';
+import {
+  BREATH_HALF_ANGLE,
+  METEOR_FALL_MS,
+  coneSample,
+  impactShake,
+  lobArcHeight,
+  lobPoint,
+  meteorPoint,
+  zoneLook,
+  type SummonStyle,
+} from './unitLook.ts';
 import type { NumberKind, NumberSink, UnitViews } from './unitViews.ts';
 
 const MAX_PARTICLES = 450;
 /** Numbers younger than this count as "at the same time" when fanning out. */
 const FAN_WINDOW_MS = 250;
-const MAX_PROJECTILES = 64;
+const MAX_PROJECTILES = 96;
+const MAX_METEORS = 6;
 const MAX_NUMBERS = 48;
 const MAX_ZONES = 24;
 const NUMBER_MS = 800;
@@ -68,6 +80,26 @@ class ProjectileView {
   y1 = 0;
   trailMs = 0;
   trail = false;
+  /** Lobbed shell: flies a parabola to a fixed ground point and shows a target mark there. */
+  lob = false;
+  arc = 0;
+  /** Radius of the blast in pixels, for the target mark. */
+  markRadius = 0;
+  /** Target mark on the ground: dark disc and a closing ring (lobbed shells only). */
+  readonly shade = new Sprite();
+  readonly mark = new Sprite();
+}
+
+class MeteorView {
+  readonly sprite = new Sprite();
+  readonly core = new Sprite();
+  readonly shadow = new Sprite();
+  active = false;
+  life = 0;
+  x = 0;
+  y = 0;
+  radius = 0;
+  trailMs = 0;
 }
 
 class NumberView {
@@ -93,6 +125,7 @@ class ZoneView {
   phase = 0;
   age = 0;
   sporeMs = 0;
+  kind: ZoneKind = 'spores';
 }
 
 const NUMBER_COLORS: Record<NumberKind, number> = {
@@ -107,6 +140,9 @@ export class Effects implements NumberSink {
   private readonly projectiles: ProjectileView[] = [];
   private readonly numbers: NumberView[] = [];
   private readonly zones: ZoneView[] = [];
+  private readonly meteors: MeteorView[] = [];
+  private readonly scratch = { x: 0, y: 0 };
+  private readonly cone = { angle: 0, dist: 0 };
   private cell = 1;
   private layout: FieldLayout | null = null;
   private shakeAmp = 0;
@@ -131,8 +167,33 @@ export class Effects implements NumberSink {
       const p = new ProjectileView();
       p.sprite.anchor.set(0.5);
       p.sprite.visible = false;
+      p.shade.texture = tex.dot;
+      p.shade.anchor.set(0.5);
+      p.shade.tint = 0x000000;
+      p.shade.visible = false;
+      p.mark.texture = tex.ring;
+      p.mark.anchor.set(0.5);
+      p.mark.tint = 0xff5a3a;
+      p.mark.visible = false;
       this.projectiles.push(p);
+      layers.zones.addChild(p.shade, p.mark);
       layers.fx.addChild(p.sprite);
+    }
+    for (let i = 0; i < MAX_METEORS; i++) {
+      const m = new MeteorView();
+      m.shadow.texture = tex.dot;
+      m.shadow.tint = 0x000000;
+      m.sprite.texture = tex.dot;
+      m.sprite.tint = 0xff7a1c;
+      m.core.texture = tex.bullet;
+      m.core.tint = 0xc87a3a;
+      for (const sp of [m.shadow, m.sprite, m.core]) {
+        sp.anchor.set(0.5);
+        sp.visible = false;
+      }
+      this.meteors.push(m);
+      layers.zones.addChild(m.shadow);
+      layers.fx.addChild(m.sprite, m.core);
     }
     for (let i = 0; i < MAX_ZONES; i++) {
       const z = new ZoneView();
@@ -177,6 +238,14 @@ export class Effects implements NumberSink {
     for (const p of this.projectiles) {
       p.active = false;
       p.sprite.visible = false;
+      p.shade.visible = false;
+      p.mark.visible = false;
+    }
+    for (const m of this.meteors) {
+      m.active = false;
+      m.sprite.visible = false;
+      m.core.visible = false;
+      m.shadow.visible = false;
     }
     for (const n of this.numbers) {
       n.active = false;
@@ -236,8 +305,9 @@ export class Effects implements NumberSink {
     a0: number,
     tint: number,
     add = false,
+    tex: Texture = this.tex.dot,
   ): void {
-    const p = this.alloc(this.tex.dot, tint, add);
+    const p = this.alloc(tex, tint, add);
     if (p === null) return;
     p.x = x;
     p.y = y;
@@ -454,6 +524,10 @@ export class Effects implements NumberSink {
       p.x1 = tx;
       p.y1 = ty - this.cell * 0.45;
       p.trailMs = 0;
+      p.lob = false;
+      p.sprite.tint = 0xffffff;
+      p.shade.visible = false;
+      p.mark.visible = false;
       const arrow = card === 'archer';
       p.trail = !arrow;
       p.sprite.texture = arrow ? this.tex.arrow : this.tex.bullet;
@@ -465,15 +539,17 @@ export class Effects implements NumberSink {
     }
   }
 
-  /** Lingering cloud (spore cloud). */
-  zone(id: number, x: number, y: number, radiusPx: number, endTick: number): void {
+  /** Lingering area: a spore cloud or an acid puddle. */
+  zone(id: number, kind: ZoneKind, x: number, y: number, radiusPx: number, endTick: number): void {
     for (const z of this.zones) {
       if (z.active && z.id === id) return;
     }
+    const look = zoneLook(kind);
     for (const z of this.zones) {
       if (z.active) continue;
       z.active = true;
       z.id = id;
+      z.kind = kind;
       z.x = x;
       z.y = y;
       z.radius = radiusPx;
@@ -481,14 +557,392 @@ export class Effects implements NumberSink {
       z.phase = (id * 1.7) % (Math.PI * 2);
       z.age = 0;
       z.sporeMs = 0;
-      z.sprite.tint = 0x7fd13a;
-      z.rim.tint = 0xb6f05a;
+      z.sprite.texture = look.bubbles ? this.tex.puddle : this.tex.dot;
+      z.sprite.tint = look.fill;
+      z.rim.tint = look.rim;
       z.sprite.position.set(x, y);
       z.rim.position.set(x, y);
       z.sprite.visible = true;
       z.rim.visible = true;
       return;
     }
+  }
+
+  /**
+   * Lobbed shell (beetle): a slow shell on a parabola from (`x0`, `y0`) to the ground point
+   * (`x1`, `y1`) with a target mark there until it lands. `radiusPx` is the blast radius.
+   */
+  lob(
+    id: number,
+    x0: number,
+    y0: number,
+    x1: number,
+    y1: number,
+    launchTick: number,
+    impactTick: number,
+    radiusPx: number,
+  ): void {
+    for (const p of this.projectiles) {
+      if (p.active) continue;
+      p.active = true;
+      p.id = id;
+      p.targetId = 0;
+      p.launchTick = launchTick;
+      p.impactTick = Math.max(impactTick, launchTick + 1);
+      p.x0 = x0;
+      p.y0 = y0;
+      p.x1 = x1;
+      p.y1 = y1;
+      p.trailMs = 0;
+      p.trail = true;
+      p.lob = true;
+      p.arc = lobArcHeight(Math.hypot(x1 - x0, y1 - y0), this.cell);
+      p.markRadius = Math.max(radiusPx, this.cell * 0.9);
+      p.sprite.texture = this.tex.shell;
+      p.sprite.scale.set((this.cell * 0.55) / BULLET_SIZE);
+      p.sprite.visible = true;
+      p.shade.position.set(x1, y1);
+      p.mark.position.set(x1, y1);
+      p.shade.visible = true;
+      p.mark.visible = true;
+      return;
+    }
+  }
+
+  /** Area hit of `kind` around (`x`, `y`) with a radius of `radiusPx`. */
+  impact(kind: ImpactKind, x: number, y: number, radiusPx: number): void {
+    const c = this.cell;
+    const r = Math.max(radiusPx, c * 0.6);
+    switch (kind) {
+      case 'shell':
+        this.acidBurst(x, y, r);
+        break;
+      case 'splash':
+        this.fireball(x, y, r);
+        break;
+      case 'quake':
+        this.quake(x, y, r);
+        break;
+      case 'nova':
+        this.nova(x, y, r);
+        break;
+      case 'meteor':
+        this.meteor(x, y, r);
+        return; // shake comes with the landing
+    }
+    this.shake(c * impactShake(kind), c * 0.6);
+  }
+
+  /** Acid and steam burst of a beetle shell. */
+  private acidBurst(x: number, y: number, r: number): void {
+    const c = this.cell;
+    this.puff(x, y - c * 0.15, 0, 0, 260, r * 0.6, r * 2.2, 0.85, 0xe4ff7a, true);
+    this.ring(x, y, r * 0.4, r * 2.1, 420, 0xb6f05a, false, 1);
+    for (let i = 0; i < 9; i++) {
+      const a = (i / 9) * Math.PI * 2 + (x % 1);
+      this.puff(
+        x + Math.cos(a) * r * 0.3,
+        y + Math.sin(a) * r * 0.2 - c * 0.2,
+        Math.cos(a) * r * 1.1,
+        Math.sin(a) * r * 0.7 - c * 0.9,
+        700,
+        c * 0.35,
+        c * 1.1,
+        0.6,
+        i % 2 === 0 ? 0xcff58a : 0xf4ffd0,
+      );
+    }
+    for (let i = 0; i < 8; i++) {
+      const a = (i / 8) * Math.PI * 2 + 0.3;
+      this.spark(
+        x,
+        y - c * 0.2,
+        Math.cos(a) * r * 2,
+        Math.sin(a) * r * 1.5,
+        420 + (i % 3) * 90,
+        c * 0.4,
+        i % 2 === 0 ? 0xb6f05a : 0xf2ff9a,
+      );
+    }
+  }
+
+  /** Small fireball of the pyromancer and the whelp. */
+  private fireball(x: number, y: number, r: number): void {
+    const c = this.cell;
+    // Normal blending for the body: additive light vanishes on the bright meadow.
+    this.puff(x, y - c * 0.2, 0, 0, 340, r * 0.8, r * 2.4, 0.95, 0xff6a1c);
+    this.puff(x, y - c * 0.2, 0, 0, 260, r * 0.6, r * 1.7, 1, 0xffd23a);
+    this.puff(x, y - c * 0.2, 0, 0, 160, r * 0.4, r * 1.1, 1, 0xfff6c0, true);
+    this.ring(x, y, r * 0.4, r * 1.9, 340, 0xff7a1c, false, 1);
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + (y % 1);
+      this.spark(
+        x,
+        y - c * 0.2,
+        Math.cos(a) * r * 1.7,
+        Math.sin(a) * r * 1.3,
+        320 + (i % 3) * 80,
+        c * 0.4,
+        i % 2 === 0 ? PALETTE.fire : PALETTE.fireLight,
+      );
+    }
+  }
+
+  /** Earthquake of the golem: ground shock waves, dust and stones. */
+  private quake(x: number, y: number, r: number): void {
+    const c = this.cell;
+    // Normal blending throughout: dark rings and dust read well on the bright meadow.
+    this.puff(x, y, 0, 0, 380, r * 0.9, r * 2.4, 0.45, 0x6d5230);
+    this.ring(x, y, r * 0.3, r * 2.3, 560, 0x5c4326, false, 1);
+    this.ring(x, y, r * 0.2, r * 1.6, 420, 0xd9bd8a, false, 1);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.2;
+      this.puff(
+        x + Math.cos(a) * r * 0.5,
+        y + Math.sin(a) * r * 0.35,
+        Math.cos(a) * r * 1.5,
+        Math.sin(a) * r * 1.0 - c * 0.2,
+        640,
+        c * 0.45,
+        c * 1.2,
+        0.85,
+        i % 2 === 0 ? 0xb39a6a : 0x8a7650,
+      );
+    }
+    for (let i = 0; i < 7; i++) {
+      const a = (i / 7) * Math.PI * 2 + 0.5;
+      this.spark(
+        x,
+        y - c * 0.1,
+        Math.cos(a) * r * 1.2,
+        Math.sin(a) * r * 0.9 - c * 1.6,
+        480,
+        c * 0.34,
+        PALETTE.stoneLight,
+      );
+    }
+  }
+
+  /** Frost nova: an icy ring spreading out, snow and shards. */
+  private nova(x: number, y: number, r: number): void {
+    const c = this.cell;
+    this.puff(x, y - c * 0.1, 0, 0, 460, r * 0.5, r * 2.1, 0.5, 0x7fd8ff);
+    this.ring(x, y, r * 0.3, r * 2.2, 560, 0x2fb4ff, false, 1);
+    this.ring(x, y, r * 0.2, r * 1.7, 440, 0xffffff, false, 1);
+    for (let i = 0; i < 12; i++) {
+      const a = (i / 12) * Math.PI * 2 + 0.1;
+      this.spark(
+        x,
+        y - c * 0.2,
+        Math.cos(a) * r * 2.2,
+        Math.sin(a) * r * 1.6,
+        480 + (i % 3) * 80,
+        c * 0.45,
+        i % 2 === 0 ? PALETTE.ice : PALETTE.iceLight,
+      );
+    }
+  }
+
+  /** Meteor: falls from above onto the target (display only), then a big explosion. */
+  private meteor(x: number, y: number, r: number): void {
+    for (const m of this.meteors) {
+      if (m.active) continue;
+      m.active = true;
+      m.life = 0;
+      m.x = x;
+      m.y = y;
+      m.radius = r;
+      m.trailMs = 0;
+      m.shadow.visible = true;
+      m.sprite.visible = true;
+      m.core.visible = true;
+      return;
+    }
+    // No free slot: show the landing at once.
+    this.explosion(x, y, r * 1.3);
+    this.shake(this.cell * impactShake('meteor'), this.cell * 0.9);
+  }
+
+  /** A ring that grows from `r0` to `r1` pixels and fades out. */
+  private ring(
+    x: number,
+    y: number,
+    r0: number,
+    r1: number,
+    life: number,
+    tint: number,
+    add: boolean,
+    a0: number,
+  ): void {
+    const ring = this.alloc(this.tex.ring, tint, add);
+    if (ring === null) return;
+    ring.x = x;
+    ring.y = y;
+    ring.maxLife = life;
+    ring.w0 = ring.h0 = r0 * 2;
+    ring.w1 = ring.h1 = r1 * 2;
+    ring.a0 = a0;
+  }
+
+  /**
+   * Fire breath: a translucent flame cone from (`ox`, `oy`) towards (`tx`, `ty`) that reaches
+   * `rangePx` pixels, with flames flying along it. Half opening angle 45 degrees.
+   */
+  breath(ox: number, oy: number, tx: number, ty: number, rangePx: number): void {
+    const c = this.cell;
+    const dir = Math.atan2(ty - oy, tx - ox);
+    const range = Math.max(rangePx, c);
+    const cone = this.alloc(this.tex.cone, 0xff8a1c, false);
+    if (cone !== null) {
+      // The wedge texture is 128 x 256 with its apex at the left-centre: its middle lies
+      // half the range away from the apex along the axis.
+      cone.x = ox + Math.cos(dir) * range * 0.5;
+      cone.y = oy + Math.sin(dir) * range * 0.5;
+      cone.rot = dir;
+      cone.maxLife = 420;
+      cone.w0 = cone.w1 = range;
+      cone.h0 = cone.h1 = range * 2;
+      cone.a0 = 0.6;
+    }
+    const o = this.cone;
+    for (let i = 0; i < 22; i++) {
+      coneSample(i, BREATH_HALF_ANGLE, range, o);
+      const a = dir + o.angle;
+      const life = 300 + (i % 4) * 60;
+      // Fly the distance in the particle's life (drag 0.15 per second slows it down a bit).
+      const speed = (o.dist / life) * 1000 * 1.5;
+      this.puff(
+        ox + Math.cos(a) * c * 0.2,
+        oy + Math.sin(a) * c * 0.2,
+        Math.cos(a) * speed,
+        Math.sin(a) * speed,
+        life,
+        c * 0.3,
+        c * (0.7 + 0.4 * (i % 3)),
+        0.9,
+        i % 3 === 0 ? 0xfff0a0 : i % 3 === 1 ? 0xff9d1c : 0xff5a1c,
+        i % 3 === 0,
+      );
+    }
+    this.puff(ox, oy, 0, 0, 200, c * 0.6, c * 1.4, 0.9, 0xfff0a0, true);
+  }
+
+  /** Appear effect of a unit that showed up in mid-battle at (`x`, `y`). */
+  summon(style: SummonStyle, x: number, y: number): void {
+    const c = this.cell;
+    switch (style) {
+      case 'bones':
+        for (let i = 0; i < 6; i++) {
+          const a = (i / 6) * Math.PI * 2;
+          this.puff(
+            x,
+            y - c * 0.15,
+            Math.cos(a) * c * 0.9,
+            Math.sin(a) * c * 0.4 - c * 0.3,
+            480,
+            c * 0.3,
+            c * 0.8,
+            0.7,
+            i % 2 === 0 ? 0x5a4a7a : 0x8a7aa8,
+          );
+        }
+        for (let i = 0; i < 5; i++) {
+          const a = (i / 5) * Math.PI * 2 + 0.4;
+          this.spark(
+            x,
+            y - c * 0.2,
+            Math.cos(a) * c * 1.2,
+            Math.sin(a) * c * 0.6 - c * 1.4,
+            420,
+            c * 0.3,
+            PALETTE.bone,
+          );
+        }
+        this.ring(x, y, c * 0.2, c * 0.9, 360, PALETTE.necro, true, 0.8);
+        break;
+      case 'light': {
+        const col = this.alloc(this.tex.beam, 0xfff2b0, true);
+        if (col !== null) {
+          col.rot = -Math.PI / 2;
+          col.x = x;
+          col.y = y - c * 1.1;
+          col.maxLife = 520;
+          col.w0 = col.w1 = c * 2.4;
+          col.h0 = c * 1.0;
+          col.h1 = c * 0.3;
+          col.a0 = 0.95;
+        }
+        this.ring(x, y, c * 0.2, c * 1.0, 460, 0xffe27a, true, 0.9);
+        for (let i = 0; i < 6; i++) {
+          this.spark(
+            x + (i - 2.5) * c * 0.14,
+            y - c * 0.2,
+            (i - 2.5) * c * 0.12,
+            -c * (1.2 + (i % 3) * 0.5),
+            560 + i * 40,
+            c * 0.34,
+            0xfff2b0,
+          );
+        }
+        break;
+      }
+      case 'ghost':
+        this.puff(x, y - c * 0.5, 0, 0, 520, c * 0.5, c * 1.7, 0.7, PALETTE.ghost, true);
+        this.ring(x, y - c * 0.3, c * 0.3, c * 1.1, 520, 0x9fe8ff, true, 0.8);
+        for (let i = 0; i < 6; i++) {
+          this.puff(
+            x + (i - 2.5) * c * 0.2,
+            y - c * 0.2,
+            0,
+            -c * (0.6 + 0.2 * (i % 3)),
+            700,
+            c * 0.25,
+            c * 0.5,
+            0.7,
+            i % 2 === 0 ? 0xbfe8ff : PALETTE.necro,
+            true,
+          );
+        }
+        break;
+      case 'zombie':
+        for (let i = 0; i < 7; i++) {
+          const a = (i / 7) * Math.PI * 2;
+          this.puff(
+            x + Math.cos(a) * c * 0.3,
+            y + c * 0.05,
+            Math.cos(a) * c * 0.6,
+            -c * 0.5,
+            600,
+            c * 0.25,
+            c * 0.8,
+            0.7,
+            i % 2 === 0 ? PALETTE.zombie : 0x6b5a3a,
+          );
+        }
+        break;
+      case 'dust':
+        for (let i = 0; i < 4; i++) {
+          const a = (i / 4) * Math.PI * 2 + 0.5;
+          this.puff(
+            x,
+            y - c * 0.1,
+            Math.cos(a) * c * 0.8,
+            Math.sin(a) * c * 0.3 - c * 0.2,
+            380,
+            c * 0.22,
+            c * 0.6,
+            0.6,
+            0xdccfa6,
+          );
+        }
+        break;
+    }
+  }
+
+  /** Adds screen shake (pixels), never above `cap`. */
+  shake(amount: number, cap: number): void {
+    if (amount <= 0) return;
+    this.shakeAmp = Math.min(this.shakeAmp + amount, Math.max(cap, this.shakeAmp));
   }
 
   /** A spark flying off the fuse of a burning TNT; livelier and brighter the closer the blast. */
@@ -543,6 +997,7 @@ export class Effects implements NumberSink {
   update(battle: BattleState, views: UnitViews, alpha: number, dt: number, now: number): void {
     this.updateParticles(dt);
     this.updateProjectiles(battle, views, alpha, dt);
+    this.updateMeteors(dt);
     this.updateZones(battle, alpha, dt);
     this.updateNumbers(dt);
     this.shakeAmp *= Math.exp(-dt / SHAKE_DECAY_MS);
@@ -598,6 +1053,12 @@ export class Effects implements NumberSink {
       if (progress >= 1) {
         p.active = false;
         p.sprite.visible = false;
+        p.shade.visible = false;
+        p.mark.visible = false;
+        continue;
+      }
+      if (p.lob) {
+        this.updateLob(p, progress, dt);
         continue;
       }
       const target = views.get(p.targetId);
@@ -620,6 +1081,77 @@ export class Effects implements NumberSink {
     }
   }
 
+  private updateLob(p: ProjectileView, progress: number, dt: number): void {
+    const c = this.cell;
+    const t = clamp(progress, 0, 1);
+    const pt = lobPoint(t, p.x0, p.y0, p.x1, p.y1, p.arc, this.scratch);
+    p.sprite.position.set(pt.x, pt.y);
+    p.sprite.rotation = t * 9;
+    p.trailMs += dt;
+    if (p.trailMs >= 45) {
+      p.trailMs = 0;
+      this.puff(pt.x, pt.y, 0, 0, 380, c * 0.2, c * 0.5, 0.55, 0xcff58a);
+    }
+    // Target mark: a dark disc that darkens, and a ring that closes in on the blast radius.
+    const r = p.markRadius;
+    p.shade.width = r * 1.9;
+    p.shade.height = r * 1.9 * 0.62;
+    p.shade.alpha = 0.15 + 0.3 * t;
+    const pulse = 0.5 + 0.5 * Math.sin(t * 40);
+    const size = r * 2 * (1.5 - 0.5 * t);
+    p.mark.width = size;
+    p.mark.height = size;
+    p.mark.alpha = 0.35 + 0.35 * t + 0.15 * pulse;
+  }
+
+  private updateMeteors(dt: number): void {
+    const c = this.cell;
+    for (const m of this.meteors) {
+      if (!m.active) continue;
+      m.life += dt;
+      const t = m.life / METEOR_FALL_MS;
+      if (t >= 1) {
+        m.active = false;
+        m.sprite.visible = false;
+        m.core.visible = false;
+        m.shadow.visible = false;
+        this.explosion(m.x, m.y, m.radius * 1.3);
+        this.ring(m.x, m.y, m.radius * 0.3, m.radius * 2.6, 520, 0xff5a1c, false, 1);
+        this.shake(c * impactShake('meteor'), c * 0.9);
+        continue;
+      }
+      const pt = meteorPoint(t, m.x, m.y, c * 8, this.scratch);
+      m.sprite.position.set(pt.x, pt.y);
+      m.sprite.width = m.sprite.height = c * 2.1;
+      m.sprite.alpha = 1;
+      m.core.position.set(pt.x, pt.y);
+      m.core.width = m.core.height = c * 0.8;
+      m.core.rotation = t * 10;
+      // Ground shadow grows as the meteor comes down.
+      m.shadow.position.set(m.x, m.y);
+      m.shadow.width = m.radius * 2 * (0.4 + 0.6 * t);
+      m.shadow.height = m.radius * 2 * (0.4 + 0.6 * t) * 0.62;
+      m.shadow.alpha = 0.15 + 0.3 * t;
+      m.trailMs += dt;
+      if (m.trailMs >= 22) {
+        m.trailMs = 0;
+        this.puff(
+          pt.x,
+          pt.y,
+          0,
+          0,
+          320,
+          c * 0.8,
+          c * 1.5,
+          0.7,
+          t < 0.5 ? 0xff8a1c : 0xffd23a,
+          true,
+        );
+        this.puff(pt.x - c * 0.1, pt.y - c * 0.3, 0, 0, 480, c * 0.6, c * 1.3, 0.5, 0x4a4e5c);
+      }
+    }
+  }
+
   private updateZones(battle: BattleState, alpha: number, dt: number): void {
     const now = battle.tick + alpha;
     for (const z of this.zones) {
@@ -632,31 +1164,53 @@ export class Effects implements NumberSink {
         z.rim.visible = false;
         continue;
       }
+      const look = zoneLook(z.kind);
       const fadeIn = clamp(z.age / 250, 0, 1);
       const fadeOut = clamp(remaining / 10, 0, 1);
       const f = fadeIn * fadeOut;
       const breath = 1 + 0.05 * Math.sin(z.age * 0.004 + z.phase);
       const d = z.radius * 2 * 1.15 * breath;
-      z.sprite.width = z.sprite.height = d;
-      z.sprite.alpha = (0.5 + 0.1 * Math.sin(z.age * 0.006 + z.phase)) * f;
-      z.rim.width = z.rim.height = z.radius * 2 * 1.02 * breath;
-      z.rim.alpha = 0.28 * f;
+      z.sprite.width = d;
+      z.sprite.height = d * look.squash;
+      z.sprite.alpha = (look.alpha + 0.1 * Math.sin(z.age * 0.006 + z.phase)) * f;
+      z.rim.width = z.radius * 2 * 1.02 * breath;
+      z.rim.height = z.rim.width * look.squash;
+      z.rim.alpha = (look.bubbles ? 0.55 : 0.28) * f;
       z.sporeMs += dt;
-      if (z.sporeMs >= 140) {
+      if (z.sporeMs >= (look.bubbles ? 170 : 140)) {
         z.sporeMs = 0;
         const a = (z.age * 0.37 + z.phase) % (Math.PI * 2);
         const rr = z.radius * (0.2 + 0.6 * ((z.age * 0.0013) % 1));
-        this.puff(
-          z.x + Math.cos(a) * rr,
-          z.y + Math.sin(a) * rr * 0.8,
-          0,
-          -this.cell * 0.5,
-          900,
-          this.cell * 0.12,
-          this.cell * 0.2,
-          0.7 * f,
-          0xe3ff8a,
-        );
+        const px = z.x + Math.cos(a) * rr;
+        const py = z.y + Math.sin(a) * rr * 0.8 * look.squash;
+        if (look.bubbles) {
+          // A bubble swells on the puddle and pops: it hardly moves, grows and fades.
+          this.puff(
+            px,
+            py,
+            0,
+            -this.cell * 0.12,
+            600,
+            this.cell * 0.1,
+            this.cell * 0.3,
+            0.9 * f,
+            look.speck,
+            false,
+            this.tex.bubble,
+          );
+        } else {
+          this.puff(
+            px,
+            py,
+            0,
+            -this.cell * 0.5,
+            900,
+            this.cell * 0.12,
+            this.cell * 0.2,
+            0.7 * f,
+            look.speck,
+          );
+        }
       }
     }
   }

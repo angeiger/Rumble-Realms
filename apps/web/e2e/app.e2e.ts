@@ -343,15 +343,18 @@ test('Deck-Tab: Deck und Level bleiben nach Neuladen, Match nutzt das Deck', asy
   const allowed = new Set(['assassin', 'tnt', 'skeleton', 'healer']);
   for (let pick = 0; pick < 2; pick++) {
     await waitForMyTurn(page);
-    const offers = await page
-      .locator('[data-testid^="offer-card-"]')
-      .evaluateAll((els) =>
-        els.map((el) => ({ card: el.getAttribute('data-card') ?? '', text: el.textContent ?? '' })),
-      );
+    const offers = await page.locator('[data-testid^="offer-card-"]').evaluateAll((els) =>
+      els.map((el) => ({
+        card: el.getAttribute('data-card') ?? '',
+        kind: el.getAttribute('data-kind') ?? '',
+        text: el.textContent ?? '',
+      })),
+    );
     expect(offers).toHaveLength(3);
     for (const o of offers) {
       expect(allowed.has(o.card)).toBe(true);
-      expect(o.text).toContain(o.card === 'tnt' ? 'Level 3' : 'Level 1');
+      // Upgrade cards show the upgrade instead of values and level.
+      if (o.kind !== 'upgrade') expect(o.text).toContain(o.card === 'tnt' ? 'Level 3' : 'Level 1');
     }
     await page.getByTestId('offer-card-0').click();
     await expect(page.getByTestId('pick-hint')).toBeVisible();

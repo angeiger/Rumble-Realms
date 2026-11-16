@@ -89,7 +89,7 @@ export function attackTicks(log: TickLog[], unit: number): number[] {
   const ticks: number[] = [];
   for (const entry of log) {
     for (const e of entry.events) {
-      if ((e.type === 'attack' || e.type === 'shot') && e.unit === unit) {
+      if ((e.type === 'attack' || e.type === 'shot' || e.type === 'lob') && e.unit === unit) {
         ticks.push(entry.tick);
         break;
       }

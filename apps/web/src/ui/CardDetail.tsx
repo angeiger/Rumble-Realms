@@ -1,10 +1,11 @@
-import { CARDS, MAX_LEVEL, type CardId } from '@rumble-realms/engine';
+import { CARDS, MAX_LEVEL, UPGRADES_PER_CARD, type CardId } from '@rumble-realms/engine';
 import type { ReactElement } from 'react';
 import { t, type MessageKey } from '../i18n/index.ts';
 import { cardName, rangeText } from './CardView.tsx';
 import { formatNumber, getCardStats } from './cardStats.ts';
 import { FigureImage } from './FigureImage.tsx';
 import { CloseIcon } from './icons.tsx';
+import { upgradeName, upgradeText } from './upgradeText.ts';
 
 export interface CardDetailProps {
   card: CardId;
@@ -15,10 +16,26 @@ export interface CardDetailProps {
    * level and passes the new one back in `level`. In the battle there is no control.
    */
   onLevelChange?: (level: number) => void;
+  /** Upgrade (0..2) to highlight, e.g. the one of the tapped upgrade card. */
+  highlightUpgrade?: number | undefined;
+  /**
+   * Deck tab only (test mode, D-073): the switched-on upgrades (bit mask) and the handler that
+   * toggles one. Without the handler the upgrades are only listed.
+   */
+  upgradeMask?: number;
+  onToggleUpgrade?: (index: number) => void;
 }
 
 /** Dialog with all values of a card. Closes on tap outside or on the X. */
-export function CardDetail({ card, level, onClose, onLevelChange }: CardDetailProps): ReactElement {
+export function CardDetail({
+  card,
+  level,
+  onClose,
+  onLevelChange,
+  highlightUpgrade,
+  upgradeMask = 0,
+  onToggleUpgrade,
+}: CardDetailProps): ReactElement {
   const def = CARDS[card];
   const s = getCardStats(card, level);
   const rows: [string, string][] = [
@@ -108,6 +125,44 @@ export function CardDetail({ card, level, onClose, onLevelChange }: CardDetailPr
           ))}
         </dl>
         <p className="detail__text">{t(`card.${card}.text` as MessageKey)}</p>
+        <section className="detail__upgrades" data-testid="detail-upgrades">
+          <h3 className="detail__upgrades-title">{t('detail.upgrades')}</h3>
+          <ul className="upgrade-list">
+            {Array.from({ length: UPGRADES_PER_CARD }, (_, i) => {
+              const on = (upgradeMask & (1 << i)) !== 0;
+              return (
+                <li
+                  key={i}
+                  className={`upgrade-row${highlightUpgrade === i ? ' upgrade-row--highlight' : ''}`}
+                  data-testid={`detail-upgrade-${i}`}
+                  data-highlight={highlightUpgrade === i}
+                  data-on={onToggleUpgrade !== undefined ? on : undefined}
+                >
+                  <span className="upgrade-row__body">
+                    <span className="upgrade-row__name">{upgradeName(card, i)}</span>
+                    <span className="upgrade-row__text">{upgradeText(card, i)}</span>
+                  </span>
+                  {onToggleUpgrade !== undefined && (
+                    <button
+                      type="button"
+                      className={`switch${on ? ' switch--on' : ''}`}
+                      role="switch"
+                      aria-checked={on}
+                      aria-label={t('detail.upgradeOn', { name: upgradeName(card, i) })}
+                      data-testid={`upgrade-switch-${i}`}
+                      onClick={() => onToggleUpgrade(i)}
+                    >
+                      <span className="switch__knob" />
+                    </button>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+          {onToggleUpgrade !== undefined && (
+            <p className="level-picker__hint">{t('detail.upgradesTestMode')}</p>
+          )}
+        </section>
       </div>
     </div>
   );

@@ -3,9 +3,8 @@
  * Figures and team rings are drawn once per (card, team) with the shared drawing code of
  * `figures.ts` and then used as sprites. Effect textures are generated once.
  */
-import type { CardId } from '@rumble-realms/engine';
 import { Graphics, Rectangle, Texture, type Renderer } from 'pixi.js';
-import { drawFigure, drawTeamRing, type Team } from './figures.ts';
+import { drawFigure, drawTeamRing, type FigureId, type Team } from './figures.ts';
 import { PALETTE } from './palette.ts';
 
 /** A texture plus where the unit's ground point lies in it (fractions of its size). */
@@ -50,7 +49,7 @@ export class FigureTextures {
     return true;
   }
 
-  figure(card: CardId, team: Team): AnchoredTexture {
+  figure(card: FigureId, team: Team): AnchoredTexture {
     const key = `${card}:${team}`;
     let entry = this.figures.get(key);
     if (entry === undefined) {
@@ -133,6 +132,24 @@ export interface EffectTextures {
   bullet: Texture;
   /** 4 x 4 white square. */
   pixel: Texture;
+  /** Acid shell of the beetle, design size 14 x 14, green. */
+  shell: Texture;
+  /** Small comic flame (orange with yellow core and outline), 48 x 64 px, anchor bottom-centre. */
+  flame: Texture;
+  /** Snowflake, 64 px, white (tinted when used). */
+  snow: Texture;
+  /** Translucent ice block with outline and highlights, 64 x 80 px. */
+  ice: Texture;
+  /** Soap bubble: white rim, faint fill, 32 px (tinted when used). */
+  bubble: Texture;
+  /** Big translucent shield bubble with a bright rim, 128 px (tinted when used). */
+  shield: Texture;
+  /** Red up arrow with outline (damage bonus), 32 x 40 px. */
+  arrowUp: Texture;
+  /** 90 degree wedge with its apex at the left-centre, 128 x 256 px, fading out (flame cone). */
+  cone: Texture;
+  /** Irregular flat puddle blob with a darker rim, 128 x 128 px, white (tinted when used). */
+  puddle: Texture;
 }
 
 export const ARROW_SIZE = { w: 44, h: 12 } as const;
@@ -179,6 +196,169 @@ export function createEffectTextures(renderer: Renderer): EffectTextures {
     c.fillRect(0, 0, 4, 4);
   });
 
+  const flame = canvasTexture(48, 64, (c) => {
+    const path = () => {
+      c.beginPath();
+      c.moveTo(24, 4);
+      c.bezierCurveTo(30, 22, 44, 30, 40, 46);
+      c.bezierCurveTo(38, 60, 10, 60, 8, 46);
+      c.bezierCurveTo(6, 36, 16, 32, 18, 20);
+      c.bezierCurveTo(20, 26, 22, 22, 24, 4);
+      c.closePath();
+    };
+    path();
+    c.fillStyle = '#ff9d1c';
+    c.fill();
+    c.lineWidth = 4;
+    c.lineJoin = 'round';
+    c.strokeStyle = '#14172e';
+    c.stroke();
+    c.save();
+    c.translate(24, 52);
+    c.scale(0.5, 0.5);
+    c.translate(-24, -52);
+    path();
+    c.fillStyle = '#ffee6a';
+    c.fill();
+    c.restore();
+  });
+  const snow = canvasTexture(64, 64, (c) => {
+    const arms = (color: string, width: number) => {
+      c.strokeStyle = color;
+      c.lineWidth = width;
+      c.lineCap = 'round';
+      for (let i = 0; i < 6; i++) {
+        c.save();
+        c.translate(32, 32);
+        c.rotate((i * Math.PI) / 3);
+        c.beginPath();
+        c.moveTo(0, 0);
+        c.lineTo(0, -26);
+        c.moveTo(0, -15);
+        c.lineTo(-7, -22);
+        c.moveTo(0, -15);
+        c.lineTo(7, -22);
+        c.stroke();
+        c.restore();
+      }
+    };
+    arms('#14172e', 9);
+    arms('#ffffff', 5);
+  });
+  const ice = canvasTexture(64, 80, (c) => {
+    const r = 12;
+    c.beginPath();
+    c.moveTo(6 + r, 4);
+    c.lineTo(58 - r, 4);
+    c.quadraticCurveTo(58, 4, 58, 4 + r);
+    c.lineTo(58, 76 - r);
+    c.quadraticCurveTo(58, 76, 58 - r, 76);
+    c.lineTo(6 + r, 76);
+    c.quadraticCurveTo(6, 76, 6, 76 - r);
+    c.lineTo(6, 4 + r);
+    c.quadraticCurveTo(6, 4, 6 + r, 4);
+    c.closePath();
+    c.fillStyle = 'rgba(143,227,255,0.5)';
+    c.fill();
+    c.lineWidth = 4;
+    c.lineJoin = 'round';
+    c.strokeStyle = '#14172e';
+    c.stroke();
+    c.strokeStyle = 'rgba(255,255,255,0.85)';
+    c.lineWidth = 4;
+    c.lineCap = 'round';
+    c.beginPath();
+    c.moveTo(16, 14);
+    c.lineTo(16, 40);
+    c.moveTo(24, 12);
+    c.lineTo(36, 12);
+    c.stroke();
+    c.lineWidth = 3;
+    c.beginPath();
+    c.moveTo(44, 60);
+    c.lineTo(52, 50);
+    c.stroke();
+  });
+  const bubble = canvasTexture(32, 32, (c) => {
+    c.beginPath();
+    c.arc(16, 16, 12, 0, Math.PI * 2);
+    c.fillStyle = 'rgba(255,255,255,0.3)';
+    c.fill();
+    c.lineWidth = 3;
+    c.strokeStyle = 'rgba(255,255,255,1)';
+    c.stroke();
+    c.beginPath();
+    c.arc(16, 16, 7, Math.PI * 1.1, Math.PI * 1.55);
+    c.lineWidth = 2.5;
+    c.lineCap = 'round';
+    c.stroke();
+  });
+  const shield = canvasTexture(128, 128, (c) => {
+    const g = c.createRadialGradient(64, 64, 22, 64, 64, 60);
+    g.addColorStop(0, 'rgba(255,255,255,0.04)');
+    g.addColorStop(0.8, 'rgba(255,255,255,0.32)');
+    g.addColorStop(1, 'rgba(255,255,255,0.5)');
+    c.beginPath();
+    c.arc(64, 64, 58, 0, Math.PI * 2);
+    c.fillStyle = g;
+    c.fill();
+    c.lineWidth = 5;
+    c.strokeStyle = 'rgba(255,255,255,1)';
+    c.stroke();
+    c.beginPath();
+    c.arc(64, 64, 44, Math.PI * 1.05, Math.PI * 1.45);
+    c.lineWidth = 6;
+    c.lineCap = 'round';
+    c.stroke();
+  });
+  const arrowUp = canvasTexture(32, 40, (c) => {
+    c.beginPath();
+    c.moveTo(16, 3);
+    c.lineTo(29, 19);
+    c.lineTo(21, 19);
+    c.lineTo(21, 37);
+    c.lineTo(11, 37);
+    c.lineTo(11, 19);
+    c.lineTo(3, 19);
+    c.closePath();
+    c.fillStyle = '#e23d3d';
+    c.fill();
+    c.lineWidth = 3;
+    c.lineJoin = 'round';
+    c.strokeStyle = '#14172e';
+    c.stroke();
+  });
+  const cone = canvasTexture(128, 256, (c) => {
+    const g = c.createRadialGradient(0, 128, 0, 0, 128, 128);
+    g.addColorStop(0, 'rgba(255,255,255,0.95)');
+    g.addColorStop(0.6, 'rgba(255,255,255,0.55)');
+    g.addColorStop(1, 'rgba(255,255,255,0)');
+    c.fillStyle = g;
+    c.beginPath();
+    c.moveTo(0, 128);
+    c.arc(0, 128, 128, -Math.PI / 4, Math.PI / 4);
+    c.closePath();
+    c.fill();
+  });
+  const puddle = canvasTexture(128, 128, (c) => {
+    c.beginPath();
+    for (let i = 0; i <= 48; i++) {
+      const a = (i / 48) * Math.PI * 2;
+      const r = 56 * (1 + 0.07 * Math.sin(a * 5 + 0.6) + 0.04 * Math.sin(a * 3));
+      const x = 64 + Math.cos(a) * r;
+      const y = 64 + Math.sin(a) * r;
+      if (i === 0) c.moveTo(x, y);
+      else c.lineTo(x, y);
+    }
+    c.closePath();
+    c.fillStyle = '#ffffff';
+    c.fill();
+    c.lineWidth = 6;
+    c.lineJoin = 'round';
+    c.strokeStyle = 'rgba(0,0,0,0.28)';
+    c.stroke();
+  });
+
   const a = new Graphics();
   // Shaft, head and fletching; tip at the right edge, centre line at y = 0.
   a.moveTo(-20, 0).lineTo(14, 0).stroke({ color: PALETTE.outline, width: 6, cap: 'round' });
@@ -208,7 +388,35 @@ export function createEffectTextures(renderer: Renderer): EffectTextures {
   });
   b.destroy();
 
-  return { dot, ring, beam, spark, arrow, bullet, pixel };
+  const sh = new Graphics();
+  sh.circle(0, 0, 6).fill(0x8fd12a).stroke({ color: PALETTE.outline, width: 2.5 });
+  sh.circle(-2, -2, 2).fill(0xe4ff7a);
+  const shell = renderer.generateTexture({
+    target: sh,
+    frame: new Rectangle(-BULLET_SIZE / 2, -BULLET_SIZE / 2, BULLET_SIZE, BULLET_SIZE),
+    resolution: 3,
+    antialias: true,
+  });
+  sh.destroy();
+
+  return {
+    dot,
+    ring,
+    beam,
+    spark,
+    arrow,
+    bullet,
+    pixel,
+    shell,
+    flame,
+    snow,
+    ice,
+    bubble,
+    shield,
+    arrowUp,
+    cone,
+    puddle,
+  };
 }
 
 export function destroyEffectTextures(t: EffectTextures): void {

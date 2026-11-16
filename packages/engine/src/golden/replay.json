@@ -1,39 +1,48 @@
 {
-  "engineVersion": 2,
+  "engineVersion": 3,
   "config": {
     "seed": 20261114,
     "players": [
       {
-        "deck": ["berserker", "healer", "tnt", "bat"],
+        "deck": ["necromancer", "beetle", "skeleton", "tnt"],
         "levels": {
-          "berserker": 3,
-          "healer": 2,
-          "tnt": 1,
-          "bat": 5
+          "necromancer": 3,
+          "beetle": 2,
+          "skeleton": 1,
+          "tnt": 4
+        },
+        "upgrades": {
+          "skeleton": 7,
+          "tnt": 7,
+          "necromancer": 7
         }
       },
       {
-        "deck": ["assassin", "shroomling", "musketeer", "knight"],
+        "deck": ["pyromancer", "frost_shaman", "whelp", "golem"],
         "levels": {
-          "assassin": 4,
-          "shroomling": 2,
-          "musketeer": 5,
-          "knight": 1
+          "pyromancer": 2,
+          "frost_shaman": 5,
+          "whelp": 1,
+          "golem": 3
+        },
+        "upgrades": {
+          "whelp": 7,
+          "golem": 7
         }
       }
     ]
   },
   "picks": [
-    2, 0, 2, 1, 1, 2, 0, 2, 0, 1, 0, 1, 1, 1, 0, 2, 1, 2, 2, 0, 0, 0, 2, 0, 2, 0, 1, 0, 2, 0, 2, 1,
-    0, 2
+    0, 0, 1, 2, 2, 1, 0, 0, 2, 0, 1, 1, 0, 1, 2, 1, 1, 0, 1, 2, 0, 1, 2, 2, 2, 1, 2, 0, 0, 2, 0, 2,
+    2, 1
   ],
   "roundHashes": [
-    "50d79e4df4d82399",
-    "9823b5bfa3823184",
-    "e0c4c648f59ef9ca",
-    "75e5b0eee5d20f47",
-    "09d2a5e983f03985"
+    "3958de43d9318593",
+    "879bc712ba8ed792",
+    "24dad575bfeb17ad",
+    "fa458528eaf400cd",
+    "ae2f445121a90787"
   ],
-  "finalHash": "6dd1f218664aaba4",
-  "winner": 1
+  "finalHash": "0865c9bff332a98e",
+  "winner": 0
 }

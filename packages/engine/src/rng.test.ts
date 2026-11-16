@@ -7,7 +7,6 @@ import {
   STREAM_BATTLE,
   STREAM_MATCH,
   STREAM_OFFERS,
-  STREAM_PLACEMENT,
 } from './rng.ts';
 import type { RngState } from './types.ts';
 
@@ -70,8 +69,8 @@ describe('xoshiro128**', () => {
 describe('seedRng', () => {
   it('is deterministic', () => {
     expect(seedRng(42, 3)).toEqual(seedRng(42, 3));
-    const a = seedRng(987654321, STREAM_PLACEMENT);
-    const b = seedRng(987654321, STREAM_PLACEMENT);
+    const a = seedRng(987654321, STREAM_OFFERS);
+    const b = seedRng(987654321, STREAM_OFFERS);
     for (let i = 0; i < 100; i++) expect(nextU32(a)).toBe(nextU32(b));
   });
 
@@ -83,15 +82,13 @@ describe('seedRng', () => {
     }
   });
 
-  it('exports four distinct stream constants', () => {
-    expect([STREAM_MATCH, STREAM_OFFERS, STREAM_PLACEMENT, STREAM_BATTLE]).toEqual([1, 2, 3, 4]);
+  it('exports distinct stream constants (3 is retired, D-070)', () => {
+    expect([STREAM_MATCH, STREAM_OFFERS, STREAM_BATTLE]).toEqual([1, 2, 4]);
   });
 
   it('gives unrelated sequences for the streams of one seed', () => {
     for (const seed of [0, 1, 42, 2 ** 40 + 7]) {
-      const streams = [STREAM_MATCH, STREAM_OFFERS, STREAM_PLACEMENT, STREAM_BATTLE].map((s) =>
-        seedRng(seed, s),
-      );
+      const streams = [STREAM_MATCH, STREAM_OFFERS, 3, STREAM_BATTLE].map((s) => seedRng(seed, s));
       const outputs = streams.map((r) => Array.from({ length: 200 }, () => nextU32(r)));
       for (let a = 0; a < outputs.length; a++) {
         for (let b = a + 1; b < outputs.length; b++) {
@@ -227,7 +224,7 @@ describe('shuffle', () => {
   });
 
   it('reaches every permutation of 3 elements about equally often', () => {
-    const rng = seedRng(77, STREAM_PLACEMENT);
+    const rng = seedRng(77, STREAM_OFFERS);
     const counts = new Map<string, number>();
     const draws = 24000;
     for (let i = 0; i < draws; i++) {

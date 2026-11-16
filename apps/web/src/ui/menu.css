@@ -283,3 +283,28 @@
   white-space: nowrap;
   text-overflow: ellipsis;
 }
+
+/* Unlocked upgrades of a card as dots in the deck tiles (SPEC 10). */
+.tile__upgrades {
+  position: absolute;
+  right: 2px;
+  bottom: 2px;
+  display: flex;
+  gap: 2px;
+  padding: 2px 3px;
+  border: 2px solid var(--outline);
+  border-radius: 8px;
+  background: var(--cream);
+}
+
+.tile__upgrades[data-count='0'] {
+  display: none;
+}
+
+.tile__upgrade {
+  width: 7px;
+  height: 7px;
+  border: 1px solid var(--outline);
+  border-radius: 50%;
+  background: var(--gold);
+}
