@@ -1,43 +1,58 @@
-/** App state outside React: current screen and the running game session. */
-import { BOT_PROFILES } from '@rumble-realms/engine';
+/** App state outside React: current screen, the running game session and its report. */
+import type { ApiErrorCode, ApiResponseOf } from '@rumble-realms/shared';
 import { create } from 'zustand';
+import { useAccountStore } from './accountStore.ts';
 import { useBotStore } from './botStore.ts';
-import { upgradesOf, useDeckStore } from './deckStore.ts';
+import { clearPendingMatch, loadPendingMatch, savePendingMatch } from './pendingMatch.ts';
 import { createLocalSession } from './session.ts';
 import type { BattleSpeed, GameSession, SessionSnapshot } from './types.ts';
 
-export type Screen = 'title' | 'battle';
+export type Screen = 'menu' | 'battle';
 /** Tab of the menu screens (outside the battle). */
-export type Tab = 'battle' | 'deck';
+export type Tab = 'deck' | 'battle' | 'profile';
+
+export type StartError = ApiErrorCode | 'unavailable';
+
+export interface MatchReport {
+  state: 'idle' | 'sending' | 'done' | 'failed';
+  /** state 'done': the server's booking. */
+  result: ApiResponseOf<'report_match'> | null;
+  /** state 'failed'. */
+  error: StartError | null;
+}
 
 export interface GameStore {
   screen: Screen;
   tab: Tab;
   session: GameSession | null;
   snapshot: SessionSnapshot | null;
-  startMatch: () => void;
+  /** `create_match` is running. */
+  starting: boolean;
+  /** The last failure to start a match; cleared by the next start. */
+  startError: StartError | null;
+  report: MatchReport;
+  /**
+   * Asks the server for a ticket and opens the battle. `pending` says what to do with an
+   * unfinished match: 'resume' (default) or 'forfeit' (counts as a loss).
+   */
+  startMatch: (pending?: 'resume' | 'forfeit') => Promise<void>;
+  /** Reports the finished match again after it failed (no network). */
+  retryReport: () => Promise<void>;
   play: (slot: number) => void;
   setTab: (tab: Tab) => void;
   setSpeed: (speed: BattleSpeed) => void;
-  backToTitle: () => void;
+  /** Leaves the battle. An unfinished match stays open (on the server and in the browser). */
+  backToMenu: () => void;
 }
 
-const TWO_POW_21 = 2097152;
-const TWO_POW_32 = 4294967296;
+/** The server will never accept this report: the match is over and not booked. */
+const FINAL_REJECTIONS: readonly (ApiErrorCode | 'unavailable')[] = [
+  'match_rejected',
+  'engine_mismatch',
+  'match_not_found',
+];
 
-/** Random seed of 53 bits (a safe integer) from the browser's secure generator. */
-function randomSeed(): number {
-  const words = new Uint32Array(2);
-  crypto.getRandomValues(words);
-  return ((words[0] as number) % TWO_POW_21) * TWO_POW_32 + (words[1] as number);
-}
-
-/** Random index in [0, n) without modulo bias worth caring about for 3 profiles. */
-function randomIndex(n: number): number {
-  const word = new Uint32Array(1);
-  crypto.getRandomValues(word);
-  return Math.floor(((word[0] as number) / TWO_POW_32) * n);
-}
+const IDLE_REPORT: MatchReport = { state: 'idle', result: null, error: null };
 
 let unsubscribe: (() => void) | null = null;
 
@@ -46,40 +61,130 @@ function detach(): void {
   unsubscribe = null;
 }
 
-export const useGameStore = create<GameStore>()((set, get) => ({
-  screen: 'title',
-  tab: 'battle',
-  session: null,
-  snapshot: null,
+/** Maps a failed API response to what the UI distinguishes ("no network" vs. a code). */
+function errorOf(error: { code: ApiErrorCode; detail?: string }): StartError {
+  return error.detail === 'unavailable' ? 'unavailable' : error.code;
+}
 
-  startMatch() {
-    detach();
-    const level = useBotStore.getState().level;
-    const bots = BOT_PROFILES.filter((p) => p.level === level);
-    const bot = bots[randomIndex(bots.length)] ?? (bots[0] as (typeof bots)[number]);
-    // The human's name stays empty: the UI shows its own i18n text for "you".
-    const { deck, levels, upgrades } = useDeckStore.getState();
-    const session = createLocalSession({
-      seed: randomSeed(),
-      bot,
-      playerName: '',
-      playerDeck: deck,
-      playerLevels: levels,
-      playerUpgrades: Object.fromEntries(deck.map((card) => [card, upgradesOf(upgrades, card)])),
-    });
+export const useGameStore = create<GameStore>()((set, get) => {
+  /** Matches whose report is running right now; prevents double reports. */
+  const reporting = new Set<string>();
+  /** The match of the current session. */
+  let currentMatchId: string | null = null;
+
+  async function sendReport(session: GameSession, matchId: string): Promise<void> {
+    if (reporting.has(matchId)) return;
+    reporting.add(matchId);
+    set({ report: { state: 'sending', result: null, error: null } });
+    try {
+      const res = await useAccountStore.getState().reportMatch(matchId, [...session.picks]);
+      if (res.ok) {
+        clearPendingMatch();
+        if (get().session === session) {
+          set({ report: { state: 'done', result: res.data, error: null } });
+        }
+        return;
+      }
+      const error = errorOf(res.error);
+      if (FINAL_REJECTIONS.includes(error)) clearPendingMatch();
+      if (get().session === session) set({ report: { state: 'failed', result: null, error } });
+    } finally {
+      reporting.delete(matchId);
+    }
+  }
+
+  /** Watches the session: copies the snapshot and reports the match when it is finished. */
+  function follow(session: GameSession, matchId: string): void {
+    let reported = false;
     unsubscribe = session.subscribe(() => {
-      if (get().session === session) set({ snapshot: session.getSnapshot() });
+      if (get().session !== session) return;
+      const snapshot = session.getSnapshot();
+      set({ snapshot });
+      if (snapshot.phase === 'finished' && !reported) {
+        reported = true;
+        void sendReport(session, matchId);
+      }
     });
-    set({ screen: 'battle', session, snapshot: session.getSnapshot() });
-  },
-  play: (slot) => get().session?.play(slot),
-  setTab: (tab) => set({ tab }),
-  setSpeed: (speed) => get().session?.setSpeed(speed),
-  backToTitle() {
-    detach();
-    set({ screen: 'title', tab: 'battle', session: null, snapshot: null });
-  },
-}));
+  }
+
+  return {
+    screen: 'menu',
+    tab: 'battle',
+    session: null,
+    snapshot: null,
+    starting: false,
+    startError: null,
+    report: IDLE_REPORT,
+
+    async startMatch(pending) {
+      if (get().starting || get().report.state === 'sending') return;
+      set({ starting: true, startError: null });
+      let res: Awaited<ReturnType<ReturnType<typeof useAccountStore.getState>['createMatch']>>;
+      try {
+        res = await useAccountStore.getState().createMatch(useBotStore.getState().level, pending);
+      } catch {
+        set({ starting: false, startError: 'unavailable' });
+        return;
+      }
+      if (!res.ok) {
+        set({ starting: false, startError: errorOf(res.error) });
+        return;
+      }
+      const { ticket, resumed } = res.data;
+      const picks = resumed ? (loadPendingMatch(ticket.matchId) ?? []) : [];
+      savePendingMatch(ticket, picks);
+      let session: GameSession;
+      try {
+        session = createLocalSession({
+          ticket,
+          playerName: useAccountStore.getState().player?.username ?? '',
+          picks,
+          onPick: (all) => savePendingMatch(ticket, all),
+        });
+      } catch {
+        set({ starting: false, startError: 'internal' });
+        return;
+      }
+      detach();
+      currentMatchId = ticket.matchId;
+      follow(session, ticket.matchId);
+      const snapshot = session.getSnapshot();
+      set({
+        screen: 'battle',
+        session,
+        snapshot,
+        starting: false,
+        report: IDLE_REPORT,
+      });
+      if (snapshot.phase === 'finished') {
+        // Resumed into a match that was already over (nothing left to play).
+        void sendReport(session, ticket.matchId);
+      }
+    },
+
+    async retryReport() {
+      const { session, report } = get();
+      if (session === null || currentMatchId === null || report.state !== 'failed') return;
+      if (session.getSnapshot().phase !== 'finished') return;
+      await sendReport(session, currentMatchId);
+    },
+
+    play: (slot) => get().session?.play(slot),
+    setTab: (tab) => set({ tab }),
+    setSpeed: (speed) => get().session?.setSpeed(speed),
+    backToMenu() {
+      detach();
+      set({
+        screen: 'menu',
+        tab: 'battle',
+        session: null,
+        snapshot: null,
+        startError: null,
+        report: IDLE_REPORT,
+      });
+    },
+  };
+});
 
 declare global {
   interface Window {

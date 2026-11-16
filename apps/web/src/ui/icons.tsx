@@ -165,3 +165,77 @@ export function CardsIcon({ size = 26 }: IconProps): ReactElement {
     </svg>
   );
 }
+
+/** Profile tab: head and shoulders. */
+export function ProfileIcon({ size = 26 }: IconProps): ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="8" r="4.6" fill="currentColor" stroke={STROKE} strokeWidth="1.8" />
+      <path
+        d="M3.5 21c0-4.6 3.6-7.4 8.5-7.4s8.5 2.8 8.5 7.4Z"
+        fill="currentColor"
+        stroke={STROKE}
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+/** Elo: a small trophy. */
+export function TrophyIcon({ size = 18 }: IconProps): ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <path
+        d="M7 3h10v6a5 5 0 0 1-10 0V3Z"
+        fill="#ffc83a"
+        stroke={STROKE}
+        strokeWidth="2.2"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M7 5H3.5c0 3 1.4 4.6 3.6 5M17 5h3.5c0 3-1.4 4.6-3.6 5"
+        fill="none"
+        stroke={STROKE}
+        strokeWidth="2.2"
+        strokeLinecap="round"
+      />
+      <path d="M12 14v4M8 21h8" stroke={STROKE} strokeWidth="2.6" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Gold: a coin. */
+export function CoinIcon({ size = 18 }: IconProps): ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="9" fill="#ffc83a" stroke={STROKE} strokeWidth="2.2" />
+      <circle cx="12" cy="12" r="5" fill="none" stroke="#c27a00" strokeWidth="2" />
+    </svg>
+  );
+}
+
+/** Jokers: a purple star card. */
+export function JokerIcon({ size = 18 }: IconProps): ReactElement {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <rect
+        x="4.5"
+        y="2.5"
+        width="15"
+        height="19"
+        rx="3"
+        fill="#b27bff"
+        stroke={STROKE}
+        strokeWidth="2.2"
+      />
+      <path
+        d="m12 6.5 1.6 3.4 3.7.4-2.8 2.5.8 3.7-3.3-1.9-3.3 1.9.8-3.7-2.8-2.5 3.7-.4L12 6.5Z"
+        fill="#fff6d6"
+        stroke={STROKE}
+        strokeWidth="1.2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}

@@ -423,6 +423,7 @@ function createFxSession(loop: boolean, startMs: number): GameSession {
     getSnapshot: () => snapshot,
     subscribe: () => () => undefined,
     battle: scenario.battle,
+    picks: [],
     play: () => undefined,
     setSpeed: () => undefined,
     advance: (dtMs: number) => {

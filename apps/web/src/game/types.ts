@@ -89,6 +89,9 @@ export interface GameSession {
   /** The field of the current round. A new object every round. Read-only for callers. */
   readonly battle: BattleState;
 
+  /** All picks of the match so far (both players, in order), for reporting it to the server. */
+  readonly picks: readonly number[];
+
   /**
    * Plays slot `slot` of the offer at once (D-044). Has no effect unless it is the local
    * player's turn and the slot exists.

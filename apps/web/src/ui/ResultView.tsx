@@ -1,5 +1,6 @@
 import type { ReactElement } from 'react';
 import { t } from '../i18n/index.ts';
+import type { MatchReport } from '../game/store.ts';
 import type { SessionSnapshot } from '../game/types.ts';
 import { Hearts } from './Hearts.tsx';
 
@@ -12,12 +13,119 @@ export function outcomeOf(snapshot: SessionSnapshot): Outcome {
 
 export interface ResultViewProps {
   snapshot: SessionSnapshot;
+  /** State of the report to the server; defaults to "not started". */
+  report?: MatchReport;
   onPlayAgain: () => void;
   onToTitle: () => void;
+  onRetry?: () => void;
+  /** Opens the reward pack of this match (SPEC 10); the button shows only after a win. */
+  onOpenPack?: (packId: string) => void;
+}
+
+const IDLE: MatchReport = { state: 'idle', result: null, error: null };
+
+/** Elo change with a sign: +12, −8 or ±0. */
+export function formatDelta(delta: number): string {
+  if (delta > 0) return `+${delta}`;
+  if (delta < 0) return `\u2212${-delta}`;
+  return '\u00b10';
+}
+
+/** The explanation of a failed report; `retry` says whether trying again can help. */
+function failure(error: MatchReport['error']): { text: string; retry: boolean } {
+  switch (error) {
+    case 'unavailable':
+      return { text: t('result.failedUnavailable'), retry: true };
+    case 'match_rejected':
+    case 'match_not_found':
+      return { text: t('result.failedRejected'), retry: false };
+    case 'engine_mismatch':
+      return { text: t('result.failedOutdated'), retry: false };
+    default:
+      return { text: t('result.failedOther'), retry: true };
+  }
+}
+
+/** What the server booked, or why it could not (between the score and the buttons). */
+function ReportInfo({
+  report,
+  onRetry,
+  onOpenPack,
+}: {
+  report: MatchReport;
+  onRetry?: (() => void) | undefined;
+  onOpenPack?: ((packId: string) => void) | undefined;
+}): ReactElement | null {
+  if (report.state === 'idle') return null;
+  const state = report.state;
+  if (state === 'sending') {
+    return (
+      <div className="result__report" data-testid="result-report-state" data-state={state}>
+        {t('result.saving')}
+      </div>
+    );
+  }
+  if (state === 'failed') {
+    const f = failure(report.error);
+    return (
+      <div className="result__report" data-testid="result-report-state" data-state={state}>
+        <p className="result__note">{f.text}</p>
+        {f.retry && onRetry !== undefined && (
+          <button type="button" className="btn" data-testid="result-retry" onClick={onRetry}>
+            {t('result.retry')}
+          </button>
+        )}
+      </div>
+    );
+  }
+  const r = report.result;
+  return (
+    <div className="result__report" data-testid="result-report-state" data-state={state}>
+      {r !== null && (
+        <>
+          <p className="result__note result__note--elo" data-testid="result-elo">
+            {t('result.elo', { delta: formatDelta(r.eloDelta), elo: r.elo })}
+          </p>
+          {r.gold > 0 && (
+            <p className="result__note" data-testid="result-gold">
+              {t('result.gold', { gold: r.gold })}
+            </p>
+          )}
+          {r.packId !== null && (
+            <p className="result__note result__note--pack" data-testid="result-pack">
+              {t('result.pack')}
+            </p>
+          )}
+          {r.packId !== null && onOpenPack !== undefined && (
+            <button
+              type="button"
+              className="btn btn--small result__open-pack"
+              data-testid="result-open-pack"
+              onClick={() => onOpenPack(r.packId as string)}
+            >
+              {t('result.openPack')}
+            </button>
+          )}
+          {r.arenaUnlocked && (
+            <p className="result__note" data-testid="result-arena">
+              {t('result.arena')}
+            </p>
+          )}
+        </>
+      )}
+    </div>
+  );
 }
 
 /** End of the match: outcome, final lives, number of rounds, buttons. */
-export function ResultView({ snapshot, onPlayAgain, onToTitle }: ResultViewProps): ReactElement {
+export function ResultView({
+  snapshot,
+  report = IDLE,
+  onPlayAgain,
+  onToTitle,
+  onRetry,
+  onOpenPack,
+}: ResultViewProps): ReactElement {
   const outcome = outcomeOf(snapshot);
   const me = snapshot.me;
   const opp = me === 0 ? 1 : 0;
@@ -51,11 +159,13 @@ export function ResultView({ snapshot, onPlayAgain, onToTitle }: ResultViewProps
           </div>
           <div className="result__rounds">{t('result.rounds', { rounds })}</div>
         </div>
+        <ReportInfo report={report} onRetry={onRetry} onOpenPack={onOpenPack} />
         <div className="result__buttons">
           <button
             type="button"
             className="btn btn--big"
             data-testid="play-again"
+            disabled={report.state === 'sending'}
             onClick={onPlayAgain}
           >
             {t('result.playAgain')}

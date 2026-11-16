@@ -1,11 +1,14 @@
 import {
   BOT_PROFILES,
+  ENGINE_VERSION,
   hashState,
+  type CardId,
   upgradesForLevel,
   BOT_LEVELS,
   type BotProfile,
   type MatchState,
 } from '@rumble-realms/engine';
+import { nextBotPick, verifyBotMatch, type MatchTicket } from '@rumble-realms/shared';
 import { describe, expect, it } from 'vitest';
 import {
   BOT_THINK_MS,
@@ -16,17 +19,56 @@ import {
   TICK_MS,
 } from './config.ts';
 import {
-  createLocalSession,
-  createLocalSessionHandle,
+  createLocalSession as createFromOptions,
+  createLocalSessionHandle as handleFromOptions,
   type LocalSessionOptions,
 } from './session.ts';
 import type { FrameInfo, GameSession, SessionPhase, SessionSnapshot } from './types.ts';
 
 const BOT = BOT_PROFILES[0] as BotProfile;
 
-function opts(seed = 1, extra: Partial<LocalSessionOptions> = {}): LocalSessionOptions {
-  return { seed, bot: BOT, playerName: '', ...extra };
+/** What the tests vary; `ticketOf` turns it into the server's ticket. */
+interface TestOptions {
+  seed: number;
+  bot: BotProfile;
+  playerDeck?: CardId[];
+  playerLevels?: Partial<Record<CardId, number>>;
+  playerUpgrades?: Partial<Record<CardId, number>>;
+  picks?: readonly number[];
+  onPick?: (picks: readonly number[]) => void;
 }
+
+function ticketOf(o: TestOptions): MatchTicket {
+  const deck = [...(o.playerDeck ?? START_DECK)];
+  const levels: Partial<Record<CardId, number>> = {};
+  const upgrades: Partial<Record<CardId, number>> = {};
+  for (const card of deck) {
+    levels[card] = o.playerLevels?.[card] ?? 1;
+    upgrades[card] = o.playerUpgrades?.[card] ?? 0;
+  }
+  return {
+    matchId: `m-${o.seed}`,
+    seed: o.seed,
+    engineVersion: ENGINE_VERSION,
+    botLevel: o.bot.level,
+    botProfile: o.bot.id,
+    player: { deck, levels, upgrades },
+  };
+}
+
+function opts(seed = 1, extra: Partial<TestOptions> = {}): TestOptions {
+  return { seed, bot: BOT, ...extra };
+}
+
+function toSessionOptions(o: TestOptions): LocalSessionOptions {
+  const out: LocalSessionOptions = { ticket: ticketOf(o), playerName: '' };
+  if (o.picks !== undefined) out.picks = o.picks;
+  if (o.onPick !== undefined) out.onPick = o.onPick;
+  return out;
+}
+
+const createLocalSession = (o: TestOptions): GameSession => createFromOptions(toSessionOptions(o));
+const createLocalSessionHandle = (o: TestOptions) => handleFromOptions(toSessionOptions(o));
 
 /** Advances in 100 ms steps (at most) until `done`, playing slot 0 whenever the human is due. */
 function stepUntil(
@@ -282,11 +324,11 @@ describe('intro', () => {
 });
 
 describe('player levels', () => {
-  it('uses playerLevels for the deck cards and falls back to 1', () => {
+  it('takes deck and levels from the ticket', () => {
     const s = createLocalSession(
       opts(1, {
         playerDeck: ['assassin', 'tnt', 'knight', 'archer'],
-        playerLevels: { tnt: 3, knight: 5, archer: 9, assassin: 1.5, bat: 4 },
+        playerLevels: { tnt: 3, knight: 5 },
       }),
     );
     const me = s.getSnapshot().players[0];
@@ -448,7 +490,7 @@ describe('snapshot and listeners', () => {
 
 describe('determinism', () => {
   function run(seed: number, dts: number[]): string[] {
-    const h = createLocalSessionHandle(opts(seed, { botSeed: seed + 1 }));
+    const h = createLocalSessionHandle(opts(seed));
     const hashes: string[] = [hashState(h.match as MatchState)];
     for (let i = 0; i < 20_000 && h.session.getSnapshot().phase !== 'finished'; i++) {
       const snap = h.session.getSnapshot();
@@ -488,22 +530,13 @@ describe('upgrades', () => {
     expect(match.config.players[0].upgrades).toEqual(session.getSnapshot().players[0].upgrades);
   });
 
-  it('passes the human upgrades on to the engine and ignores invalid masks', () => {
+  it('passes the human upgrades of the ticket on to the engine', () => {
     const { session, match } = createLocalSessionHandle(
-      opts(1, { playerUpgrades: { archer: 7, knight: 5, skeleton: 8, healer: -1, tnt: 3 } }),
+      opts(1, { playerUpgrades: { archer: 7, knight: 5 } }),
     );
-    expect(match.config.players[0].upgrades).toEqual({
-      archer: 7,
-      knight: 5,
-      skeleton: 0,
-      healer: 0,
-    });
-    expect(session.getSnapshot().players[0].upgrades).toEqual({
-      archer: 7,
-      knight: 5,
-      skeleton: 0,
-      healer: 0,
-    });
+    const want = { archer: 7, knight: 5, skeleton: 0, healer: 0 };
+    expect(match.config.players[0].upgrades).toEqual(want);
+    expect(session.getSnapshot().players[0].upgrades).toEqual(want);
   });
 
   it('gives the bot the upgrades of its card level (D-073)', () => {
@@ -581,6 +614,179 @@ describe('upgrades', () => {
         return hashState(match);
       };
       expect(run()).toBe(run());
+    }
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Ticket, bot picks, reporting and resuming (M4, D-084)
+// ---------------------------------------------------------------------------
+
+const PROFILE = (level: 'easy' | 'medium' | 'hard'): BotProfile =>
+  BOT_PROFILES.find((p) => p.level === level) as BotProfile;
+
+/** Plays slot 0 for the human and lets the clock run until `done`. */
+function playUntil(s: GameSession, done: (snap: SessionSnapshot) => boolean): void {
+  stepUntil(s, done, 250);
+}
+
+describe('ticket', () => {
+  it('throws a clear error for an unknown bot profile or a wrong level', () => {
+    const base = ticketOf(opts());
+    expect(() =>
+      createFromOptions({ ticket: { ...base, botProfile: 'nobody' }, playerName: '' }),
+    ).toThrow(/unknown bot profile/);
+    const otherLevel = base.botLevel === 'easy' ? 'hard' : 'easy';
+    expect(() =>
+      createFromOptions({ ticket: { ...base, botLevel: otherLevel }, playerName: '' }),
+    ).toThrow(/unknown bot profile/);
+  });
+
+  it('takes the bot name from its profile and the human name from the options', () => {
+    const s = createFromOptions({ ticket: ticketOf(opts()), playerName: 'Anna_1' });
+    expect(s.getSnapshot().players[0].name).toBe('Anna_1');
+    expect(s.getSnapshot().players[1].name).toBe(BOT.name);
+  });
+});
+
+describe('bot picks and reporting', () => {
+  it('the bot plays exactly nextBotPick of the server code', () => {
+    for (const level of ['easy', 'medium', 'hard'] as const) {
+      const o = opts(21, { bot: PROFILE(level) });
+      const ticket = ticketOf(o);
+      const h = createLocalSessionHandle(o);
+      let checked = 0;
+      for (let i = 0; i < 100_000 && h.session.getSnapshot().phase !== 'finished'; i++) {
+        const snap = h.session.getSnapshot();
+        if (snap.phase === 'draft' && snap.turn === 1) {
+          const expected = nextBotPick(h.match, ticket);
+          h.session.advance(MAX_FRAME_MS * 4);
+          h.session.advance(MAX_FRAME_MS * 4);
+          h.session.advance(MAX_FRAME_MS * 4);
+          h.session.advance(MAX_FRAME_MS * 4);
+          expect(h.match.picks[h.match.picks.length - 1], level).toBe(expected);
+          checked++;
+        } else if (snap.phase === 'draft') {
+          h.session.play(0);
+        } else h.session.advance(250);
+      }
+      expect(checked).toBeGreaterThan(0);
+    }
+  }, 60_000);
+
+  it('a match played in the session passes verifyBotMatch for easy and medium', () => {
+    for (const level of ['easy', 'medium'] as const) {
+      const o = opts(31, { bot: PROFILE(level) });
+      const s = createLocalSession(o);
+      playUntil(s, (n) => n.phase === 'finished');
+      const res = verifyBotMatch(ticketOf(o), s.picks);
+      expect(res.ok, level).toBe(true);
+      if (res.ok) {
+        expect(res.winner).toBe(s.getSnapshot().winner);
+        expect(res.botPicksChecked).toBe(res.botPicks);
+      }
+    }
+  });
+
+  it('calls onPick after every pick of both players with all picks so far', () => {
+    const calls: number[][] = [];
+    const s = createLocalSession(opts(5, { onPick: (p) => calls.push([...p]) }));
+    expect(s.picks).toEqual([]);
+    playUntil(s, (n) => n.phase === 'finished');
+    expect(calls.length).toBe(s.picks.length);
+    calls.forEach((c, i) => expect(c).toEqual(s.picks.slice(0, i + 1)));
+  });
+
+  it('picks is a copy', () => {
+    const s = createLocalSession(opts(5));
+    toHumanTurn(s);
+    s.play(0);
+    const before = s.picks;
+    expect(before.length).toBeGreaterThan(0);
+    expect(s.picks).not.toBe(before);
+  });
+});
+
+describe('resume', () => {
+  /** Plays a whole match, keeps the picks and the final hash. */
+  function reference(o: TestOptions): { picks: number[]; hash: string; winner: unknown } {
+    const h = createLocalSessionHandle(o);
+    playUntil(h.session, (n) => n.phase === 'finished');
+    return {
+      picks: [...h.session.picks],
+      hash: hashState(h.match),
+      winner: h.session.getSnapshot().winner,
+    };
+  }
+
+  /** Index (into picks) after which a battle is due, i.e. the last pick of a round. */
+  function roundEnds(o: TestOptions, picks: number[]): number[] {
+    const ends: number[] = [];
+    for (let n = 1; n <= picks.length; n++) {
+      const part = createLocalSessionHandle({ ...o, picks: picks.slice(0, n) });
+      if (part.session.getSnapshot().phase === 'intro') ends.push(n);
+    }
+    return ends;
+  }
+
+  for (const level of ['easy', 'medium'] as const) {
+    it(`gives the same final state as playing through (${level})`, () => {
+      const o = opts(41, { bot: PROFILE(level) });
+      const ref = reference(o);
+      const ends = roundEnds(o, ref.picks);
+      expect(ends.length).toBeGreaterThan(1);
+      const cuts = [
+        3, // in the middle of the first draft
+        (ends[0] as number) + 2, // in the middle of the second draft
+        ends[0] as number, // right before the first battle
+        ends[ends.length - 2] as number, // right before the second to last battle
+        ref.picks.length, // all picks made, the last battle is still due
+      ];
+      for (const cut of cuts) {
+        const h = createLocalSessionHandle({ ...o, picks: ref.picks.slice(0, cut) });
+        expect(h.session.picks).toEqual(ref.picks.slice(0, cut));
+        playUntil(h.session, (n) => n.phase === 'finished');
+        expect(hashState(h.match), `cut ${cut}`).toBe(ref.hash);
+        expect(h.session.picks).toEqual(ref.picks);
+        expect(h.session.getSnapshot().winner).toBe(ref.winner);
+      }
+    });
+  }
+
+  it('starts without waiting and without calling onPick for the replayed picks', () => {
+    const o = opts(41);
+    const ref = reference(o);
+    const calls: number[] = [];
+    const h = createLocalSessionHandle({
+      ...o,
+      picks: ref.picks.slice(0, 3),
+      onPick: (p) => calls.push(p.length),
+    });
+    expect(calls).toEqual([]);
+    expect(h.session.getSnapshot().phase).toBe('draft');
+    expect(h.match.picks).toHaveLength(3);
+  });
+
+  it('shows the pending battle after the last stored pick of a round', () => {
+    const o = opts(41);
+    const ref = reference(o);
+    const end = roundEnds(o, ref.picks)[0] as number;
+    const h = createLocalSessionHandle({ ...o, picks: ref.picks.slice(0, end) });
+    expect(h.session.getSnapshot().phase).toBe('intro');
+    expect(h.match.rounds).toHaveLength(0);
+    h.session.advance(MAX_FRAME_MS);
+  });
+
+  it('starts from the beginning with invalid stored picks', () => {
+    const o = opts(41);
+    const ref = reference(o);
+    const fresh = createLocalSessionHandle(o);
+    const wrong = [[9], [-1], [1.5], [...ref.picks, 0], [...ref.picks, 0, 0]];
+    for (const picks of wrong) {
+      const h = createLocalSessionHandle({ ...o, picks });
+      expect(h.match.picks, JSON.stringify(picks)).toEqual([]);
+      expect(hashState(h.match)).toBe(hashState(fresh.match));
+      expect(h.session.getSnapshot().phase).toBe('draft');
     }
   });
 });
