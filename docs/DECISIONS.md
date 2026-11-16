@@ -822,3 +822,135 @@ Offen für spätere Meilensteine:
 - **Upgrades im Testmodus (D-073):** bestätigt.
 - **Aufstellung (D-070, D-075):** bestätigt. SPEC 4.4 beschreibt jetzt die Aufstellung in zentrierten Reihen nach
   Rang, so wie sie umgesetzt ist; die alte Zonen-Tabelle mit Zufallsspalte ist entfernt.
+
+## M4 – Konten und Fortschritt (16.11.2026)
+
+Andreas hat M3b am 16.11. freigegeben (Pull Request 6). M4 läuft auf dem Branch `m4-konten-fortschritt`; der
+Schema-Entwurf aus Pull Request 5 ist dort eingeflossen.
+
+### D-082 Aufbau des Servers: lesen direkt, schreiben nur über eine Serverfunktion (zu SPEC 14.2)
+
+- **Lesen:** Die App liest die eigenen Daten direkt aus der Datenbank. Die Zugriffsregeln (RLS) lassen nur die
+  eigenen Zeilen durch, dazu die öffentlichen Profilfelder (Name, Elo, Arena) aller Spieler.
+- **Schreiben:** Die App schreibt nie direkt. Jede Änderung ist ein Aufruf der Edge Function `api` mit einer
+  Aktion: `set_username`, `set_deck`, `level_up_card`, `unlock_upgrade`, `spend_jokers`, `create_match`,
+  `report_match`, `open_pack`. Das sind die acht Funktionen aus SPEC 14.2, zusammengefasst in **einer** Edge
+  Function statt acht. Grund: Jede Edge Function startet einzeln kalt und trägt die ganze Engine mit; eine
+  Function ist schneller wach, wird in einem Schritt ausgeliefert und teilt sich Anmeldung und Fehlerbehandlung.
+- **Buchen:** Die Function rechnet mit den Spieldaten (Kosten, Elo, Pack-Würfel, Match-Prüfung) und ruft dann pro
+  Aktion genau eine Datenbankfunktion `rr_…` auf. Diese bucht in einem Schritt und prüft selbst, was nur die
+  Datenbank wissen kann (Besitz, genug Gold, Kopien, Joker, Zustand von Match und Pack). Ein Doppelklick oder zwei
+  gleichzeitige Aufrufe können deshalb nichts doppelt buchen oder halb buchen. Die Datenbankfunktionen enthalten
+  keine Balancewerte (SPEC 2.5) und sind nur für den Server ausführbar, nicht für die App.
+- **Anmeldung prüfen:** Die Function prüft das Zugangstoken selbst (`auth.getUser`). Die Vorprüfung der Plattform
+  (`verify_jwt`) ist aus, weil sie nicht mit jeder Schlüsselart von Supabase funktioniert.
+- Der Vertrag zwischen App und Server steht in `packages/shared/src/protocol.ts`.
+
+### D-083 Gemeinsamer Code ohne Abhängigkeiten, als Kopie im Function-Ordner (zu SPEC 3 und 14.2)
+
+- `packages/shared` hat wie die Engine keine Laufzeit-Abhängigkeiten. Die Prüfung der Anfragen ist von Hand
+  geschrieben statt mit zod (SPEC 3 nennt zod). Grund: Derselbe Quelltext läuft in Browser, Node und Deno (Edge
+  Functions), ohne dass dort Pakete aufgelöst werden müssen.
+- `packages/shared` importiert die Engine über relative Pfade (`../../engine/src/index.ts`), nicht über den
+  Paketnamen. Deno braucht so keine Import Map.
+- Die Edge Function bekommt Engine und gemeinsamen Code als **Kopie** unter `supabase/functions/_shared/packages/`.
+  Die Kopie ist eingecheckt; `pnpm sync:functions` erzeugt sie, ein Test in `pnpm test` und die CI schlagen an,
+  wenn sie vom Original abweicht. Grund: Die GitHub-Integration von Supabase liefert Functions beim Merge nach
+  `main` selbst aus. Ob sie dabei Dateien außerhalb von `supabase/functions` mitnimmt, ist nicht dokumentiert und
+  vor dem Merge nicht prüfbar (lokal mit der CLI 3.1 funktioniert es). Eine in sich geschlossene Function
+  funktioniert auf jedem Weg gleich. Geändert wird immer das Original in `packages/`, nie die Kopie.
+
+### D-084 Bot-Matches werden auf dem Server nachgeprüft (zu SPEC 14.2, ergänzt D-006)
+
+- **Ticket:** `create_match` erzeugt auf dem Server den Seed, wählt das Bot-Profil und hält Deck, Level und Upgrades
+  des Spielers fest (Schnappschuss im Match). Die App spielt das Match lokal und meldet am Ende alle Picks beider
+  Seiten in Reihenfolge. Der Mensch ist immer Spieler A.
+- **Nachspielen:** `report_match` spielt das Match mit der Engine nach und nimmt den Sieger aus dieser Simulation,
+  nie aus der Meldung. Gemessen in der VM: höchstens rund 0,1 s je Match.
+- **Bot-Picks:** Der Server rechnet nach, ob die gemeldeten Picks des Bots wirklich die des Bots sind. Dafür hat
+  jede Bot-Entscheidung jetzt einen eigenen Zufallsstrom, abgeleitet aus Seed und Nummer des Picks
+  (`botPickRng`), statt eines durchlaufenden Stroms; so lässt sich jede Entscheidung einzeln nachrechnen.
+  „Leicht“ und „Mittel“ werden vollständig geprüft (unter 0,1 s). „Schwer“ rechnet pro Entscheidung bis zu 0,4 s;
+  Edge Functions dürfen aber nur 2 s Rechenzeit je Aufruf verbrauchen. Deshalb prüft der Server dort eine
+  zufällige Stichprobe: höchstens 6 Entscheidungen und nur, solange 250 ms nicht überschritten sind, mindestens
+  aber eine (`packages/shared/src/data/server.ts`). Im Mittel sind das 3,4 von rund 16 Entscheidungen; eine
+  einzelne gefälschte Entscheidung fällt also etwa jedes fünfte Mal auf, mehrere entsprechend öfter.
+- **Folgen einer Ablehnung:** Passt die Meldung nicht (falsche Bot-Picks, ungültige oder überzählige Picks), wird
+  das Match ohne Elo und ohne Belohnung verworfen (`abandoned`). Eine unvollständige Meldung lässt das Match
+  offen, damit ein ehrlicher Client weiterspielen und erneut melden kann.
+- **`ENGINE_VERSION` ist jetzt 4** und deckt ab sofort auch die Entscheidungen der Bots ab: App und Server müssen
+  gleich entscheiden. Die App schickt ihre Version mit; weicht sie ab, verlangt der Server ein Update der App.
+  Ein Test hält Bot-Entscheidungen fest und schlägt an, wenn sich eine Strategie ohne neue Version ändert.
+- **Restrisiko:** Die App kennt den Seed und könnte mit verändertem Programmcode die Zukunft vorausberechnen und
+  die eigenen Picks danach wählen. Das liegt in der Bauart (der Kampf läuft auf dem Gerät, SPEC 6.1 und 14.3) und
+  ist für ein Spiel unter Freunden hingenommen.
+
+### D-085 Server-Logik unabhängig von der Datenbank, lokaler Modus der App
+
+- Die Regeln jeder Aktion stehen einmal in `packages/shared/src/server/handlers.ts` und sprechen nur mit einer
+  schmalen Schnittstelle zur Datenhaltung (`Store`). Dahinter gibt es zwei Umsetzungen: die echte Datenbank
+  (Edge Function, ruft die Funktionen `rr_…` auf) und einen Speicher im Arbeitsspeicher (`MemoryStore`) mit
+  denselben Schutzbedingungen. So lassen sich alle Regeln ohne Datenbank testen; Integrationstests prüfen
+  zusätzlich die echte Datenbank.
+- **Lokaler Modus:** Ist in der App kein Supabase eingetragen (`VITE_SUPABASE_URL` fehlt), läuft dieselbe
+  Server-Logik im Browser mit dem `MemoryStore`, gespeichert im Browser. Das ist für Entwicklung, Tests und
+  Vorschau-Deployments ohne Server gedacht. Der Profil-Tab zeigt dann „Lokaler Modus“. Im echten Betrieb ist
+  Supabase eingetragen und der lokale Modus nicht erreichbar.
+- Der freie Testmodus aus M3 (Level und Upgrades frei einstellbar, D-048, D-073) entfällt.
+
+### D-086 Offene Matches: fortsetzen oder aufgeben
+
+- Jeder Spieler hat höchstens ein offenes Match. Die App speichert nach jedem Pick das Ticket und alle bisherigen
+  Picks im Browser. Wird die App geschlossen (auf dem Handy passiert das im Hintergrund oft von selbst), bietet
+  der Kampf-Tab beim nächsten Start „Weiterspielen“ an: Die bisherigen Picks werden ohne Anzeige nachgespielt, das
+  Match geht an derselben Stelle weiter. Fehlen die gespeicherten Picks (anderes Gerät, Browserdaten gelöscht),
+  beginnt dasselbe Match von vorn.
+- „Aufgeben und neu starten“ bucht das offene Match als Niederlage (Elo-Abzug, kein Trost-Gold) und startet ein
+  neues. Ohne diese Regel könnte man eine drohende Niederlage durch Schließen der App folgenlos abbrechen.
+- Schlägt die Meldung am Ende fehl (kein Netz), bleibt das Match gespeichert und wird erneut gemeldet. Eine
+  doppelte Meldung bucht nichts doppelt; der Server antwortet mit dem schon gebuchten Ergebnis.
+- Ein offenes Match einer älteren Engine-Version wird ohne Wertung verworfen.
+- Restrisiko: Wer die Browserdaten löscht, kann ein offenes Match mit Vorwissen von vorn beginnen. Für Gäste
+  geht dabei das Konto verloren; für ein Spiel unter Freunden hingenommen (siehe auch D-084).
+
+### D-087 Auslegungen zum Fortschritt (SPEC 7 und 9)
+
+- **Erstes Pack:** Das garantierte Musketier-Pack (SPEC 9.5) gibt es direkt nach der Wahl des Benutzernamens; es
+  enthält 2 Kopien (Untergrenze der Seltenheit „Selten“).
+- **Pack-Würfel:** Erst wird die Art gewürfelt (Karten, Gold, Joker), bei Karten dann die Seltenheit und danach
+  gleichverteilt eine Karte dieser Seltenheit aus den freigeschalteten Arenen. Arena 1 enthält keine epische
+  Karte; fällt dort „Episch“, gibt es eine seltene Karte. Die Zahl der Kopien richtet sich nach der Seltenheit
+  der gezogenen Karte.
+- **Gold aus Packs:** 50 bis 150, mal Multiplikator der höchsten je erreichten Arena.
+- **Unentschieden** zählt für die Belohnung wie eine Niederlage: 10 Gold, kein Pack.
+- **Kopien auf Level 5** sammeln sich weiter an und haben vorerst keinen Nutzen. Offen für später (z. B. Umtausch
+  in Gold).
+- **Benutzername:** Eine Änderung ist kostenlos, danach ist der Name fest (SPEC 9 lässt offen, was weitere
+  Änderungen kosten). Der Wortfilter ist eine kurze Liste grober deutscher und englischer Schimpfwörter plus
+  `admin`, `moderator`, `support`; er erkennt einfache Ziffern-Tricks, ist aber bewusst nicht vollständig, damit
+  harmlose Namen wie „Assassine“ nicht abgelehnt werden.
+- **Bot-Decks** bleiben wie in D-065 (Leicht Arena 1, Mittel bis Arena 2, Schwer bis Arena 3), unabhängig von der
+  Arena des Spielers. Alle drei Stufen sind von Anfang an wählbar; die Elo-Formel sorgt dafür, dass Siege gegen
+  schwächere Bots wenig und Niederlagen viel kosten.
+- **Deck und Sammlung** bleiben ein gemeinsamer Tab (Wunsch aus D-048), statt zwei Bildschirmen wie in SPEC 10.
+  Tabs: Deck | Kampf | Profil. Rangliste und Freunde folgen mit M5.
+
+### D-088 Anmeldung (SPEC 9)
+
+- **Gast** funktioniert ohne weitere Einrichtung (anonymes Konto bei Supabase). Ist keine andere Anmeldeart
+  eingeschaltet, meldet „Spielen“ direkt als Gast an.
+- **Google und E-Mail** sind eingebaut, aber über zwei Schalter der App abgeschaltet (`VITE_AUTH_GOOGLE`,
+  `VITE_AUTH_EMAIL`), bis Andreas sie einrichtet: Google braucht einen OAuth-Client, den er selbst anlegt. Für
+  E-Mail-Links verschickt Supabase ohne eigenen Mailversand nur 2 Mails pro Stunde und nur an Mitglieder des
+  Projekt-Teams; für echte Spieler braucht es einen eigenen Mailversand (SMTP). Beides entscheidet Andreas
+  (SPEC 2.3: kein Versand von E-Mails ohne sein Ja).
+- Ein Gastkonto lässt sich später im Profil mit Google oder E-Mail verknüpfen; der Fortschritt bleibt.
+- Die App benutzt den neuen öffentlichen Schlüssel von Supabase (`VITE_SUPABASE_PUBLISHABLE_KEY`); der alte
+  „anon key“ wird ersatzweise noch gelesen. Supabase stellt die alten Schlüssel Ende 2026 ein.
+
+### D-089 Lokale Testumgebung für den Server
+
+In der VM sind Docker, die Supabase CLI und Deno installiert. `supabase/tests/stack.sh up` startet einen
+abgespeckten lokalen Supabase-Stack (Datenbank, Anmeldung, API, Edge Functions; rund 350 MB Arbeitsspeicher).
+Dagegen laufen die Integrationstests des Servers und die Ende-zu-Ende-Tests der App, in der VM und in der CI.
+Die echte Datenbank wird dabei nie berührt.

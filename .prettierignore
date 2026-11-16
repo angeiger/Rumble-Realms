@@ -10,3 +10,5 @@ test-results
 playwright-report
 blob-report
 playwright/.cache
+# Generated copy of packages/engine and packages/shared (pnpm sync:functions, D-083)
+supabase/functions/_shared

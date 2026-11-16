@@ -25,8 +25,10 @@ die pflegst du weiter im Dashboard.
 | `public_profiles` | (View) nur Benutzername, Elo, höchste Arena aller Spieler           | alle angemeldeten Spieler |
 | `player_cards`    | Sammlung: Karte, Level 1–5, Kopien, freigeschaltete Upgrades (0–7)  | nur der Spieler selbst    |
 | `decks`           | aktives Deck: genau 4 verschiedene Karten                           | nur der Spieler selbst    |
-| `matches`         | Matches: Spieler, Bot-Stufe, Seed, Engine-Version, Picks, Ergebnis  | beide Beteiligten         |
-| `packs`           | Belohnungspacks: geöffnet ja/nein, Inhalt                           | nur der Besitzer          |
+| `matches`         | Matches: Spieler, Bot-Stufe und Bot-Profil, Seed, Engine-Version,   | beide Beteiligten         |
+|                   | Startaufstellung, Picks, Ergebnis, Ende-Zeitpunkt                   |                           |
+| `packs`           | Belohnungspacks: Art (Sieg oder Willkommen), geöffnet ja/nein,      | nur der Besitzer          |
+|                   | Inhalt                                                              |                           |
 | `friendships`     | Freundschaftsanfragen und Freunde (eine Zeile pro Paar)             | beide Seiten              |
 
 Bei jeder neuen Anmeldung (auch als Gast) legt ein Trigger automatisch an: Profil (Elo 1000, Gold 0, Arena 1, noch
@@ -39,18 +41,104 @@ seine Daten mit.
 Datenbank lehnt außerdem ungültige Werte selbst ab (z. B. Benutzername mit Leerzeichen, doppelter Name in anderer
 Schreibweise, Level 6, negatives Gold, Deck mit 3 Karten).
 
+**Neue Spalten in `matches`:** `bot_profile` (welcher Bot, z. B. `goblin-gustav`; nur bei Bot-Matches), `setup` (ein
+Schnappschuss deines Decks beim Start: die vier Karten mit Level und Upgrades; spätere Level-Ups ändern ein laufendes
+Match nicht) und `finished_at` (wann das Ergebnis gebucht wurde; leer, solange das Match läuft). Jeder Spieler kann
+höchstens **ein** offenes Match gleichzeitig haben.
+
+**Neue Spalte in `packs`:** `kind` ist `match` (Belohnung für einen Sieg) oder `welcome` (das erste Pack nach der
+Namenswahl). Das Willkommens-Pack gibt es pro Spieler nur einmal.
+
+**Buchungsfunktionen:** Für jede Aktion gibt es eine Funktion in der Datenbank. Die Edge Function rechnet (Kosten, Elo,
+Pack-Inhalt, Nachsimulation des Matches) und ruft dann genau eine dieser Funktionen auf. Die Funktion bucht alles auf
+einmal oder gar nichts, und sie prüft selbst, was die Datenbank wissen kann: Gehört die Karte dir, reicht das Gold,
+ist das Pack noch zu, läuft das Match noch? Ein Doppelklick bucht deshalb nie doppelt; der zweite Aufruf bekommt eine
+Fehlermeldung. Spielwerte (Preise, Belohnungen) stehen nicht in der Datenbank, sie kommen aus dem Code.
+
+| Funktion            | Was sie bucht                                                                         |
+| ------------------- | ------------------------------------------------------------------------------------- |
+| `rr_set_username`   | Erste Namenswahl samt Willkommens-Pack, danach Umbenennung (solange noch frei)        |
+| `rr_set_deck`       | neues Deck aus vier eigenen, verschiedenen Karten                                     |
+| `rr_level_up_card`  | Karte eine Stufe höher, zieht Kopien und Gold ab                                      |
+| `rr_unlock_upgrade` | schaltet ein Upgrade einer Karte frei, zieht Gold ab                                  |
+| `rr_spend_jokers`   | tauscht Joker gegen Kopien, schaltet eine neue Karte dabei frei                       |
+| `rr_create_match`   | legt ein neues Bot-Match an (nur mit Benutzername, nur wenn kein anderes offen ist)   |
+| `rr_finish_match`   | bucht das Ergebnis: Elo (nie unter 0), Spielezahl, höchste Arena, Gold, Pack bei Sieg |
+| `rr_open_pack`      | öffnet ein eigenes Pack und schreibt den Inhalt gut                                   |
+
+Nur der Server (die Rolle `service_role`) darf diese Funktionen aufrufen; die App und nicht angemeldete Besucher
+bekommen „keine Berechtigung“.
+
 ## Lokal testen
 
-In der VM (PostgreSQL ist installiert):
+Alle Befehle laufen im Hauptordner des Projekts (`~/Rumble-Realms`). Kein Supabase-Konto, kein Passwort und kein
+echter Schlüssel nötig: Alles läuft auf der VM.
+
+### 1. Datenbank-Tests (ohne Docker)
 
 ```bash
 bash supabase/tests/run_local.sh
 ```
 
-Das Skript legt eine Wegwerf-Datenbank `rr_test` an, baut das Nötigste von Supabase nach, spielt die Migration und
-die Tests ein und löscht die Datenbank wieder. Am Ende steht `OK: … assertions passed.`, bei einem Fehler bricht es
-mit `FAILED: …` ab. Mit `--keep` bleibt die Datenbank zum Nachschauen stehen. Ein Supabase-Konto oder Passwort
-braucht es dafür nicht.
+Legt eine Wegwerf-Datenbank `rr_test` im normalen PostgreSQL der VM an, baut das Nötigste von Supabase nach, spielt die
+Migration und die SQL-Tests ein und löscht die Datenbank wieder. Am Ende steht `OK: … assertions passed.`, bei einem
+Fehler bricht es ab. Mit `--keep` bleibt die Datenbank zum Nachschauen stehen.
+
+### 2. Lokaler Supabase-Stack mit der Serverfunktion
+
+```bash
+bash supabase/tests/stack.sh up         # starten (dauert beim ersten Mal einige Minuten)
+bash supabase/tests/stack.sh reset      # Datenbank leeren und Migration neu einspielen
+bash supabase/tests/stack.sh functions  # nach einer Code-Änderung die Edge Function neu laden
+bash supabase/tests/stack.sh down       # stoppen
+```
+
+`up` startet nur die Teile, die das Spiel braucht (Datenbank, Anmeldung, Datenzugriff, Edge Functions), damit der
+Arbeitsspeicher reicht. Die Edge Function `api` wird dabei automatisch mitgestartet; ein extra
+`supabase functions serve` ist nicht nötig. Der Stack ist dann unter `http://127.0.0.1:54321` erreichbar, die Function
+unter `http://127.0.0.1:54321/functions/v1/api`. Änderungen am Code der Function liest sie nicht von selbst neu ein:
+danach `stack.sh functions` aufrufen.
+
+Falls Docker meldet, dass die Berechtigung fehlt (direkt nach der Installation), erledigt das Skript das selbst über
+`sg docker`.
+
+### 3. Tests gegen den Stack
+
+```bash
+eval "$(bash supabase/tests/stack.sh env)"   # Adresse und lokale Schlüssel des Stacks laden
+pnpm test:backend
+```
+
+Die Tests legen für jeden Fall eigene Gastkonten an, spielen Matches wie die App und prüfen Elo, Gold, Packs, alle
+wichtigen Fehlermeldungen, die Sicherheit (keine fremden Daten, kein direktes Schreiben) und doppelte Klicks.
+Ohne geladene Adresse und Schlüssel werden sie mit einem Hinweis übersprungen. Die lokalen Schlüssel sind die
+öffentlich bekannten Standardschlüssel des lokalen Stacks; sie werden nirgends gespeichert.
+
+### 4. Die Serverfunktion selbst prüfen
+
+```bash
+pnpm check:deno
+```
+
+Prüft die Typen der Edge Function mit Deno und führt ihre Unit-Tests aus. Deno liegt in der VM unter `~/.deno/bin`;
+das Skript findet es dort auch ohne Eintrag im `PATH` (wer `deno` direkt aufrufen will:
+`export PATH="$HOME/.deno/bin:$PATH"`).
+
+### 5. Kopie des gemeinsamen Codes
+
+Die Edge Function bekommt die Spiel-Engine und den gemeinsamen Code als Kopie unter `supabase/functions/_shared/`
+(siehe D-083). Nach jeder Änderung in `packages/engine` oder `packages/shared`:
+
+```bash
+pnpm sync:functions
+```
+
+`pnpm lint` (und damit die CI) schlägt an, wenn die Kopie veraltet ist. Die Dateien in `_shared` nie von Hand ändern.
+
+### In der CI
+
+Der Job `backend` in `.github/workflows/ci.yml` macht dasselbe auf GitHub: SQL-Tests, `pnpm check:deno`, Stack
+starten, `pnpm test:backend`. Er braucht keine Secrets.
 
 ## Was in M4 noch folgt
 

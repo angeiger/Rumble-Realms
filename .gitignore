@@ -13,3 +13,7 @@ playwright-report
 blob-report
 playwright/.cache
 .DS_Store
+
+# Local Supabase CLI state
+supabase/.branches
+supabase/.temp

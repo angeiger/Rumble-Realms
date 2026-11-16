@@ -51,3 +51,46 @@ jobs:
             apps/web/playwright-report
             apps/web/test-results
           retention-days: 7
+
+  # Database, Edge Function and their security against a local Supabase stack (D-082 ff.).
+  # No secrets: the stack runs on the runner with its public default keys.
+  backend:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+
+      # SQL tests on a plain PostgreSQL (preinstalled on the runner, but not started).
+      - name: SQL tests
+        run: |
+          sudo systemctl start postgresql.service
+          bash supabase/tests/run_local.sh
+
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.8
+      - name: Edge Function type check and unit tests
+        run: pnpm check:deno
+
+      - uses: supabase/setup-cli@v1
+        with:
+          version: 3.1.0
+      - name: Start the local Supabase stack
+        run: |
+          bash supabase/tests/stack.sh up
+          bash supabase/tests/stack.sh env --plain >> "$GITHUB_ENV"
+      - name: Backend tests
+        run: pnpm test:backend
+        env:
+          BACKEND_TESTS_REQUIRED: '1'
+      - name: Logs of the Edge Function
+        if: failure()
+        run: docker logs supabase_edge_runtime_rumble-realms 2>&1 | tail -n 200
