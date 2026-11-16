@@ -875,9 +875,19 @@ Schema-Entwurf aus Pull Request 5 ist dort eingeflossen.
   zufällige Stichprobe: höchstens 6 Entscheidungen und nur, solange 250 ms nicht überschritten sind, mindestens
   aber eine (`packages/shared/src/data/server.ts`). Im Mittel sind das 3,4 von rund 16 Entscheidungen; eine
   einzelne gefälschte Entscheidung fällt also etwa jedes fünfte Mal auf, mehrere entsprechend öfter.
-- **Folgen einer Ablehnung:** Passt die Meldung nicht (falsche Bot-Picks, ungültige oder überzählige Picks), wird
-  das Match ohne Elo und ohne Belohnung verworfen (`abandoned`). Eine unvollständige Meldung lässt das Match
-  offen, damit ein ehrlicher Client weiterspielen und erneut melden kann.
+- **Folgen einer Ablehnung:** Passt die Meldung nicht (falsche Bot-Picks, ungültige oder überzählige Picks), zählt
+  das Match wie Aufgeben (D-086): Niederlage mit dem Elo-Abzug einer Niederlage, ohne Trost-Gold und ohne Pack; die
+  gemeldeten Picks werden gespeichert. Die App zeigt „Es zählt als Niederlage“. Ohne diese Regel kostete Schummeln
+  nichts: Ein gefälschter Pick gegen „Schwer“, den die Stichprobe entdeckt, ließe sich folgenlos wiederholen, und
+  eine drohende Niederlage ließe sich durch eine absichtlich ungültige Meldung abwenden. (Bis zum Review vor dem
+  Gate wurde ein solches Match ohne Wertung verworfen.) Eine unvollständige Meldung lässt das Match offen, damit
+  ein ehrlicher Client weiterspielen und erneut melden kann. Ohne Wertung verworfen (`abandoned`) wird ein Match
+  nur, wenn es selbst nicht auswertbar ist (andere Engine-Version, kaputtes Ticket).
+- **Folge für die Entwicklung:** Rechnen App und Server bei gleicher `ENGINE_VERSION` verschieden, verlieren auch
+  ehrliche Spieler. Jede Änderung an Engine, Bot-Strategie oder Bot-Decks braucht deshalb eine neue Version.
+- **Bekannte Ungenauigkeit:** Wird ein aufgegebenes oder abgelehntes Match erneut gemeldet, antwortet der Server
+  „Niederlage mit 10 Gold“, obwohl kein Gold gebucht wurde; gebucht wird nichts doppelt. Sauber lösen ließe sich
+  das mit einer Spalte für das gebuchte Gold in `matches`.
 - **`ENGINE_VERSION` ist jetzt 4** und deckt ab sofort auch die Entscheidungen der Bots ab: App und Server müssen
   gleich entscheiden. Die App schickt ihre Version mit; weicht sie ab, verlangt der Server ein Update der App.
   Ein Test hält Bot-Entscheidungen fest und schlägt an, wenn sich eine Strategie ohne neue Version ändert.
