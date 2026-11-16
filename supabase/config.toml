@@ -1,0 +1,14 @@
+# Supabase project configuration, kept to the bare minimum on purpose.
+#
+# Why so short:
+# - With "Deploy to production" the GitHub integration applies new files from
+#   supabase/migrations/ to the production database. Of config.toml it only
+#   deploys Edge Functions and storage buckets declared here; API, Auth and
+#   seed settings are ignored for production unless a [remotes] block names
+#   the project. This file declares neither functions, buckets nor [remotes],
+#   so it cannot change any production setting (Auth providers, anonymous
+#   sign-ins, URLs) that is managed in the Supabase dashboard.
+# - project_id is only a local name for the Supabase CLI. It is NOT the
+#   reference of the real project, which never belongs in this public repo.
+# - Edge Functions are added in M4 together with the project owner.
+project_id = "rumble-realms"
