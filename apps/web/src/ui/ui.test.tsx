@@ -397,6 +397,31 @@ describe('result: report to the server', () => {
       expect(html, error).toContain('nicht gewertet');
       expect(html, error).not.toContain('result-retry');
     }
+    for (const detail of ['incomplete', 'abandoned']) {
+      const html = view(finished, {
+        state: 'failed',
+        result: null,
+        error: 'match_rejected',
+        detail,
+      });
+      expect(html, detail).toContain('nicht gewertet');
+      expect(html, detail).not.toContain('Niederlage');
+    }
+  });
+
+  it('failed because the report was broken: counts as a loss, no retry', () => {
+    for (const detail of ['bot_mismatch', 'bad_picks', 'leftover']) {
+      const html = view(finished, {
+        state: 'failed',
+        result: null,
+        error: 'match_rejected',
+        detail,
+      });
+      expect(html, detail).toContain('Es zählt als Niederlage.');
+      expect(html, detail).not.toContain('nicht gewertet');
+      expect(html, detail).not.toContain('result-retry');
+    }
+    expect(en['result.failedRejectedLoss']).toContain('counts as a loss');
   });
 
   it('failed for another reason: generic text with retry', () => {

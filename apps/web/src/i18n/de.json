@@ -47,6 +47,7 @@
   "result.retry": "Erneut versuchen",
   "result.failedUnavailable": "Kein Netz. Dein Ergebnis ist noch nicht gespeichert.",
   "result.failedRejected": "Dieses Match wurde nicht gewertet.",
+  "result.failedRejectedLoss": "Die Meldung dieses Matches war ungültig. Es zählt als Niederlage.",
   "result.failedOutdated": "Deine App ist veraltet. Dieses Match wurde nicht gewertet. Lade die Seite neu.",
   "result.failedOther": "Das Ergebnis konnte nicht gespeichert werden.",
   "detail.close": "Schließen",

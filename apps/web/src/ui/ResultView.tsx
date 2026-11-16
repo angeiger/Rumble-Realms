@@ -31,12 +31,18 @@ export function formatDelta(delta: number): string {
   return '\u00b10';
 }
 
+/** Reasons of `match_rejected` after which the server booked the match as a loss (D-084). */
+const REJECTED_AS_LOSS: readonly (string | undefined)[] = ['bot_mismatch', 'bad_picks', 'leftover'];
+
 /** The explanation of a failed report; `retry` says whether trying again can help. */
-function failure(error: MatchReport['error']): { text: string; retry: boolean } {
-  switch (error) {
+function failure(report: MatchReport): { text: string; retry: boolean } {
+  switch (report.error) {
     case 'unavailable':
       return { text: t('result.failedUnavailable'), retry: true };
     case 'match_rejected':
+      return REJECTED_AS_LOSS.includes(report.detail)
+        ? { text: t('result.failedRejectedLoss'), retry: false }
+        : { text: t('result.failedRejected'), retry: false };
     case 'match_not_found':
       return { text: t('result.failedRejected'), retry: false };
     case 'engine_mismatch':
@@ -66,7 +72,7 @@ function ReportInfo({
     );
   }
   if (state === 'failed') {
-    const f = failure(report.error);
+    const f = failure(report);
     return (
       <div className="result__report" data-testid="result-report-state" data-state={state}>
         <p className="result__note">{f.text}</p>

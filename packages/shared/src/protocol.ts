@@ -59,7 +59,12 @@ export const API_ERROR_CODES = [
   'engine_mismatch',
   /** No such match of this player. */
   'match_not_found',
-  /** The reported picks do not form a complete, valid match, or the bot's picks are not the bot's. */
+  /**
+   * The reported picks do not form a complete, valid match, or the bot's picks are not the
+   * bot's; `detail` names the reason. 'incomplete' leaves the match open. 'bot_mismatch',
+   * 'bad_picks' and 'leftover' book it as a loss without consolation gold (like giving up).
+   * 'abandoned' answers a repeated report of a match that was dropped without booking.
+   */
   'match_rejected',
 
   /** No such pack of this player. */
@@ -156,7 +161,8 @@ export interface ApiActions {
   /**
    * Reports a finished match: all picks of both players in order (like the engine's
    * `MatchState.picks`). The server replays the match, checks the bot's picks and books Elo
-   * and reward. Reporting a match again returns the booked result (`repeated: true`).
+   * and reward. Reporting a match again returns the booked result (`repeated: true`). A
+   * report that can never become valid is answered with `match_rejected` and counts as a loss.
    */
   report_match: {
     request: { matchId: string; picks: number[] };

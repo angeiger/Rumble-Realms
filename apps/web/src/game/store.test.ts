@@ -25,6 +25,8 @@ interface Net {
   down: boolean;
   /** Overrides the answer of an action. */
   reply: Partial<Record<ApiAction, ApiResponse<never>>>;
+  /** Changes the picks of report_match on the way (a manipulated client). */
+  tamper?: (picks: number[]) => number[];
   calls: ApiAction[];
 }
 
@@ -47,6 +49,10 @@ function flaky(net: Net): Backend {
       if (net.down) throw new BackendUnavailableError();
       const forced = net.reply[action];
       if (forced) return forced as ApiResponse<ApiResponseOf<A>>;
+      if (action === 'report_match' && net.tamper) {
+        const r = request as ApiRequestOf<'report_match'>;
+        return inner.call(action, { ...r, picks: net.tamper(r.picks) } as ApiRequestOf<A>);
+      }
       return inner.call(action, request);
     },
   };
@@ -223,6 +229,30 @@ describe('game store', () => {
       error: 'match_rejected',
     });
     expect(loadPendingMatch(matchId)).toBeNull();
+  });
+
+  it('a broken report counts as a loss: the profile is read again', async () => {
+    const before = useAccountStore.getState().player;
+    if (!before) throw new Error('no player');
+    await useGameStore.getState().startMatch();
+    const matchId = useAccountStore.getState().player?.pendingMatch?.matchId ?? '';
+    expect(matchId).not.toBe('');
+    // One pick after the end: the real server code rejects it with 'leftover'.
+    net.tamper = (picks) => [...picks, 0];
+    playOut(useGameStore.getState().session as GameSession);
+    await flush();
+    expect(useGameStore.getState().report).toEqual({
+      state: 'failed',
+      result: null,
+      error: 'match_rejected',
+      detail: 'leftover',
+    });
+    expect(loadPendingMatch(matchId)).toBeNull();
+    const after = useAccountStore.getState().player;
+    expect(after?.pendingMatch).toBeNull();
+    expect(after?.gamesPlayed).toBe(before.gamesPlayed + 1);
+    expect(after?.elo).toBeLessThan(before.elo);
+    expect(after?.gold).toBe(before.gold);
   });
 
   it('resumes with the saved picks of the same match', async () => {

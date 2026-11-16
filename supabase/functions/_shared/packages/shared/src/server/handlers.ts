@@ -76,7 +76,10 @@ const RESULT_OF: Readonly<Record<MatchOutcome, 'a_won' | 'b_won' | 'draw'>> = {
   draw: 'draw',
 };
 
-/** Closes a match without any booking (store.ts: everything 0 with 'abandoned'). */
+/**
+ * Closes a match without any booking (store.ts: everything 0 with 'abandoned'). Only for
+ * matches that cannot be judged: another engine version or a broken ticket.
+ */
 function abandoned(picks: readonly number[]): FinishMatchInput {
   return {
     result: 'abandoned',
@@ -158,6 +161,19 @@ function eloBooking(
     vsBot: true,
   });
   return { eloDelta, arena: arenaForElo(profile.elo + eloDelta) };
+}
+
+/**
+ * Books a match as a loss without the consolation gold and without a pack: giving up (D-086)
+ * and a report that can never become valid (D-084).
+ */
+function forfeited(
+  profile: ProfileRow,
+  botLevel: BotLevelId,
+  picks: readonly number[],
+): FinishMatchInput {
+  const { eloDelta, arena } = eloBooking(profile, botLevel, 'loss');
+  return { result: 'b_won', picks: [...picks], eloDelta, arena, gold: 0, withPack: false };
 }
 
 function isKnownBotLevel(level: string): level is BotLevelId {
@@ -286,8 +302,7 @@ export const handleCreateMatch: ActionHandler<'create_match'> = async (store, en
       return ok({ ticket: ticketOfMatch(pending), resumed: true });
     } else {
       // Giving up counts as a loss, without the consolation gold.
-      const { eloDelta, arena } = eloBooking(profile, pending.bot_level, 'loss');
-      input = { result: 'b_won', picks: [], eloDelta, arena, gold: 0, withPack: false };
+      input = forfeited(profile, pending.bot_level, []);
     }
     const failed = await closeMatch(store, 'create_match', user, pending.id, input);
     if (failed !== null) return failed;
@@ -306,7 +321,17 @@ export const handleCreateMatch: ActionHandler<'create_match'> = async (store, en
   return storeFailure('create_match', r.code, ['username_missing', 'deck_invalid']);
 };
 
-/** The answer for a match that is booked already (`repeated: true`). */
+/**
+ * The answer for a match that is booked already (`repeated: true`).
+ *
+ * Known gap: a loss without consolation gold (given up with `create_match` pending 'forfeit',
+ * or a rejected report: bot_mismatch, bad_picks, leftover) is stored like any other loss
+ * (`b_won`, `elo_delta_a`); the gold of a booking is not stored. A repeated report of such a
+ * match is therefore answered as a loss with LOSS_GOLD, although 0 gold was booked, and not
+ * with `match_rejected`. Only the answer is off; nothing is booked again. Telling these
+ * matches apart reliably needs a new column (e.g. the booked gold; D-084): the stored picks
+ * do not tell, because the sample check of the hard bot is random and cannot be repeated.
+ */
 async function bookedResult(
   store: Store,
   user: string,
@@ -367,13 +392,23 @@ export const handleReportMatch: ActionHandler<'report_match'> = async (store, en
   if (!verdict.ok) {
     // Not finished yet: an honest client can play on and report again.
     if (verdict.reason === 'incomplete') return err('match_rejected', 'incomplete');
-    // Everything else cannot become valid any more: close without Elo and reward.
-    const failed = await closeMatch(store, 'report_match', user, match.id, abandoned(req.picks));
-    if (failed !== null) return failed;
-    if (verdict.reason === 'bad_ticket') {
-      return err('internal', `report_match: bad_ticket: ${verdict.detail}`);
+    if (verdict.reason === 'bad_ticket' || !isKnownBotLevel(match.bot_level)) {
+      // The stored match itself is broken, a fault of the server and not of the player:
+      // close it without Elo and reward.
+      const failed = await closeMatch(store, 'report_match', user, match.id, abandoned(req.picks));
+      const detail =
+        verdict.reason === 'bad_ticket' ? verdict.detail : `unknown bot level ${match.bot_level}`;
+      return failed ?? err('internal', `report_match: bad_ticket: ${detail}`);
     }
-    return err('match_rejected', verdict.reason);
+    // bot_mismatch, bad_picks, leftover: the report can never become valid. It counts like
+    // giving up (D-086): a loss with the Elo change of a loss, no consolation gold, no pack.
+    // Else a player could escape a looming loss with a broken report, and a faked bot pick
+    // that the sample check of the hard bot catches would cost nothing (D-084).
+    const input = forfeited(profile, match.bot_level, req.picks);
+    const failed = await closeMatch(store, 'report_match', user, match.id, input);
+    // A concurrent report booked the match first (closeMatch gives null then): nothing more is
+    // booked, the answer stays the rejection of this report.
+    return failed ?? err('match_rejected', verdict.reason);
   }
 
   // verifyBotMatch accepts only tickets with a profile of a known level.

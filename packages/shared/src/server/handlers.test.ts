@@ -16,6 +16,7 @@ import {
   LOSS_GOLD,
   MAX_LEVEL,
   nextInt,
+  OFFER_SIZE,
   seedRng,
   simulateToEnd,
   STARTER_DECK,
@@ -623,54 +624,162 @@ describe('report_match', () => {
     const e = failure(await report(store, env, A, ticket.matchId, played.picks.slice(0, -1)));
     expect(e).toEqual({ code: 'match_rejected', detail: 'incomplete' });
     expect((await store.getMatch(A, ticket.matchId))?.result).toBe('pending');
+    expect(await profile(store, A)).toMatchObject({ elo: ELO.start, games_played: 0, gold: 0 });
     expect(data(await report(store, env, A, ticket.matchId, played.picks)).repeated).toBe(false);
   });
 
+  /** The honest picks of a match with one bot decision changed (a choice the bot did not make). */
+  function fakeBotPick(played: Played): number[] {
+    const pick = played.bot.find((b) => b.slots > 1);
+    if (pick === undefined) throw new Error('no bot pick with a choice');
+    const picks = [...played.picks];
+    picks[pick.index] = ((picks[pick.index] as number) + 1) % pick.slots;
+    return picks;
+  }
+
   for (const level of ['easy', 'medium'] as const) {
-    it(`rejects a manipulated bot pick of ${level} and closes the match`, async () => {
+    it(`books a manipulated bot pick of ${level} as a loss without gold`, async () => {
       const { store, env } = await world();
       const ticket = await newMatch(store, env, A, level);
       const played = playHonest(ticket, 1);
-      const pick = played.bot.find((b) => b.slots > 1);
-      if (pick === undefined) throw new Error('no bot pick with a choice');
-      const picks = [...played.picks];
-      picks[pick.index] = ((picks[pick.index] as number) + 1) % pick.slots;
+      const picks = fakeBotPick(played);
       const e = failure(await report(store, env, A, ticket.matchId, picks));
       expect(e).toEqual({ code: 'match_rejected', detail: 'bot_mismatch' });
+      const delta = FRESH_ELO_DELTA[level].loss;
       expect(await store.getMatch(A, ticket.matchId)).toMatchObject({
-        result: 'abandoned',
-        elo_delta_a: 0,
+        result: 'b_won',
+        elo_delta_a: delta,
       });
-      expect(await profile(store, A)).toMatchObject({ elo: ELO.start, games_played: 0, gold: 0 });
-      // The honest picks are too late now.
-      expect(failure(await report(store, env, A, ticket.matchId, played.picks))).toEqual({
-        code: 'match_rejected',
-        detail: 'abandoned',
+      expect(store.snapshot().matches.find((m) => m.id === ticket.matchId)?.picks).toEqual(picks);
+      expect(await profile(store, A)).toMatchObject({
+        elo: ELO.start + delta,
+        games_played: 1,
+        gold: 0,
       });
+      expect(await store.listPacks(A)).toHaveLength(1); // only the welcome pack
+      expect(await store.getPendingMatch(A)).toBeNull();
+
+      // The honest picks are too late now: nothing is booked again. Known gap (bookedResult):
+      // the answer is the stored loss with the usual consolation gold, although 0 was booked.
+      const before = store.snapshot();
+      expect(data(await report(store, env, A, ticket.matchId, played.picks))).toEqual({
+        outcome: 'loss',
+        eloDelta: delta,
+        elo: ELO.start + delta,
+        highestArena: 1,
+        arenaUnlocked: false,
+        gold: LOSS_GOLD,
+        packId: null,
+        repeated: true,
+      });
+      expect(store.snapshot()).toEqual(before);
     });
   }
 
-  it('closes a match with picks after the end or invalid picks', async () => {
-    const { store, env } = await world();
-    const t1 = await newMatch(store, env, A, 'easy');
-    const played = playHonest(t1, 1);
-    const e1 = failure(await report(store, env, A, t1.matchId, [...played.picks, 0]));
-    expect(e1).toEqual({ code: 'match_rejected', detail: 'leftover' });
-    expect((await store.getMatch(A, t1.matchId))?.result).toBe('abandoned');
-
-    const t2 = await newMatch(store, env, A, 'easy');
+  const BROKEN_REPORTS = [
+    {
+      label: 'picks after the end',
+      reason: 'leftover',
+      picks: (honest: number[]) => [...honest, 0],
+    },
     // Directly, past parseApiCall, which would refuse the slot already.
-    const e2 = failure(await report(store, env, A, t2.matchId, [99]));
-    expect(e2).toEqual({ code: 'match_rejected', detail: 'bad_picks' });
-    expect((await store.getMatch(A, t2.matchId))?.result).toBe('abandoned');
+    { label: 'only an invalid pick', reason: 'bad_picks', picks: () => [99] },
+    {
+      label: 'an invalid pick in the middle',
+      reason: 'bad_picks',
+      picks: (honest: number[]) => [...honest.slice(0, 3), OFFER_SIZE, ...honest.slice(4)],
+    },
+    {
+      label: 'a faked bot pick',
+      reason: 'bot_mismatch',
+      picks: (_: number[], played: Played) => fakeBotPick(played),
+    },
+  ] as const;
+
+  for (const { label, reason, picks: brokenPicks } of BROKEN_REPORTS) {
+    it(`books a report with ${label} (${reason}) like a lost match, but without gold`, async () => {
+      // Two identical worlds (same seeds, so the same ticket), past the provisional games.
+      const honest = await world(true, 3);
+      const broken = await world(true, 3);
+      for (const w of [honest, broken]) {
+        w.store.patchProfile(A, { elo: 1234, games_played: ELO.provisionalGames + 2, gold: 50 });
+      }
+      const ticket = await newMatch(honest.store, honest.env, A, 'medium');
+      expect(await newMatch(broken.store, broken.env, A, 'medium')).toEqual(ticket);
+      const lost = playFor(ticket, 'loss');
+      const ok = data(await report(honest.store, honest.env, A, ticket.matchId, lost.picks));
+      expect(ok.eloDelta).toBeLessThan(0);
+
+      const sent = brokenPicks(lost.picks, lost);
+      const e = failure(await report(broken.store, broken.env, A, ticket.matchId, sent));
+      expect(e).toEqual({ code: 'match_rejected', detail: reason });
+      const after = await profile(broken.store, A);
+      const reference = await profile(honest.store, A);
+      expect(after.elo).toBe(reference.elo);
+      expect(after.elo).toBe(1234 + ok.eloDelta);
+      expect(after.games_played).toBe(reference.games_played);
+      expect(after.games_played).toBe(ELO.provisionalGames + 3);
+      expect(after.highest_arena).toBe(reference.highest_arena);
+      expect(after.gold).toBe(50);
+      expect(reference.gold).toBe(50 + LOSS_GOLD);
+      expect(await broken.store.getMatch(A, ticket.matchId)).toMatchObject({
+        result: 'b_won',
+        elo_delta_a: ok.eloDelta,
+      });
+      expect(await broken.store.listPacks(A)).toHaveLength(1); // only the welcome pack
+    });
+  }
+
+  it('books two concurrent broken reports only once', async () => {
+    const { store, env } = await world();
+    const ticket = await newMatch(store, env, A, 'easy');
+    const played = playHonest(ticket, 1);
+    const broken = [...played.picks, 0];
+    const [r1, r2] = await Promise.all([
+      report(store, env, A, ticket.matchId, broken),
+      report(store, env, A, ticket.matchId, broken),
+    ]);
+    expect(failure(r1)).toEqual({ code: 'match_rejected', detail: 'leftover' });
+    // The second one answers with its own rejection, or with the booking of the first one.
+    if (!r2.ok) expect(r2.error).toEqual({ code: 'match_rejected', detail: 'leftover' });
+    else expect(r2.data).toMatchObject({ outcome: 'loss', repeated: true });
+    const delta = FRESH_ELO_DELTA.easy.loss;
+    expect(await profile(store, A)).toMatchObject({
+      elo: ELO.start + delta,
+      games_played: 1,
+      gold: 0,
+    });
   });
 
-  it('closes a match of another engine version or with an unknown bot', async () => {
+  it('a broken report that lost the race against another report books nothing', async () => {
     const { store, env } = await world();
+    const ticket = await newMatch(store, env, A, 'easy');
+    const played = playHonest(ticket, 1);
+    failure(await report(store, env, A, ticket.matchId, [...played.picks, 0]));
+    let calls = 0;
+    const racy = override(store, {
+      // The second request read the match before the first one booked it.
+      getMatch: async (user, id) => {
+        const m = await store.getMatch(user, id);
+        return calls++ === 0 && m !== null ? { ...m, result: 'pending', elo_delta_a: null } : m;
+      },
+    });
+    const before = store.snapshot();
+    expect(failure(await report(racy, env, A, ticket.matchId, [99]))).toEqual({
+      code: 'match_rejected',
+      detail: 'bad_picks',
+    });
+    expect(store.snapshot()).toEqual(before);
+  });
+
+  it('closes a match of another engine version or with an unknown bot without booking', async () => {
+    const { store, env } = await world();
+    const unchanged = { elo: ELO.start, games_played: 0, gold: 0 };
     const old = await store.createMatch(A, 'easy', BOT_PROFILES[0]!.id, 7, ENGINE_VERSION + 1);
     if (!old.ok) throw new Error(old.code);
     expect(failure(await report(store, env, A, old.value.id, [])).code).toBe('engine_mismatch');
     expect((await store.getMatch(A, old.value.id))?.result).toBe('abandoned');
+    expect(await profile(store, A)).toMatchObject(unchanged);
 
     const odd = await store.createMatch(A, 'easy', 'nobody', 7, ENGINE_VERSION);
     if (!odd.ok) throw new Error(odd.code);
@@ -678,6 +787,29 @@ describe('report_match', () => {
     expect(e.code).toBe('internal');
     expect(e.detail).toContain('bad_ticket');
     expect((await store.getMatch(A, odd.value.id))?.result).toBe('abandoned');
+    expect(await profile(store, A)).toMatchObject(unchanged);
+    expect(failure(await report(store, env, A, odd.value.id, []))).toEqual({
+      code: 'match_rejected',
+      detail: 'abandoned',
+    });
+  });
+
+  it('closes a match with a bot level the engine does not know without booking', async () => {
+    // The database allows levels the engine does not have yet (e.g. 'master'); invalid picks
+    // are found before the ticket is looked at, but the broken ticket is not the player's fault.
+    const { store, env } = await world();
+    const ticket = await newMatch(store, env, A, 'easy');
+    const masterly = override(store, {
+      getMatch: async (user, id) => {
+        const m = await store.getMatch(user, id);
+        return m === null ? null : { ...m, bot_level: 'master' as BotLevelId };
+      },
+    });
+    const e = failure(await report(masterly, env, A, ticket.matchId, [99]));
+    expect(e.code).toBe('internal');
+    expect(e.detail).toContain('unknown bot level master');
+    expect((await store.getMatch(A, ticket.matchId))?.result).toBe('abandoned');
+    expect(await profile(store, A)).toMatchObject({ elo: ELO.start, games_played: 0, gold: 0 });
   });
 
   it('answers a concurrent second report with the booked result', async () => {

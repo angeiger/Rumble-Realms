@@ -261,7 +261,8 @@ export function playFor(ticket: MatchTicket, want: MatchOutcome, tries = 40): Pl
  * A new easy match the human can win, and its winning picks. Some bot profiles almost always
  * beat the start deck (e.g. one easy profile wins about 98 % against random picks), and the
  * server chooses the profile. So a match without a winning line is dropped without any booking
- * (a report with a changed bot pick is closed as `abandoned`) and a new one is created.
+ * and a new one is created. The drop goes through the admin client: every way through the API
+ * books something (giving up and a rejected report count as a loss, D-084, D-086).
  */
 export async function winnableMatch(
   who: Pick<Guest, 'token'>,
@@ -273,10 +274,7 @@ export async function winnableMatch(
     });
     const played = playFor(ticket, 'win');
     if (played.outcome === 'win') return { ticket, played };
-    const cheated = playMatch(ticket, 1, 0);
-    expect(
-      await fails(who, 'report_match', { matchId: ticket.matchId, picks: cheated.picks }),
-    ).toBe('match_rejected');
+    await dropMatch(ticket.matchId);
   }
   throw new Error('winnableMatch: no winnable match in 10 attempts');
 }
@@ -349,6 +347,18 @@ export async function packOf(packId: string): Promise<PackRow & { user_id: strin
       .single(),
     'pack',
   ) as PackRow & { user_id: string };
+}
+
+/** Closes a pending match as `abandoned` without touching the profile (test setup only). */
+export async function dropMatch(matchId: string): Promise<void> {
+  const r = await admin()
+    .from('matches')
+    .update({ result: 'abandoned', finished_at: new Date().toISOString() })
+    .eq('id', matchId)
+    .eq('result', 'pending')
+    .select('id');
+  if (r.error !== null) throw new Error(`dropMatch: ${r.error.message}`);
+  if (r.data?.length !== 1) throw new Error(`dropMatch: match ${matchId} is not pending`);
 }
 
 export async function patchProfile(

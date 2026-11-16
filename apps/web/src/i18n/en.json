@@ -47,6 +47,7 @@
   "result.retry": "Try again",
   "result.failedUnavailable": "No connection. Your result is not saved yet.",
   "result.failedRejected": "This match was not counted.",
+  "result.failedRejectedLoss": "The report of this match was invalid. It counts as a loss.",
   "result.failedOutdated": "Your app is out of date. This match was not counted. Reload the page.",
   "result.failedOther": "Your result could not be saved.",
   "detail.close": "Close",

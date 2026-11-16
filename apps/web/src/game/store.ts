@@ -19,6 +19,8 @@ export interface MatchReport {
   result: ApiResponseOf<'report_match'> | null;
   /** state 'failed'. */
   error: StartError | null;
+  /** state 'failed': the server's detail, e.g. the reason of `match_rejected`. */
+  detail?: string;
 }
 
 export interface GameStore {
@@ -45,7 +47,10 @@ export interface GameStore {
   backToMenu: () => void;
 }
 
-/** The server will never accept this report: the match is over and not booked. */
+/**
+ * The server will never accept this report: the match is over. It may have been booked anyway
+ * (`match_rejected` for a broken report counts as a loss, D-084), so the profile is read again.
+ */
 const FINAL_REJECTIONS: readonly (ApiErrorCode | 'unavailable')[] = [
   'match_rejected',
   'engine_mismatch',
@@ -86,8 +91,22 @@ export const useGameStore = create<GameStore>()((set, get) => {
         return;
       }
       const error = errorOf(res.error);
-      if (FINAL_REJECTIONS.includes(error)) clearPendingMatch();
-      if (get().session === session) set({ report: { state: 'failed', result: null, error } });
+      if (FINAL_REJECTIONS.includes(error)) {
+        clearPendingMatch();
+        // Elo, games and the open match changed on the server; a failed call does not reload.
+        await useAccountStore.getState().refresh();
+      }
+      if (get().session === session) {
+        const detail = error === 'unavailable' ? undefined : res.error.detail;
+        set({
+          report: {
+            state: 'failed',
+            result: null,
+            error,
+            ...(detail === undefined ? {} : { detail }),
+          },
+        });
+      }
     } finally {
       reporting.delete(matchId);
     }

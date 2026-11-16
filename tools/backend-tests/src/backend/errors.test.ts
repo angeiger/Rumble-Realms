@@ -1,8 +1,14 @@
 /**
  * The important error codes of every action, resuming and forfeiting a match, a manipulated
- * bot pick and matches of another engine version.
+ * bot pick or picks after the end (both count as a loss) and matches of another engine version.
  */
-import { BOT_LEVELS, BOT_PROFILES, ENGINE_VERSION, MAX_LEVEL } from '@rumble-realms/engine';
+import {
+  BOT_LEVELS,
+  BOT_PROFILES,
+  ENGINE_VERSION,
+  LOSS_GOLD,
+  MAX_LEVEL,
+} from '@rumble-realms/engine';
 import { eloChange, levelUpCost } from '@rumble-realms/shared';
 import { describe, expect, it } from 'vitest';
 import { CONFIGURED } from './env.ts';
@@ -221,7 +227,7 @@ describe.skipIf(!CONFIGURED)('matches', () => {
     expect((await matchOf(fresh.ticket.matchId)).result).toBe('pending');
   });
 
-  it('rejects a manipulated bot pick and drops the match without Elo', async () => {
+  it('rejects a manipulated bot pick and books it as a loss without gold', async () => {
     const p = await namedGuest();
     const { ticket } = await ok(p, 'create_match', {
       botLevel: 'easy',
@@ -235,22 +241,79 @@ describe.skipIf(!CONFIGURED)('matches', () => {
       ok: false,
       error: { code: 'match_rejected', detail: 'bot_mismatch' },
     });
-    expect(await matchOf(ticket.matchId)).toMatchObject({
-      result: 'abandoned',
-      picks: cheated.picks,
-      elo_delta_a: 0,
+    const delta = eloChange({
+      elo: before.elo,
+      opponentElo: BOT_LEVELS.easy.elo,
+      score: 0,
+      gamesPlayed: before.games_played,
+      vsBot: true,
     });
-    expect(await profileOf(p.id)).toEqual(before);
+    expect(delta).toBeLessThan(0);
+    expect(await matchOf(ticket.matchId)).toMatchObject({
+      result: 'b_won',
+      picks: cheated.picks,
+      elo_delta_a: delta,
+    });
+    // Like giving up: the Elo of a loss, one more game, no consolation gold, no pack.
+    expect(await profileOf(p.id)).toEqual({
+      ...before,
+      elo: before.elo + delta,
+      games_played: before.games_played + 1,
+    });
     const packs = await admin().from('packs').select('id').eq('match_id', ticket.matchId);
     expect(packs.data).toEqual([]);
 
-    // Reporting the honest picks afterwards does not help.
+    // Reporting the honest picks afterwards books nothing. Known gap (handlers.ts,
+    // bookedResult): the answer is the stored loss with the usual consolation gold.
+    const after = await profileOf(p.id);
     const honest = playMatch(ticket, 7);
-    expect(await fails(p, 'report_match', { matchId: ticket.matchId, picks: honest.picks })).toBe(
-      'match_rejected',
-    );
+    expect(await ok(p, 'report_match', { matchId: ticket.matchId, picks: honest.picks })).toEqual({
+      outcome: 'loss',
+      eloDelta: delta,
+      elo: after.elo,
+      highestArena: after.highest_arena,
+      arenaUnlocked: false,
+      gold: LOSS_GOLD,
+      packId: null,
+      repeated: true,
+    });
+    expect(await profileOf(p.id)).toEqual(after);
     // The player can start the next match right away.
     await ok(p, 'create_match', { botLevel: 'easy', engineVersion: ENGINE_VERSION });
+  });
+
+  it('books picks after the end as a loss without gold', async () => {
+    // 'bad_picks' cannot be reached through HTTP: the request check refuses slots outside
+    // 0..OFFER_SIZE-1 (bad_request), and every offer has OFFER_SIZE slots. The handler tests
+    // cover it.
+    const p = await namedGuest();
+    // Below 1100, so the arena stays the same.
+    await patchProfile(p.id, { games_played: 40, elo: 1050, gold: 33 });
+    const { ticket } = await ok(p, 'create_match', {
+      botLevel: 'medium',
+      engineVersion: ENGINE_VERSION,
+    });
+    const before = await profileOf(p.id);
+    const sent = [...playMatch(ticket, 5).picks, 0];
+    const r = await call(p, 'report_match', { matchId: ticket.matchId, picks: sent });
+    expect(r.body).toEqual({ ok: false, error: { code: 'match_rejected', detail: 'leftover' } });
+    const delta = eloChange({
+      elo: before.elo,
+      opponentElo: BOT_LEVELS.medium.elo,
+      score: 0,
+      gamesPlayed: before.games_played,
+      vsBot: true,
+    });
+    expect(await matchOf(ticket.matchId)).toMatchObject({
+      result: 'b_won',
+      picks: sent,
+      elo_delta_a: delta,
+    });
+    expect(await profileOf(p.id)).toEqual({
+      ...before,
+      elo: before.elo + delta,
+      games_played: 41,
+    });
   });
 
   it('drops a match of another engine version', async () => {

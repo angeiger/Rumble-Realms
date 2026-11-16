@@ -2,8 +2,8 @@
  * Two requests at the same time (double click, retry) must never book twice (D-082): the SQL
  * functions lock the profile row and check the state again.
  */
-import { ENGINE_VERSION, WELCOME_PACK } from '@rumble-realms/engine';
-import { levelUpCost } from '@rumble-realms/shared';
+import { BOT_LEVELS, ENGINE_VERSION, WELCOME_PACK } from '@rumble-realms/engine';
+import { eloChange, levelUpCost } from '@rumble-realms/shared';
 import { describe, expect, it } from 'vitest';
 import { CONFIGURED } from './env.ts';
 import {
@@ -71,6 +71,38 @@ describe.skipIf(!CONFIGURED)('parallel requests', () => {
     expect(data.map((d) => d.repeated).sort()).toEqual([false, true]);
     expect(new Set(data.map((d) => d.eloDelta)).size).toBe(1);
     expect((await profileOf(p.id)).games_played).toBe(1);
+  });
+
+  it('book a rejected report (a loss, D-084) only once', async () => {
+    const p = await namedGuest();
+    const { ticket } = await ok(p, 'create_match', {
+      botLevel: 'easy',
+      engineVersion: ENGINE_VERSION,
+    });
+    const cheated = playMatch(ticket, 11, 0);
+    const before = await profileOf(p.id);
+    const answers = await Promise.all(
+      [0, 1].map(() => call(p, 'report_match', { matchId: ticket.matchId, picks: cheated.picks })),
+    );
+    for (const a of answers) {
+      expect(a.status).toBe(200);
+      // Each one is rejected, or a late one answers with the booking of the first one.
+      if (a.body.ok) expect(a.body.data).toMatchObject({ outcome: 'loss', repeated: true });
+      else expect(a.body.error).toEqual({ code: 'match_rejected', detail: 'bot_mismatch' });
+    }
+    expect(answers.some((a) => !a.body.ok)).toBe(true);
+    const delta = eloChange({
+      elo: before.elo,
+      opponentElo: BOT_LEVELS.easy.elo,
+      score: 0,
+      gamesPlayed: before.games_played,
+      vsBot: true,
+    });
+    expect(await profileOf(p.id)).toEqual({
+      ...before,
+      elo: before.elo + delta,
+      games_played: before.games_played + 1,
+    });
   });
 
   it('create only one match at a time', async () => {
