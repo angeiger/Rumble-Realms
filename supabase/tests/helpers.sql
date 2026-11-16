@@ -75,6 +75,32 @@ begin
 end;
 $$;
 
+-- Runs `statement` and expects the error of a write function (migration
+-- section 7): SQLSTATE P0001 with the message 'rr:<code>'.
+create function tests.throws_rr(statement text, code text, message text)
+returns void
+language plpgsql
+as $$
+declare
+  got_state text;
+  got_message text;
+begin
+  begin
+    execute statement;
+  exception when others then
+    get stacked diagnostics got_state = returned_sqlstate, got_message = message_text;
+  end;
+  if got_state is null then
+    raise exception 'FAILED: % (statement succeeded: %)', message, statement;
+  end if;
+  if got_state <> 'P0001' or got_message <> 'rr:' || code then
+    raise exception 'FAILED: % (expected P0001 "rr:%", got % "%")',
+      message, code, got_state, got_message;
+  end if;
+  perform tests.pass(message);
+end;
+$$;
+
 -- Runs `statement` and expects it to succeed.
 create function tests.lives(statement text, message text)
 returns void

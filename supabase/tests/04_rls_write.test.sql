@@ -52,7 +52,7 @@ select tests.throws($$delete from public.decks where user_id = '00000000-0000-00
 -- matches
 select tests.throws($$update public.matches set result = 'a_won' where player_a = '00000000-0000-0000-0000-00000000000a'$$,
                     '42501', 'A cannot change a match result');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000a', 'easy', 1, 1)$$,
+select tests.throws($$insert into public.matches (player_a, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000a', 'easy', 'goblin-gustav', 1, 1, '{}')$$,
                     '42501', 'A cannot create a match directly');
 select tests.throws($$delete from public.matches where player_a = '00000000-0000-0000-0000-00000000000a'$$,
                     '42501', 'A cannot delete own matches');
@@ -62,6 +62,8 @@ select tests.throws($$update public.packs set opened = true, contents = '{"gold"
                     '42501', 'A cannot open a pack directly');
 select tests.throws($$insert into public.packs (user_id) values ('00000000-0000-0000-0000-00000000000a')$$,
                     '42501', 'A cannot create a pack');
+select tests.throws($$insert into public.packs (user_id, kind) values ('00000000-0000-0000-0000-00000000000a', 'welcome')$$,
+                    '42501', 'A cannot grant itself a welcome pack');
 select tests.throws($$delete from public.packs where user_id = '00000000-0000-0000-0000-00000000000a'$$,
                     '42501', 'A cannot delete own packs');
 
@@ -92,7 +94,7 @@ select tests.throws($$update public.profiles set gold = 1$$, '42501', 'anon cann
 select tests.throws($$insert into public.player_cards (user_id, card_id) values ('00000000-0000-0000-0000-00000000000a', 'bat')$$,
                     '42501', 'anon cannot insert player_cards');
 select tests.throws($$delete from public.decks$$, '42501', 'anon cannot delete decks');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000a', 'easy', 1, 1)$$,
+select tests.throws($$insert into public.matches (player_a, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000a', 'easy', 'goblin-gustav', 1, 1, '{}')$$,
                     '42501', 'anon cannot insert matches');
 select tests.throws($$update public.packs set opened = true$$, '42501', 'anon cannot update packs');
 select tests.throws($$delete from public.friendships$$, '42501', 'anon cannot delete friendships');
@@ -120,7 +122,7 @@ select tests.lives($$insert into public.player_cards (user_id, card_id, copies) 
                    'service_role can add a card');
 select tests.lives($$update public.decks set cards = array['archer','knight','musketeer','healer'] where user_id = '00000000-0000-0000-0000-00000000000a'$$,
                    'service_role can set a deck');
-select tests.lives($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000a', 'hard', 9007199254740991, 1)$$,
+select tests.lives($$insert into public.matches (player_a, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000a', 'hard', 'steingolem-stefan', 9007199254740991, 1, '{}')$$,
                    'service_role can create a match');
 select tests.lives($$update public.packs set opened = true, contents = '{"kind": "gold", "amount": 120}' where id = '20000000-0000-0000-0000-00000000000a'$$,
                    'service_role can open a pack');

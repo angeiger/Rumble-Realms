@@ -1,14 +1,36 @@
-# Supabase project configuration, kept to the bare minimum on purpose.
+# Supabase project configuration.
 #
-# Why so short:
-# - With "Deploy to production" the GitHub integration applies new files from
-#   supabase/migrations/ to the production database. Of config.toml it only
-#   deploys Edge Functions and storage buckets declared here; API, Auth and
-#   seed settings are ignored for production unless a [remotes] block names
-#   the project. This file declares neither functions, buckets nor [remotes],
-#   so it cannot change any production setting (Auth providers, anonymous
-#   sign-ins, URLs) that is managed in the Supabase dashboard.
-# - project_id is only a local name for the Supabase CLI. It is NOT the
-#   reference of the real project, which never belongs in this public repo.
-# - Edge Functions are added in M4 together with the project owner.
+# What this file changes in PRODUCTION (GitHub integration, "Deploy to production"):
+# - new files in supabase/migrations/ are applied to the database,
+# - the Edge Functions declared below ([functions.<name>]) are deployed.
+# Everything else in this file (API, Auth, rate limits, seed) is ignored for production
+# unless a [remotes] block names the project. This file has no [remotes] block, so
+# Auth providers, anonymous sign-ins and URLs of the real project are managed in the
+# Supabase dashboard only (see docs/M4-BACKEND.md).
+#
+# What it changes LOCALLY (`supabase start`, tests in the VM and in CI): everything below.
+#
+# project_id is only a local name for the Supabase CLI. It is NOT the reference of the
+# real project, which never belongs in this public repo.
 project_id = "rumble-realms"
+
+# The one Edge Function behind all write actions (SPEC 14.2, D-082). It checks the caller's
+# access token itself (auth.getUser), so the platform check is off: that check does not work
+# with every kind of signing key, and the function must answer CORS preflights without a token.
+[functions.api]
+verify_jwt = false
+
+# --- Local stack only (ignored for production, see above) ---
+
+[auth]
+# "Als Gast spielen" (SPEC 9). In production: Authentication -> Sign In / Providers.
+enable_anonymous_sign_ins = true
+# Lets a guest account be linked to Google or e-mail later (SPEC 9).
+enable_manual_linking = true
+site_url = "http://127.0.0.1:5173"
+additional_redirect_urls = ["http://127.0.0.1:5173", "http://127.0.0.1:4173"]
+
+[auth.rate_limit]
+# The default (30 per hour and IP) is too low for automated tests, which create a new
+# guest account per test.
+anonymous_users = 100000

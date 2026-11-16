@@ -93,28 +93,69 @@ select tests.lives($$update public.decks set cards = array['bat','tnt','knight',
                    'deck with four different cards is accepted');
 
 -- ---- matches ----------------------------------------------------------------
-select tests.throws($$insert into public.matches (player_a, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', 1, 1)$$,
+-- Every statement is a valid finished bot match of C except for the one value
+-- under test, so it can only fail for the reason named.
+select tests.lives($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, result, finished_at) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}', 'b_won', now())$$,
+                   'valid finished bot match is accepted');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, null, null, 1, 1, '{"deck": []}')$$,
                     '23514', 'match without opponent is rejected');
-select tests.throws($$insert into public.matches (player_a, player_b, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000a', 'easy', 1, 1)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000a', 'easy', 'goblin-gustav', 1, 1, '{"deck": []}')$$,
                     '23514', 'match with human and bot opponent is rejected');
-select tests.throws($$insert into public.matches (player_a, player_b, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000c', 1, 1)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000c', null, null, 1, 1, '{"deck": []}')$$,
                     '23514', 'match against oneself is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', 'insane', 1, 1)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'insane', 'goblin-gustav', 1, 1, '{"deck": []}')$$,
                     '23514', 'unknown bot level is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version, result) values ('00000000-0000-0000-0000-00000000000c', 'easy', 1, 1, 'won')$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', null, 1, 1, '{"deck": []}')$$,
+                    '23514', 'bot match without bot profile is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000a', null, 'goblin-gustav', 1, 1, '{"deck": []}')$$,
+                    '23514', 'human match with a bot profile is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'Goblin-Gustav', 1, 1, '{"deck": []}')$$,
+                    '23514', 'bot profile with upper case is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin_gustav', 1, 1, '{"deck": []}')$$,
+                    '23514', 'bot profile with an underscore is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', '1goblin', 1, 1, '{"deck": []}')$$,
+                    '23514', 'bot profile starting with a digit is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'g' || repeat('x', 48), 1, 1, '{"deck": []}')$$,
+                    '23514', 'bot profile with 49 characters is rejected');
+select tests.lives($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, result, finished_at) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'g' || repeat('-', 47), 1, 1, '{"deck": []}', 'draw', now())$$,
+                   'bot profile with 48 characters is accepted');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, result) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}', 'won')$$,
                     '23514', 'unknown match result is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', 'easy', -1, 1)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', -1, 1, '{"deck": []}')$$,
                     '23514', 'negative seed is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', 'easy', 9007199254740992, 1)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 9007199254740992, 1, '{"deck": []}')$$,
                     '23514', 'seed above 2^53-1 is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version) values ('00000000-0000-0000-0000-00000000000c', 'easy', 1, 0)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 0, '{"deck": []}')$$,
                     '23514', 'engine_version 0 is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version, picks) values ('00000000-0000-0000-0000-00000000000c', 'easy', 1, 1, '{"a": 1}')$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, picks) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}', '{"a": 1}')$$,
                     '23514', 'picks that are not a JSON array are rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, seed, engine_version, elo_delta_b) values ('00000000-0000-0000-0000-00000000000c', 'easy', 1, 1, 5)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '[1, 2]')$$,
+                    '23514', 'setup that is not a JSON object is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, null)$$,
+                    '23502', 'match without setup is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, elo_delta_b) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}', 5)$$,
                     '23514', 'Elo change for the bot side is rejected');
-select tests.throws($$insert into public.matches (player_a, bot_level, engine_version) values ('00000000-0000-0000-0000-00000000000c', 'easy', 1)$$,
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', null, 1, '{"deck": []}')$$,
                     '23502', 'match without seed is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, finished_at) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}', now())$$,
+                    '23514', 'pending match with finished_at is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup, result) values ('00000000-0000-0000-0000-00000000000c', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}', 'a_won')$$,
+                    '23514', 'finished match without finished_at is rejected');
+select tests.throws($$insert into public.matches (player_a, player_b, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000b', null, 'easy', 'goblin-gustav', 1, 1, '{"deck": []}')$$,
+                    '23505', 'a second pending match for the same player is rejected');
+-- One pending match per player: a single one is fine, a second one is not.
+do $$
+begin
+  perform tests.lives($q$insert into public.matches (id, player_a, bot_level, bot_profile, seed, engine_version, setup) values ('10000000-0000-0000-0000-0000000000c1', '00000000-0000-0000-0000-00000000000c', 'easy', 'goblin-gustav', 1, 1, '{}')$q$,
+                      'first pending match of C is accepted');
+  perform tests.throws($q$insert into public.matches (player_a, bot_level, bot_profile, seed, engine_version, setup) values ('00000000-0000-0000-0000-00000000000c', 'hard', 'goblin-gustav', 2, 1, '{}')$q$,
+                       '23505', 'second pending match of C is rejected');
+  perform tests.lives($q$update public.matches set result = 'abandoned', finished_at = now() where id = '10000000-0000-0000-0000-0000000000c1'$q$,
+                      'the pending match of C can be closed');
+  perform tests.lives($q$insert into public.matches (player_a, bot_level, bot_profile, seed, engine_version, setup, result, finished_at) values ('00000000-0000-0000-0000-00000000000c', 'hard', 'goblin-gustav', 3, 1, '{}', 'a_won', now())$q$,
+                      'finished matches do not count against the pending limit');
+end;
+$$;
 
 -- ---- packs ------------------------------------------------------------------
 select tests.throws($$insert into public.packs (user_id, opened) values ('00000000-0000-0000-0000-00000000000c', true)$$,
@@ -125,6 +166,20 @@ select tests.throws($$insert into public.packs (user_id, match_id) values ('0000
                     '23505', 'a second pack for the same match is rejected');
 select tests.throws($$insert into public.packs (user_id, match_id) values ('00000000-0000-0000-0000-00000000000c', '10000000-0000-0000-0000-0000000000ff')$$,
                     '23503', 'pack for an unknown match is rejected');
+select tests.throws($$insert into public.packs (user_id, kind) values ('00000000-0000-0000-0000-00000000000c', 'bonus')$$,
+                    '23514', 'unknown pack kind is rejected');
+select tests.throws($$insert into public.packs (user_id, kind) values ('00000000-0000-0000-0000-00000000000c', null)$$,
+                    '23502', 'pack kind cannot be NULL');
+select tests.throws($$insert into public.packs (user_id, kind, match_id) values ('00000000-0000-0000-0000-00000000000c', 'welcome', '10000000-0000-0000-0000-0000000000bc')$$,
+                    '23514', 'welcome pack bound to a match is rejected');
+select tests.throws($$insert into public.packs (user_id, kind) values ('00000000-0000-0000-0000-00000000000b', 'welcome')$$,
+                    '23505', 'a second welcome pack for the same player is rejected');
+select tests.lives($$insert into public.packs (user_id, kind) values ('00000000-0000-0000-0000-00000000000c', 'welcome')$$,
+                   'the first welcome pack of a player is accepted');
+select tests.lives($$insert into public.packs (user_id) values ('00000000-0000-0000-0000-00000000000b')$$,
+                   'more match packs next to a welcome pack are accepted');
+select tests.eq((select kind from public.packs where id = '20000000-0000-0000-0000-00000000000a'), 'match',
+                'pack kind defaults to match');
 
 -- ---- friendships ------------------------------------------------------------
 select tests.throws($$insert into public.friendships (user_id, friend_id) values ('00000000-0000-0000-0000-00000000000c', '00000000-0000-0000-0000-00000000000c')$$,

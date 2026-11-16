@@ -52,8 +52,8 @@ $$;
 
 -- Deleting the account cascades to everything the player owns.
 insert into public.packs (user_id) values ('00000000-0000-0000-0000-0000000000d1');
-insert into public.matches (player_a, bot_level, seed, engine_version)
-values ('00000000-0000-0000-0000-0000000000d1', 'medium', 7, 1);
+insert into public.matches (player_a, bot_level, bot_profile, seed, engine_version, setup)
+values ('00000000-0000-0000-0000-0000000000d1', 'medium', 'lady-knochenkralle', 7, 1, '{"deck": ["archer", "knight", "skeleton", "healer"], "levels": {}, "upgrades": {}}');
 delete from auth.users where id = '00000000-0000-0000-0000-0000000000d1';
 
 do $$
