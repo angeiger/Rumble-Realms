@@ -183,6 +183,44 @@ function drawSkeleton(g: Graphics, t: TeamColors): void {
   done(g, t.main, 4);
 }
 
+/**
+ * Skeleton summoned by the necromancer (weaker than the card skeleton, D-077): violet bones,
+ * glowing green eyes, a short bone dagger instead of the club, no headband. The team colour
+ * stays on the tunic so that the owner is still clear.
+ */
+function drawSummonedSkeleton(g: Graphics, t: TeamColors): void {
+  seg(g, -6, -22, -7, -6, P.spiritBone, 5);
+  seg(g, 6, -22, 7, -6, P.spiritBone, 5);
+  foot(g, -7, P.spiritBone, 8);
+  foot(g, 7, P.spiritBone, 8);
+  // Short dagger.
+  seg(g, 22, -26, 31, -52, P.spiritBone, 5);
+  g.poly([27, -52, 35, -52, 31, -68]);
+  done(g, P.spiritBoneDark, 4);
+  g.roundRect(-14, -37, 28, 22, 6);
+  done(g, t.main);
+  g.moveTo(0, -35).lineTo(0, -17).stroke({ color: P.spiritBoneDark, width: 4, cap: 'round' });
+  seg(g, 12, -30, 24, -27, P.spiritBone, 5);
+  // Skull with glowing eyes.
+  g.circle(0, -54, 21);
+  done(g, P.spiritBone);
+  g.roundRect(-11, -42, 22, 11, 3);
+  done(g, P.spiritBone, 4);
+  g.ellipse(-8, -56, 6.5, 7.5).fill(P.necroDark);
+  g.ellipse(8, -56, 6.5, 7.5).fill(P.necroDark);
+  g.circle(-8, -55, 3.4).fill(P.necro);
+  g.circle(8, -55, 3.4).fill(P.necro);
+  g.poly([-3, -47, 3, -47, 0, -52]).fill(P.necroDark);
+  for (const x of [-5, 0, 5]) {
+    g.moveTo(x, -41).lineTo(x, -33).stroke({ color: P.necroDark, width: 2.5 });
+  }
+  // Small dark horns instead of the headband.
+  g.poly([-16, -68, -12, -82, -6, -71]);
+  done(g, P.necroDark, 4);
+  g.poly([16, -68, 12, -82, 6, -71]);
+  done(g, P.necroDark, 4);
+}
+
 function drawHealer(g: Graphics, t: TeamColors): void {
   foot(g, -9, P.cream);
   foot(g, 9, P.cream);
@@ -737,7 +775,8 @@ export type FigureId =
   | 'whelp'
   | 'zombie'
   | 'ghost'
-  | 'mini_golem';
+  | 'mini_golem'
+  | 'summoned_skeleton';
 
 const FIGURES: Record<FigureId, (g: Graphics, t: TeamColors) => void> = {
   archer: drawArcher,
@@ -759,6 +798,7 @@ const FIGURES: Record<FigureId, (g: Graphics, t: TeamColors) => void> = {
   zombie: drawZombie,
   ghost: drawGhost,
   mini_golem: drawMiniGolem,
+  summoned_skeleton: drawSummonedSkeleton,
 };
 
 export const FIGURE_IDS: readonly FigureId[] = Object.keys(FIGURES) as FigureId[];

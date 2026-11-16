@@ -16,6 +16,7 @@ import {
   coneSample,
   figureFor,
   impactShake,
+  isSummonedSkeleton,
   isHeld,
   lobArcHeight,
   lobPoint,
@@ -34,6 +35,7 @@ function unit(over: Partial<LookUnit> = {}): LookUnit {
     variant: 'normal',
     giant: false,
     ghost: false,
+    summonerId: 0,
     stacks: 0,
     shield: 0,
     ignoreHits: 0,
@@ -120,6 +122,34 @@ describe('figureFor and sizeFactor', () => {
     expect(sizeFactor(unit({ card: 'golem', variant: 'mini' }))).toBeLessThan(1);
     expect(sizeFactor(unit({ card: 'whelp', stacks: 3 }))).toBeCloseTo(1.3, 12);
     expect(sizeFactor(unit({ card: 'whelp', stacks: 1 }))).toBeCloseTo(1.1, 12);
+  });
+});
+
+describe('summoned skeleton', () => {
+  const summoned = unit({ card: 'skeleton', summonerId: 7 });
+  it('is a normal skeleton with a summoner', () => {
+    expect(isSummonedSkeleton(summoned)).toBe(true);
+    expect(isSummonedSkeleton(unit({ card: 'skeleton' }))).toBe(false);
+    expect(isSummonedSkeleton(unit({ card: 'archer', summonerId: 7 }))).toBe(false);
+  });
+  it('gets its own figure and a smaller size', () => {
+    expect(figureFor(summoned)).toBe('summoned_skeleton');
+    expect(sizeFactor(summoned)).toBeCloseTo(0.78, 12);
+    expect(sizeFactor(unit({ card: 'skeleton', summonerId: 7, stacks: 1 }))).toBeCloseTo(0.858, 12);
+  });
+  it('leaves the card skeleton unchanged', () => {
+    const card = unit({ card: 'skeleton' });
+    expect(figureFor(card)).toBe('skeleton');
+    expect(sizeFactor(card)).toBe(1);
+  });
+  it('leaves zombies, revived units and ghosts alone', () => {
+    const zombie = unit({ card: 'skeleton', variant: 'zombie', summonerId: 7 });
+    expect(figureFor(zombie)).toBe('zombie');
+    expect(sizeFactor(zombie)).toBe(1);
+    expect(figureFor(unit({ card: 'skeleton', variant: 'revived', summonerId: 7 }))).toBe(
+      'skeleton',
+    );
+    expect(figureFor(unit({ card: 'necromancer', ghost: true, summonerId: 7 }))).toBe('ghost');
   });
 });
 

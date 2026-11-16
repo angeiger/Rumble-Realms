@@ -38,6 +38,9 @@ export const PALETTE = {
   zombieDark: 0x5f8f42,
   necro: 0x7dff6a,
   necroDark: 0x1c1233,
+  /** Bones of a skeleton summoned by the necromancer: violet instead of cream. */
+  spiritBone: 0xb9a4ee,
+  spiritBoneDark: 0x7a62bd,
   ghost: 0xd6fff0,
 
   /** Harness only. */

@@ -29,6 +29,7 @@ export type LookUnit = Pick<
   | 'variant'
   | 'giant'
   | 'ghost'
+  | 'summonerId'
   | 'stacks'
   | 'shield'
   | 'ignoreHits'
@@ -76,11 +77,22 @@ export function isHeld(flags: number): boolean {
 
 // ---- figure, size, tint ---------------------------------------------------------------
 
+/**
+ * A skeleton summoned by a necromancer (also Knochenarmee and Seelenernte): a normal skeleton
+ * that has a summoner. Army skeletons have `summonerId === 0`. The zombie of a skeleton gets
+ * the dead skeleton as `summonerId` in both cases, so it cannot be told apart and is not
+ * covered here.
+ */
+export function isSummonedSkeleton(u: LookUnit): boolean {
+  return u.card === 'skeleton' && u.variant === 'normal' && u.summonerId !== 0;
+}
+
 /** The figure to draw for `u`. */
 export function figureFor(u: LookUnit): FigureId {
   if (u.ghost) return 'ghost';
   if (u.variant === 'zombie') return 'zombie';
   if (u.variant === 'mini') return 'mini_golem';
+  if (isSummonedSkeleton(u)) return 'summoned_skeleton';
   return u.card;
 }
 
@@ -88,6 +100,8 @@ const GIANT_SIZE = 1.6;
 const DAUGHTER_SIZE = 0.7;
 /** The mini golem figure is already drawn smaller than the golem (about 0.77), so about 0.6 in all. */
 const MINI_SIZE = 0.8;
+/** Summoned skeletons are drawn clearly smaller than the card skeleton. */
+const SUMMONED_SKELETON_SIZE = 0.78;
 const GROWTH_PER_STACK = 0.1;
 
 /** Size factor of the figure (1 = normal). */
@@ -96,6 +110,7 @@ export function sizeFactor(u: LookUnit): number {
   if (u.giant) s *= GIANT_SIZE;
   if (u.variant === 'daughter') s *= DAUGHTER_SIZE;
   else if (u.variant === 'mini') s *= MINI_SIZE;
+  else if (isSummonedSkeleton(u)) s *= SUMMONED_SKELETON_SIZE;
   return s * (1 + GROWTH_PER_STACK * u.stacks);
 }
 
