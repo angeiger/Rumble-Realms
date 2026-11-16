@@ -153,7 +153,8 @@ export const BOT_PROFILES: BotProfile[] = [
     id: 'professor-pulverdampf',
     name: 'Professor Pulverdampf',
     level: 'easy',
-    deck: ['musketeer', 'archer', 'knight', 'healer'],
+    // Musketeer, archer, knight and healer won 99 % against the starter deck (D-090).
+    deck: ['musketeer', 'archer', 'tnt', 'skeleton'],
   },
   // Medium: cards up to arena 2.
   {

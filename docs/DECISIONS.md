@@ -954,3 +954,16 @@ In der VM sind Docker, die Supabase CLI und Deno installiert. `supabase/tests/st
 abgespeckten lokalen Supabase-Stack (Datenbank, Anmeldung, API, Edge Functions; rund 350 MB Arbeitsspeicher).
 Dagegen laufen die Integrationstests des Servers und die Ende-zu-Ende-Tests der App, in der VM und in der CI.
 Die echte Datenbank wird dabei nie berührt.
+
+### D-090 Bot „Professor Pulverdampf“ (Leicht) bekommt ein schwächeres Deck (ändert D-065)
+
+- Gemessen mit dem Startdeck (Bogenschütze, Ritter, Skelette, Heiler) gegen die drei leichten Bots, je 200 Matches,
+  alle Karten auf Level 1, der Bot wählt zufällig (wie „Leicht“): Gegen Goblin-Gustav gewinnt man mit zufälligen
+  eigenen Picks 87 %, gegen Lady Knochenkralle 51 %, gegen Professor Pulverdampf (Musketier, Bogenschütze, Ritter,
+  Heiler) nur 1 %. Mit der Strategie „Mittel“ für die eigenen Picks: 100 %, 97 % und 11 %. Ein neuer Spieler hätte
+  also gegen einen von drei „leichten“ Bots fast nie gewonnen.
+- Neues Deck: **Musketier, Bogenschütze, Lauf-TNT, Skelette** (passt zum Namen: Pulver und Fernkampf). Das
+  Startdeck gewinnt dagegen 55 % (zufällige Picks) bzw. 90 % („Mittel“), also im Bereich der beiden anderen leichten
+  Bots. Verglichen wurden alle 20 Decks aus Musketier plus drei Karten der Arena 1.
+- `ENGINE_VERSION` bleibt 4: Version 4 ist noch nirgends ausgeliefert, es gibt also keine gespeicherten Matches mit
+  dem alten Deck. Ab dem Merge gilt: Jede Änderung an einem Bot-Deck braucht eine neue Version (D-084).

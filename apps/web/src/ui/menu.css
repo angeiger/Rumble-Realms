@@ -564,6 +564,11 @@
   text-align: center;
 }
 
+/* Above the result screen of a match (z-index 40), which offers "open pack" after a win. */
+.modal--pack {
+  z-index: 50;
+}
+
 .pack-dialog {
   max-width: 320px;
   max-height: 100%;

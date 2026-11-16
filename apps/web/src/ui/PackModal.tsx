@@ -117,7 +117,12 @@ export function PackModal({
   };
 
   return (
-    <div className="modal" data-testid="pack-modal" data-phase={phase} data-kind={shown.kind}>
+    <div
+      className="modal modal--pack"
+      data-testid="pack-modal"
+      data-phase={phase}
+      data-kind={shown.kind}
+    >
       <div
         className="dialog pack-dialog"
         role="dialog"

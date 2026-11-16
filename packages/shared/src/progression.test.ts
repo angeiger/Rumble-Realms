@@ -190,22 +190,22 @@ describe('rollPack (SPEC 7.4)', () => {
     expect(Math.abs(rarityShare('rare') - 0.25)).toBeLessThan(0.01);
     expect(Math.abs(rarityShare('epic') - 0.05)).toBeLessThan(0.01);
     const pool = new Set(cardPool(5));
-    for (const r of rolls) {
+    // One plain check per roll and a single expect at the end: a million expect calls made
+    // this test slow enough to time out on a busy machine.
+    const bad = rolls.filter((r) => {
+      let inRange: boolean;
       if (r.kind === 'cards') {
         const range = PACK.copies[CARDS[r.card].rarity];
-        expect(pool.has(r.card)).toBe(true);
-        expect(r.copies).toBeGreaterThanOrEqual(range.min);
-        expect(r.copies).toBeLessThanOrEqual(range.max);
+        inRange = pool.has(r.card) && r.copies >= range.min && r.copies <= range.max;
       } else if (r.kind === 'gold') {
-        expect(r.gold).toBeGreaterThanOrEqual(100);
-        expect(r.gold).toBeLessThanOrEqual(300);
+        inRange = r.gold >= 100 && r.gold <= 300;
       } else {
-        expect(r.jokers).toBeGreaterThanOrEqual(1);
-        expect(r.jokers).toBeLessThanOrEqual(3);
+        inRange = r.jokers >= 1 && r.jokers <= 3;
       }
-      expect(packRewardValid(r)).toBe(true);
-    }
-  });
+      return !inRange || !packRewardValid(r);
+    });
+    expect(bad.slice(0, 5)).toEqual([]);
+  }, 30_000);
 
   it('arena 1 never rolls epic cards and keeps to the pool and gold range', () => {
     const rolls = roll(1, 50_000);
