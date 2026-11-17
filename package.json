@@ -16,6 +16,7 @@
     "test:backend": "pnpm --filter @rumble-realms/backend-tests test:backend",
     "build": "pnpm -r --workspace-concurrency=1 --if-present build",
     "dev": "pnpm --filter @rumble-realms/web dev",
+    "dev:stack": "bash tools/dev-stack.sh",
     "preview": "pnpm --filter @rumble-realms/web preview",
     "sim": "pnpm --silent --filter @rumble-realms/sim-cli start",
     "test:robust": "pnpm --silent --filter @rumble-realms/sim-cli start robust",

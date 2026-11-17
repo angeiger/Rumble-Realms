@@ -140,6 +140,17 @@ nicht steuern; der Test spielt deshalb bis zu drei Matches, bis eines gewonnen i
 Minuten. Jeder Test legt eigene Konten an, die Datenbank muss dazwischen nicht geleert werden. Ohne geladene
 Adresse und Schlüssel werden die Tests mit einem Hinweis übersprungen.
 
+### Die App selbst gegen den lokalen Server ausprobieren
+
+```bash
+pnpm dev:stack
+```
+
+Startet den Stack (falls nötig) und danach die App wie `pnpm dev` auf http://localhost:5173, aber mit echter
+Anmeldung, Datenbank und Function statt des lokalen Modus. Der Browser spricht den Stack direkt unter
+`http://127.0.0.1:54321` an: Läuft der Browser auf einem anderen Rechner als die VM, muss neben Port 5173 auch
+Port 54321 weitergeleitet werden. Ein frisches Konto bekommst du über **Profil → Abmelden**.
+
 ### 4. Die Serverfunktion selbst prüfen
 
 ```bash
