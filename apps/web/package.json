@@ -9,12 +9,15 @@
     "typecheck": "tsc -p tsconfig.json && tsc -p tsconfig.node.json && tsc -p tsconfig.e2e.json",
     "test": "vitest run",
     "test:e2e": "playwright test",
+    "test:e2e:server": "playwright test -c playwright.server.config.ts",
     "icons": "node scripts/generate-icons.mjs"
   },
   "dependencies": {
     "@fontsource-variable/nunito": "^5.3.0",
     "@fontsource/lilita-one": "^5.3.0",
     "@rumble-realms/engine": "workspace:*",
+    "@rumble-realms/shared": "workspace:*",
+    "@supabase/supabase-js": "^2.119.0",
     "pixi.js": "^8.23.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",

@@ -1,9 +1,26 @@
 import { expect, test } from '@playwright/test';
-import { battle, collectErrors, lives, startMatch, waitForMyTurn } from './helpers.ts';
+import {
+  battle,
+  collectErrors,
+  enterGame,
+  lives,
+  handleWelcomePack,
+  parseEloLine,
+  openTab,
+  reloadToMenu,
+  signUp,
+  startMatch,
+  stat,
+  uniqueName,
+  waitForMyTurn,
+} from './helpers.ts';
 
 test('Titel: lädt ohne Konsolenfehler', async ({ page }) => {
   const errors = collectErrors(page);
   await page.goto('/');
+  await expect(page.getByTestId('welcome-screen')).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Rumble Realms' })).toBeVisible();
+  await enterGame(page);
   await expect(page.getByRole('heading', { name: 'Rumble Realms' })).toBeVisible();
   await expect(page.getByTestId('play-button')).toBeVisible();
   await expect(page.getByTestId('tab-bar')).toBeVisible();
@@ -15,7 +32,7 @@ test('Titel: lädt ohne Konsolenfehler', async ({ page }) => {
 // short-lived card image renderer emptied Pixi's global pools under the live battle renderer.
 test('Sofortstart: erstes Ausspielen ohne Renderer-Fehler', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/');
+  await enterGame(page);
   await page.getByTestId('play-button').click();
   await waitForMyTurn(page);
   await page.getByTestId('offer-card-0').click();
@@ -161,7 +178,11 @@ test('Feld bleibt zwischen Draft und Kampf gleich groß', async ({ page }) => {
 
 test('Ganzes Match bis zum Ergebnis', async ({ page }) => {
   test.setTimeout(6 * 60_000);
-  await startMatch(page);
+  await enterGame(page);
+  const eloBefore = await stat(page, 'elo');
+  const goldBefore = await stat(page, 'gold');
+  await page.getByTestId('play-button').click();
+  await expect(battle(page)).toBeVisible();
   await page.getByTestId('speed-toggle').click();
   await expect(page.getByTestId('speed-toggle')).toHaveAttribute('data-speed', '2');
 
@@ -224,8 +245,31 @@ test('Ganzes Match bis zum Ergebnis', async ({ page }) => {
   if (end.me === 0 && end.opp === 0) expect(outcome).toBe('draw');
   else expect(outcome).toBe(end.me === 0 ? 'loss' : 'win');
 
-  // Both ways out of the result are offered; "Zum Start" shares its action with the leave
-  // dialog, which has its own test.
+  // The result is saved: Elo follows the outcome, a win brings a pack, otherwise 10 gold of comfort.
+  await expect(page.getByTestId('result-report-state')).toHaveAttribute('data-state', 'done');
+  const { delta, elo: eloAfter } = parseEloLine(
+    (await page.getByTestId('result-elo').textContent()) ?? '',
+  );
+  expect(eloAfter).toBe(eloBefore + delta);
+  if (outcome === 'win') {
+    expect(delta).toBeGreaterThan(0);
+    await expect(page.getByTestId('result-pack')).toBeVisible();
+  } else {
+    expect(delta).toBeLessThanOrEqual(0);
+    await expect(page.getByTestId('result-gold')).toContainText('+10');
+    await expect(page.getByTestId('result-pack')).toHaveCount(0);
+  }
+  if (outcome === 'win') {
+    await page.getByTestId('result-open-pack').click();
+    await expect(page.getByTestId('pack-modal')).toBeVisible();
+    await page.getByTestId('pack-open').click();
+    await expect(page.getByTestId('pack-reward')).toBeVisible();
+    await page.getByTestId('pack-next').click();
+    await expect(page.getByTestId('pack-modal')).toBeHidden();
+    await expect(page.getByTestId('result-screen')).toBeVisible();
+  }
+
+  // Both ways out of the result are offered
   await expect(page.getByTestId('back-to-title')).toBeVisible();
 
   // Play again
@@ -234,6 +278,15 @@ test('Ganzes Match bis zum Ergebnis', async ({ page }) => {
   await expect(battle(page)).toHaveAttribute('data-round', '1');
   await expect(battle(page)).toHaveAttribute('data-phase', 'draft');
   expect(await lives(page)).toEqual({ me: 4, opp: 4 });
+
+  // Leaving the new match keeps it open; the menu shows the booked Elo and gold from before.
+  await page.getByTestId('leave-button').click();
+  await page.getByTestId('leave-confirm').click();
+  await expect(page.getByTestId('stat-bar')).toBeVisible();
+  expect(await stat(page, 'elo')).toBe(eloAfter);
+  if (outcome === 'win') expect(await stat(page, 'gold')).toBeGreaterThanOrEqual(goldBefore);
+  else expect(await stat(page, 'gold')).toBe(goldBefore + 10);
+  await expect(page.getByTestId('pending-match')).toBeVisible();
 });
 
 test('Verlassen: Abbrechen bleibt, Bestätigen führt zum Titel', async ({ page }) => {
@@ -286,61 +339,55 @@ test('Canvas: genau eins, sinnvolle Größe, nicht einfarbig', async ({ page }) 
   expect(colors).toBeGreaterThan(5);
 });
 
-test('Deck-Tab: Deck und Level bleiben nach Neuladen, Match nutzt das Deck', async ({ page }) => {
+test('Deck-Tab: Deck bleibt nach Neuladen, Match nutzt das Deck', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/');
-  await page.getByTestId('tab-deck').click();
+  await enterGame(page);
+  await openTab(page, 'deck');
   await expect(page.getByTestId('deck-screen')).toBeVisible();
   await expect(page.getByTestId('tab-bar')).toBeVisible();
   for (const [i, card] of ['archer', 'knight', 'skeleton', 'healer'].entries()) {
     await expect(page.getByTestId(`deck-slot-${i}`)).toHaveAttribute('data-card', card);
   }
 
-  // Tap a card without a chosen place: detail view with level picker, nothing changes
+  // Tap a card without a chosen place: detail view, nothing changes
   await page.getByTestId('deck-card-bat').click();
   await expect(page.getByTestId('card-detail')).toHaveAttribute('data-card', 'bat');
   await page.getByTestId('card-detail-close').click();
   await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-card', 'archer');
 
-  // Choose place 1, then the assassin; place 2, then TNT
+  // A place is chosen, then a card the player does not own: detail view, the deck stays
   await page.getByTestId('deck-slot-0').click();
   await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-selected', 'true');
   await page.getByTestId('deck-card-assassin').click();
-  await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-card', 'assassin');
+  await expect(page.getByTestId('card-detail')).toHaveAttribute('data-card', 'assassin');
+  await page.getByTestId('card-detail-close').click();
+  await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-card', 'archer');
+
+  // Place 1 gets the bat (owned), place 2 gets TNT
+  await page.getByTestId('deck-card-bat').click();
+  await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-card', 'bat');
   await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-selected', 'false');
   await page.getByTestId('deck-slot-1').click();
   await page.getByTestId('deck-card-tnt').click();
   await expect(page.getByTestId('deck-slot-1')).toHaveAttribute('data-card', 'tnt');
   await expect(page.getByTestId('deck-card-tnt')).toHaveAttribute('data-in-deck', 'true');
   await expect(page.getByTestId('deck-card-archer')).toHaveAttribute('data-in-deck', 'false');
+  await expect(page.getByTestId('deck-error')).toHaveCount(0);
 
-  // TNT to level 3 (values in the view follow at once)
-  await page.getByTestId('deck-card-tnt').click();
-  await expect(page.getByTestId('level-value')).toHaveAttribute('data-level', '1');
-  const hp1 = await page.getByTestId('card-detail').locator('.detail__row dd').nth(1).textContent();
-  await page.getByTestId('level-plus').click();
-  await page.getByTestId('level-plus').click();
-  await expect(page.getByTestId('level-value')).toHaveAttribute('data-level', '3');
-  await expect(page.getByTestId('level-value')).toHaveText('Level 3');
-  const hp3 = await page.getByTestId('card-detail').locator('.detail__row dd').nth(1).textContent();
-  expect(hp3).not.toBe(hp1);
-  await page.getByTestId('card-detail-close').click();
-  await expect(page.getByTestId('deck-slot-1')).toContainText('Level 3');
-
-  // Reload: deck and level are still there
-  await page.reload();
-  await page.getByTestId('tab-deck').click();
-  await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-card', 'assassin');
+  // Reload: the deck was saved
+  await reloadToMenu(page);
+  await openTab(page, 'deck');
+  await expect(page.getByTestId('deck-slot-0')).toHaveAttribute('data-card', 'bat');
   await expect(page.getByTestId('deck-slot-1')).toHaveAttribute('data-card', 'tnt');
-  await expect(page.getByTestId('deck-slot-1')).toContainText('Level 3');
   await expect(page.getByTestId('deck-slot-2')).toHaveAttribute('data-card', 'skeleton');
+  await expect(page.getByTestId('deck-slot-3')).toHaveAttribute('data-card', 'healer');
 
   // The battle tab shows the deck, and the match offers cards from it
-  await page.getByTestId('tab-battle').click();
+  await openTab(page, 'battle');
   await expect(page.getByTestId('mini-deck')).toContainText('Lauf-TNT');
   await page.getByTestId('play-button').click();
   await expect(battle(page)).toBeVisible();
-  const allowed = new Set(['assassin', 'tnt', 'skeleton', 'healer']);
+  const allowed = new Set(['bat', 'tnt', 'skeleton', 'healer']);
   for (let pick = 0; pick < 2; pick++) {
     await waitForMyTurn(page);
     const offers = await page.locator('[data-testid^="offer-card-"]').evaluateAll((els) =>
@@ -354,7 +401,7 @@ test('Deck-Tab: Deck und Level bleiben nach Neuladen, Match nutzt das Deck', asy
     for (const o of offers) {
       expect(allowed.has(o.card)).toBe(true);
       // Upgrade cards show the upgrade instead of values and level.
-      if (o.kind !== 'upgrade') expect(o.text).toContain(o.card === 'tnt' ? 'Level 3' : 'Level 1');
+      if (o.kind !== 'upgrade') expect(o.text).toContain('Level 1');
     }
     await page.getByTestId('offer-card-0').click();
     await expect(page.getByTestId('pick-hint')).toBeVisible();
@@ -386,6 +433,9 @@ test('PWA: Manifest, Service Worker, Offline-Shell', async ({ page, context }) =
     .poll(() => page.evaluate(() => navigator.serviceWorker.controller !== null))
     .toBe(true);
 
+  // The local mode needs no server: signed in, the menu comes up without a network too.
+  await signUp(page, uniqueName('pwa'));
+  await handleWelcomePack(page, 'open');
   await context.setOffline(true);
   await page.reload();
   await expect(page.getByTestId('play-button')).toBeVisible();
@@ -402,28 +452,40 @@ test('Querformat: Dreh-Hinweis nur im Querformat sichtbar', async ({ page }) => 
   await expect(hint).toBeHidden();
 });
 
-test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) => {
+test('Tabs: Deck | Kampf | Profil, Wechsel per Tippen und per Wischen', async ({ page }) => {
   const errors = collectErrors(page);
-  await page.goto('/');
+  await enterGame(page);
   const pager = page.getByTestId('tab-pager');
   await expect(pager).toHaveAttribute('data-tab', 'battle');
-  // Order in the tab bar: Deck | Kampf; the battle tab is active at start
+  // Order in the tab bar: Deck | Kampf | Profil; the battle tab is active at start
   const deckTab = await page.getByTestId('tab-deck').boundingBox();
   const battleTab = await page.getByTestId('tab-battle').boundingBox();
   expect((deckTab?.x ?? 1e9) + (deckTab?.width ?? 0)).toBeLessThanOrEqual((battleTab?.x ?? 0) + 1);
+  const profileTab = await page.getByTestId('tab-profile').boundingBox();
+  expect((battleTab?.x ?? 1e9) + (battleTab?.width ?? 0)).toBeLessThanOrEqual(
+    (profileTab?.x ?? 0) + 1,
+  );
   await expect(page.getByTestId('tab-battle')).toHaveAttribute('aria-current', 'page');
   const scrollLeft = (): Promise<number> => pager.evaluate((el) => el.scrollLeft);
   const width = (): Promise<number> => pager.evaluate((el) => el.clientWidth);
-  expect(await scrollLeft()).toBeGreaterThan((await width()) - 2);
+  // The battle page is the middle one: it rests one page width from the left edge.
+  const offBattle = async (): Promise<number> => Math.abs((await width()) - (await scrollLeft()));
+  expect(await offBattle()).toBeLessThan(2);
 
   // Tap: scrolls over to the deck page
   await page.getByTestId('tab-deck').click();
   await expect(pager).toHaveAttribute('data-tab', 'deck');
   await expect.poll(scrollLeft).toBeLessThan(2);
   await expect(page.getByTestId('deck-screen')).toBeInViewport();
+  await page.getByTestId('tab-profile').click();
+  await expect(pager).toHaveAttribute('data-tab', 'profile');
+  await expect
+    .poll(async () => Math.abs((await width()) * 2 - (await scrollLeft())))
+    .toBeLessThan(2);
+  await expect(page.getByTestId('profile-screen')).toBeInViewport();
   await page.getByTestId('tab-battle').click();
   await expect(pager).toHaveAttribute('data-tab', 'battle');
-  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+  await expect.poll(offBattle).toBeLessThan(2);
 
   // Swipe with real touch events (Chromium DevTools protocol): drag right = to the deck
   const cdp = await page.context().newCDPSession(page);
@@ -461,6 +523,12 @@ test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) =>
   await swipe(380, 60, 300);
   await expect(pager).toHaveAttribute('data-tab', 'battle');
   await expect(page.getByTestId('play-button')).toBeInViewport();
+  // Swipe left again = on to the profile page, swipe right = back
+  await swipe(380, 60, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'profile');
+  await swipe(60, 380, 300);
+  await expect(pager).toHaveAttribute('data-tab', 'battle');
+  await expect.poll(offBattle).toBeLessThan(2);
 
   // The tab follows the finger: the marker changes before the touch ends, and back again
   const drag = async (from: number, to: number, y: number): Promise<void> => {
@@ -481,7 +549,7 @@ test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) =>
   await touch('touchEnd', 0, 0);
   await page.waitForTimeout(800);
   await expect(pager).toHaveAttribute('data-tab', 'battle');
-  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+  await expect.poll(offBattle).toBeLessThan(2);
   await touch('touchStart', 60, 300);
   await drag(60, 300, 300);
   await expect(pager).toHaveAttribute('data-tab', 'deck');
@@ -492,7 +560,7 @@ test('Tabs: Deck links, Wechsel per Tippen und per Wischen', async ({ page }) =>
   await expect(page.getByTestId('page-deck')).not.toHaveAttribute('inert', /.*/);
   await swipe(380, 60, 300);
   await expect(pager).toHaveAttribute('data-tab', 'battle');
-  await expect.poll(async () => (await width()) - (await scrollLeft())).toBeLessThan(2);
+  await expect.poll(offBattle).toBeLessThan(2);
 
   // Tap a tab and swipe back at once: afterwards `data-tab` matches the visible page, which is not inert
   await page.getByTestId('tab-deck').click();

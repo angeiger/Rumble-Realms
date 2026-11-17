@@ -5,37 +5,30 @@
  * All randomness comes from the options (seeds), so a session is fully reproducible.
  */
 import {
-  ALL_UPGRADES_MASK,
   applyPick,
-  chooseBotPick,
-  BOT_LEVELS,
   createMatch,
   currentPlayer,
   endRound,
   getOffer,
   picksRemaining,
-  seedRng,
-  STREAM_BOT,
+  simulateToEnd,
+  startBattle,
   stepTick,
   type BattleEvent,
   type BattleState,
-  type BotProfile,
-  type CardId,
-  MAX_LEVEL,
   type MatchState,
-  type PlayerIndex,
+  type PlayerConfig,
   type RoundOutcome,
-  type RngState,
-  upgradesForLevel,
 } from '@rumble-realms/engine';
 import {
-  BOT_THINK_MS,
-  INTRO_MS,
-  MAX_FRAME_MS,
-  ROUND_END_MS,
-  START_DECK,
-  TICK_MS,
-} from './config.ts';
+  BOT,
+  botProfileOf,
+  HUMAN,
+  matchConfigOf,
+  nextBotPick,
+  type MatchTicket,
+} from '@rumble-realms/shared';
+import { BOT_THINK_MS, INTRO_MS, MAX_FRAME_MS, ROUND_END_MS, TICK_MS } from './config.ts';
 import type {
   BattleSpeed,
   FrameInfo,
@@ -46,22 +39,17 @@ import type {
 } from './types.ts';
 
 export interface LocalSessionOptions {
-  /** Match seed (non-negative safe integer). */
-  seed: number;
-  /** Seed of the bot's decisions; defaults to `seed`. */
-  botSeed?: number;
-  bot: BotProfile;
+  /** The server's ticket: seed, bot profile and the snapshot of the human's deck (D-084). */
+  ticket: MatchTicket;
   /** Name of the human player. The UI shows its own i18n text if this is empty. */
   playerName: string;
-  /** Defaults to `START_DECK`. */
-  playerDeck?: CardId[];
-  /** Levels of the human's cards; missing or invalid entries count as level 1. */
-  playerLevels?: Partial<Record<CardId, number>>;
   /**
-   * Unlocked upgrades of the human's cards, bit mask 0..7 per card (bit i = upgrade i).
-   * Missing cards have none. The bot owns what its card level allows (D-073).
+   * Picks already made (resume): replayed at once, without waiting times and without display.
+   * Invalid picks are ignored and the match starts from the beginning.
    */
-  playerUpgrades?: Partial<Record<CardId, number>>;
+  picks?: readonly number[];
+  /** Called after every pick (human and bot) with all picks of the match so far. */
+  onPick?: (picks: readonly number[]) => void;
 }
 
 /** The session plus access to the engine state, for tests (not part of the contract). */
@@ -72,40 +60,36 @@ export interface LocalSessionHandle {
 
 /** At most this many ticks per `advance` call; the rest of the time is dropped. */
 const MAX_TICKS_PER_FRAME = 10;
-const HUMAN: PlayerIndex = 0;
-const BOT: PlayerIndex = 1;
 
-function levelsOf(
-  deck: readonly CardId[],
-  level: number,
-  own?: Partial<Record<CardId, number>>,
-): Partial<Record<CardId, number>> {
-  const levels: Partial<Record<CardId, number>> = {};
-  for (const card of deck) {
-    const wanted = own?.[card];
-    levels[card] =
-      wanted !== undefined && Number.isInteger(wanted) && wanted >= 1 && wanted <= MAX_LEVEL
-        ? wanted
-        : level;
-  }
-  return levels;
+function infoOf(name: string, isBot: boolean, config: PlayerConfig): PlayerInfo {
+  return {
+    name,
+    isBot,
+    deck: [...config.deck],
+    levels: { ...config.levels },
+    upgrades: { ...(config.upgrades ?? {}) },
+  };
 }
 
-/** Unlocked upgrade masks of `deck`: `own` if valid (0..7), else `fallback`. */
-function masksOf(
-  deck: readonly CardId[],
-  fallback: number,
-  own?: Partial<Record<CardId, number>>,
-): Partial<Record<CardId, number>> {
-  const masks: Partial<Record<CardId, number>> = {};
-  for (const card of deck) {
-    const wanted = own?.[card];
-    masks[card] =
-      wanted !== undefined && Number.isInteger(wanted) && wanted >= 0 && wanted <= ALL_UPGRADES_MASK
-        ? wanted
-        : fallback;
+/**
+ * Plays `picks` into `match` without display. A battle that follows a pick is calculated to
+ * the end, except after the last pick (it is then shown). Returns false if a pick is invalid.
+ */
+function replayPicks(match: MatchState, picks: readonly number[]): boolean {
+  try {
+    for (const [i, slot] of picks.entries()) {
+      if ((match.phase as string) !== 'draft') return false;
+      if (!Number.isInteger(slot) || slot < 0 || slot >= getOffer(match).slots.length) return false;
+      applyPick(match, slot);
+      if (i < picks.length - 1 && match.phase === 'battle') {
+        simulateToEnd(startBattle(match));
+        endRound(match);
+      }
+    }
+    return true;
+  } catch {
+    return false;
   }
-  return masks;
 }
 
 /** Lives after the finished battle, computed like `endRound` does (shown during `roundEnd`). */
@@ -138,38 +122,34 @@ function deepFreeze<T>(value: T): T {
 
 /** Like `createLocalSession`, but also returns the engine state (for tests). */
 export function createLocalSessionHandle(options: LocalSessionOptions): LocalSessionHandle {
-  const playerDeck = [...(options.playerDeck ?? START_DECK)];
-  const botDeck = [...options.bot.deck];
-  const botLevel = BOT_LEVELS[options.bot.level];
+  const ticket = options.ticket;
+  const config = matchConfigOf(ticket);
+  if (config === null) {
+    throw new Error(
+      `createLocalSession: the ticket names an unknown bot profile (${String(ticket.botProfile)}, level ${String(ticket.botLevel)})`,
+    );
+  }
+  const profile = botProfileOf(ticket.botProfile);
+  const humanConfig = config.players[HUMAN];
+  const botConfig = config.players[BOT];
+  if (profile === null) throw new Error('createLocalSession: unknown bot profile');
   const players: [PlayerInfo, PlayerInfo] = [
-    {
-      name: options.playerName,
-      isBot: false,
-      deck: playerDeck,
-      levels: levelsOf(playerDeck, 1, options.playerLevels),
-      upgrades: masksOf(playerDeck, 0, options.playerUpgrades),
-    },
-    {
-      name: options.bot.name,
-      isBot: true,
-      deck: botDeck,
-      levels: levelsOf(botDeck, botLevel.cardLevel),
-      upgrades: masksOf(botDeck, upgradesForLevel(botLevel.cardLevel)),
-    },
+    infoOf(options.playerName, false, humanConfig),
+    infoOf(profile.name, true, botConfig),
   ];
-  const match = createMatch({
-    seed: options.seed,
-    players: [
-      { deck: playerDeck, levels: { ...players[0].levels }, upgrades: { ...players[0].upgrades } },
-      { deck: botDeck, levels: { ...players[1].levels }, upgrades: { ...players[1].upgrades } },
-    ],
-  });
-  const botRng: RngState = seedRng(options.botSeed ?? options.seed, STREAM_BOT);
+  let match: MatchState = createMatch(config);
+  const saved = options.picks ?? [];
+  if (saved.length > 0 && !replayPicks(match, saved)) {
+    // Unusable saved picks: start over instead of crashing.
+    match = createMatch(config);
+  }
   const events: BattleEvent[] = [];
 
-  let phase: SessionPhase = 'draft';
+  let phase: SessionPhase =
+    match.phase === 'finished' ? 'finished' : match.phase === 'battle' ? 'intro' : 'draft';
   let speed: BattleSpeed = 1;
-  let roundResult: RoundOutcome | null = null;
+  let roundResult: RoundOutcome | null =
+    match.phase === 'finished' ? (match.rounds[match.rounds.length - 1] ?? null) : null;
   /** Time spent in the current stage: bot thinking, intro or round end pause. */
   let timerMs = 0;
   /** Real time (times speed) not yet turned into ticks. */
@@ -216,6 +196,7 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
     applyPick(match, slot);
     timerMs = 0;
     if (match.phase === 'battle') phase = 'intro';
+    options.onPick?.([...match.picks]);
   }
 
   function humanTurn(): boolean {
@@ -236,6 +217,9 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
     },
     get battle(): BattleState {
       return match.battle;
+    },
+    get picks(): readonly number[] {
+      return [...match.picks];
     },
 
     play(slot) {
@@ -260,7 +244,7 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
           if (currentPlayer(match) !== BOT) break;
           timerMs += dt;
           if (timerMs >= BOT_THINK_MS) {
-            playSlot(chooseBotPick(match, options.bot.level, botRng));
+            playSlot(nextBotPick(match, ticket));
             changed = true;
           }
           break;
@@ -323,7 +307,12 @@ export function createLocalSessionHandle(options: LocalSessionOptions): LocalSes
   };
 
   snapshot = buildSnapshot();
-  return { session, match };
+  return {
+    session,
+    get match() {
+      return match;
+    },
+  };
 }
 
 export function createLocalSession(options: LocalSessionOptions): GameSession {

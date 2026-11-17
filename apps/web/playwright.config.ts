@@ -5,6 +5,8 @@ const PORT = 4173;
 export default defineConfig({
   testDir: 'e2e',
   testMatch: '**/*.e2e.ts',
+  // Tests against the real stack have their own configuration (playwright.server.config.ts).
+  testIgnore: '**/*.server.e2e.ts',
   timeout: 60_000,
   expect: { timeout: 15_000 },
   workers: 1,

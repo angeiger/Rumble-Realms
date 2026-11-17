@@ -1,5 +1,6 @@
 /** Timing and setup of a local match (presentation only; game rules live in the engine). */
 import type { CardId } from '@rumble-realms/engine';
+import { STARTER_DECK } from '@rumble-realms/engine';
 
 /** One engine tick in real time at speed 1 (20 ticks per second). */
 export const TICK_MS = 50;
@@ -13,4 +14,4 @@ export const INTRO_MS = 900;
 export const ROUND_END_MS = 2500;
 
 /** Start deck of every new player (SPEC 7.1). */
-export const START_DECK: CardId[] = ['archer', 'knight', 'skeleton', 'healer'];
+export const START_DECK: CardId[] = [...STARTER_DECK];

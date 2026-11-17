@@ -508,6 +508,34 @@
   text-align: center;
 }
 
+.result__report {
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 14px;
+  border: 4px solid var(--outline);
+  border-radius: 16px;
+  background: var(--cream);
+  color: var(--outline);
+  font-weight: 800;
+  text-align: center;
+}
+
+.result__note {
+  margin: 0;
+}
+
+.result__note--elo {
+  font-family: var(--font-display);
+  font-size: 1.2rem;
+}
+
+.result__note--pack {
+  color: #b45309;
+}
+
 .result__buttons {
   width: 100%;
   display: flex;

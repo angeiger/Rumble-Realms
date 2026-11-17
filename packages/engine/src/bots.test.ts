@@ -5,6 +5,9 @@ import {
   armyGroups,
   battleMargin,
   battleValue,
+  BOT_PICK_INDEX_MAX,
+  BOT_PICK_STREAM_BASE,
+  botPickRng,
   chooseBotPick,
   clash,
   cloneMatchState,
@@ -25,10 +28,19 @@ import { CARDS } from './data/cards.ts';
 import { hashState } from './hash.ts';
 import { applyPick, createMatch, endRound, getOffer, startBattle } from './match.ts';
 import { playMatch } from './play.ts';
-import { seedRng } from './rng.ts';
-import type { CardId, MatchState, OfferSlot, PlayerIndex } from './types.ts';
+import { nextU32, seedRng } from './rng.ts';
+import type { CardId, MatchState, OfferSlot, PlayerIndex, Winner } from './types.ts';
+import { ENGINE_VERSION } from './version.ts';
 
 const LEVELS: BotLevelId[] = ['easy', 'medium', 'hard'];
+
+/** Bot decisions pinned for ENGINE_VERSION 4 (see "keeps the bot decisions ..."). */
+const PINNED_PICKS: number[] = [
+  2, 2, 0, 1, 2, 1, 2, 0, 2, 0, 2, 0, 0, 0, 2, 2, 1, 0, 1, 2, 1, 1, 1, 1, 0, 2, 0,
+];
+const PINNED_WINNER: Winner = 0;
+/** Hard decisions in `lateState(21)`, `lateState(22)` and `lateState(23)`. */
+const PINNED_HARD: number[] = [1, 0, 2];
 
 function matchFor(deck: (typeof BOT_PROFILES)[number]['deck'], seed = 7): MatchState {
   return createMatch({
@@ -187,6 +199,94 @@ describe('chooseBotPick (all levels)', () => {
       },
     );
     expect(end.phase).toBe('finished');
+  });
+});
+
+describe('botPickRng (one stream per bot decision)', () => {
+  it('gives the same stream for the same seed and pick index', () => {
+    expect(botPickRng(42, 7)).toEqual(botPickRng(42, 7));
+    const a = botPickRng(2 ** 53 - 1, 0);
+    const b = botPickRng(2 ** 53 - 1, 0);
+    expect(Array.from({ length: 20 }, () => nextU32(a))).toEqual(
+      Array.from({ length: 20 }, () => nextU32(b)),
+    );
+  });
+
+  it('gives different streams for every pick index 0..255 and differs from the match streams', () => {
+    for (const seed of [0, 1, 20261114, 2 ** 53 - 1]) {
+      const seen = new Set<string>();
+      for (const stream of [1, 2, 3, 4, STREAM_BOT]) seen.add(seedRng(seed, stream).join(','));
+      for (let i = 0; i < 256; i++) {
+        const rng = botPickRng(seed, i);
+        // The state and the first outputs: no two decisions share a stream.
+        seen.add(rng.join(','));
+        seen.add(`out:${nextU32(rng)},${nextU32(rng)}`);
+      }
+      expect(seen.size).toBe(5 + 2 * 256);
+    }
+  });
+
+  it('gives different streams for different seeds', () => {
+    expect(botPickRng(1, 0)).not.toEqual(botPickRng(2, 0));
+    expect(botPickRng(0, 1)).not.toEqual(botPickRng(1, 0));
+  });
+
+  it('is built on its own stream numbers above the match streams', () => {
+    expect(BOT_PICK_STREAM_BASE).toBeGreaterThan(STREAM_BOT);
+    expect(botPickRng(9, 3)).toEqual(seedRng(9, BOT_PICK_STREAM_BASE + 3));
+  });
+
+  it('rejects invalid pick indexes and seeds', () => {
+    for (const bad of [-1, 0.5, BOT_PICK_INDEX_MAX + 1, Number.NaN]) {
+      expect(() => botPickRng(1, bad)).toThrow(/pickIndex/);
+    }
+    expect(() => botPickRng(-1, 0)).toThrow(/seed/);
+    expect(botPickRng(1, BOT_PICK_INDEX_MAX)).toHaveLength(4);
+  });
+
+  it.each(LEVELS)('%s with botPickRng is reproducible and leaves the state unchanged', (level) => {
+    const state = lateState();
+    const before = hashState(state);
+    const index = state.picks.length;
+    const a = chooseBotPick(state, level, botPickRng(state.config.seed, index));
+    const b = chooseBotPick(state, level, botPickRng(state.config.seed, index));
+    expect(a).toBe(b);
+    // On a copy of the state as well (the server rebuilds the state by replaying).
+    expect(chooseBotPick(cloneMatchState(state), level, botPickRng(state.config.seed, index))).toBe(
+      a,
+    );
+    expect(hashState(state)).toBe(before);
+  });
+
+  /**
+   * Bot decisions are part of ENGINE_VERSION since version 4: the server checks the bot's
+   * picks of a client against its own. If this test fails, a bot strategy, its data or its
+   * stream changed: raise ENGINE_VERSION (D-006) and update the expected picks here.
+   */
+  it('keeps the bot decisions of engine version 4 (medium against easy)', () => {
+    expect(ENGINE_VERSION).toBe(4);
+    const deck: CardId[] = ['knight', 'bat', 'archer', 'pyromancer'];
+    const who: BotLevelId[] = ['medium', 'easy'];
+    const end = playMatch(
+      {
+        seed: 3,
+        players: [
+          { deck, levels: {}, upgrades: { knight: 7, archer: 7 } },
+          { deck, levels: {}, upgrades: { bat: 7, pyromancer: 7 } },
+        ],
+      },
+      (s) => chooseBotPick(s, who[getOffer(s).player]!, botPickRng(s.config.seed, s.picks.length)),
+    );
+    expect(end.picks).toEqual(PINNED_PICKS);
+    expect(end.winner).toBe(PINNED_WINNER);
+  });
+
+  it('keeps the bot decisions of engine version 4 (hard)', () => {
+    const picks = [21, 22, 23].map((seed) => {
+      const state = lateState(seed);
+      return chooseBotPick(state, 'hard', botPickRng(state.config.seed, state.picks.length));
+    });
+    expect(picks).toEqual(PINNED_HARD);
   });
 });
 

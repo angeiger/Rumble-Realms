@@ -8,6 +8,7 @@ import {
   type RefObject,
 } from 'react';
 import { t } from '../i18n/index.ts';
+import type { MatchReport } from '../game/store.ts';
 import type { BattleSpeed, SessionSnapshot } from '../game/types.ts';
 import { EdgeInsetsContext } from '../render/BattleCanvas.tsx';
 import { NO_EDGE_INSETS, type EdgeInsets } from '../render/layout.ts';
@@ -25,10 +26,15 @@ export interface BattleActions {
   setSpeed: (speed: BattleSpeed) => void;
   leave: () => void;
   playAgain: () => void;
+  retryReport?: () => void;
+  /** Opens the reward pack of the match just won. */
+  openPack?: (packId: string) => void;
 }
 
 export interface BattleViewProps {
   snapshot: SessionSnapshot;
+  /** State of the report to the server, shown on the result screen. */
+  report?: MatchReport;
   actions: BattleActions;
   /** The field (the canvas); fills the whole screen, header and cards lie over it (D-043). */
   field: ReactNode;
@@ -130,7 +136,7 @@ function useEdgeInsets(): {
 }
 
 /** Whole battle screen for one snapshot. Pure: all state of the game comes in via props. */
-export function BattleView({ snapshot, actions, field }: BattleViewProps): ReactElement {
+export function BattleView({ snapshot, report, actions, field }: BattleViewProps): ReactElement {
   const [detail, setDetail] = useState<{ card: CardId; upgrade?: number | undefined } | null>(null);
   const [leaving, setLeaving] = useState(false);
   const { insets, headerRef, probeRef } = useEdgeInsets();
@@ -279,7 +285,14 @@ export function BattleView({ snapshot, actions, field }: BattleViewProps): React
       )}
 
       {phase === 'finished' && (
-        <ResultView snapshot={snapshot} onPlayAgain={actions.playAgain} onToTitle={actions.leave} />
+        <ResultView
+          snapshot={snapshot}
+          {...(report !== undefined ? { report } : {})}
+          onPlayAgain={actions.playAgain}
+          onToTitle={actions.leave}
+          {...(actions.retryReport !== undefined ? { onRetry: actions.retryReport } : {})}
+          {...(actions.openPack !== undefined ? { onOpenPack: actions.openPack } : {})}
+        />
       )}
     </main>
   );

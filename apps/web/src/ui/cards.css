@@ -260,8 +260,22 @@
 /* Detail dialog */
 .dialog--card {
   max-width: 340px;
+  max-height: 100%;
   padding-top: 14px;
   border-color: var(--outline);
+  /* Collection sections make the dialog long: it scrolls inside the modal. */
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+/* The close button sits inside the scrolling dialog: sticky, so that it is neither clipped by the
+   overflow at the top edge nor scrolled away. It takes no space in the flow. */
+.dialog--card .dialog__close {
+  position: sticky;
+  top: 4px;
+  right: auto;
+  z-index: 2;
+  margin: -10px -10px -34px auto;
 }
 
 .detail__art {
@@ -360,50 +374,7 @@
   }
 }
 
-/* Level picker in the detail view of the deck tab (test mode) */
-.level-picker {
-  margin: 0 0 10px;
-  padding: 6px 8px 8px;
-  border: 3px solid var(--outline);
-  border-radius: 14px;
-  background: #efe4b8;
-}
-
-.level-picker__row {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 14px;
-}
-
-.level-picker__btn {
-  width: 48px;
-  height: 48px;
-  font-size: 1.7rem;
-  line-height: 1;
-}
-
-.level-picker__btn:disabled {
-  opacity: 0.4;
-  cursor: default;
-}
-
-.level-picker__value {
-  min-width: 6.5ch;
-  font-family: var(--font-display);
-  font-size: 1.4rem;
-  text-align: center;
-}
-
-.level-picker__hint {
-  margin: 4px 0 0;
-  font-size: 0.78rem;
-  font-weight: 800;
-  text-align: center;
-  opacity: 0.7;
-}
-
-/* Upgrade list in the detail view, with test-mode switches (D-073). */
+/* Upgrade list in the detail view. */
 .detail__upgrades {
   margin-top: 10px;
 }
@@ -460,48 +431,113 @@
   line-height: 1.25;
 }
 
-/* On/off switch; the button is 48 px wide and tall enough to hit (touch target >= 44 px). */
-.switch {
+/* Collection part of the detail view (deck tab): level-up, upgrade buttons, jokers. */
+.detail__section {
+  margin-top: 10px;
+  padding: 8px 10px 10px;
+  border: 3px solid var(--outline);
+  border-radius: 14px;
+  background: #efe4b8;
+  text-align: center;
+}
+
+.detail__section-title {
+  margin: 0 0 6px;
+  font-family: var(--font-display);
+  font-weight: 400;
+  font-size: 1.1rem;
+}
+
+.detail__costs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: center;
+  gap: 4px 14px;
+  margin-bottom: 8px;
+  font-weight: 800;
+}
+
+.cost {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.cost__copies {
+  font-family: var(--font-display);
+  font-size: 1.1rem;
+}
+
+.cost--missing {
+  color: #b3261e;
+}
+
+.detail__have {
+  font-size: 0.85rem;
+  opacity: 0.8;
+}
+
+.detail__action {
+  min-width: 150px;
+}
+
+.detail__action:disabled,
+.upgrade-row__btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.detail__reason {
+  margin: 8px 0 0;
+  font-size: 0.85rem;
+  font-weight: 800;
+  color: #b3261e;
+}
+
+.detail__note {
+  margin: 0 0 8px;
+  font-weight: 800;
+  text-align: center;
+}
+
+.detail__error {
+  margin: 10px 0 0;
+  padding: 6px 10px;
+  border: 3px solid var(--outline);
+  border-radius: 12px;
+  background: #ffd9d4;
+  font-size: 0.9rem;
+  font-weight: 800;
+  text-align: center;
+}
+
+.upgrade-row[data-state='unlocked'] {
+  border-color: var(--green);
+}
+
+.upgrade-row__state {
   flex: none;
-  position: relative;
-  width: 52px;
-  height: 44px;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  cursor: pointer;
+  max-width: 7.5em;
+  font-size: 0.78rem;
+  font-weight: 800;
+  line-height: 1.2;
+  text-align: right;
+  opacity: 0.8;
 }
 
-.switch::before {
-  content: '';
-  position: absolute;
-  inset: 8px 0;
-  border: 3px solid var(--outline);
-  border-radius: 999px;
-  background: #9aa0b8;
+.upgrade-row__state--on {
+  color: #1d7a34;
+  opacity: 1;
 }
 
-.switch--on::before {
-  background: var(--green);
-}
-
-.switch__knob {
-  position: absolute;
-  top: 11px;
-  left: 5px;
-  width: 22px;
-  height: 22px;
-  border: 3px solid var(--outline);
-  border-radius: 50%;
-  background: var(--cream);
-  transition: transform 0.15s var(--ease-spring);
-}
-
-.switch--on .switch__knob {
-  transform: translateX(20px);
-}
-
-.switch:focus-visible {
-  outline: 3px solid var(--gold);
-  outline-offset: 2px;
+.upgrade-row__btn {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 44px;
+  min-height: 44px;
+  padding: 4px 10px;
+  font-size: 1rem;
 }

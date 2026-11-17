@@ -7,16 +7,22 @@
     "node": "22.x"
   },
   "scripts": {
-    "lint": "eslint . && prettier --check .",
+    "lint": "eslint . && prettier --check . && pnpm check:functions",
     "format": "prettier --write .",
     "typecheck": "pnpm -r --workspace-concurrency=1 --if-present typecheck",
     "test:e2e": "pnpm --filter @rumble-realms/web test:e2e",
+    "test:e2e:server": "pnpm --filter @rumble-realms/web test:e2e:server",
     "test": "pnpm -r --workspace-concurrency=1 --if-present test",
+    "test:backend": "pnpm --filter @rumble-realms/backend-tests test:backend",
     "build": "pnpm -r --workspace-concurrency=1 --if-present build",
     "dev": "pnpm --filter @rumble-realms/web dev",
+    "dev:stack": "bash tools/dev-stack.sh",
     "preview": "pnpm --filter @rumble-realms/web preview",
     "sim": "pnpm --silent --filter @rumble-realms/sim-cli start",
-    "test:robust": "pnpm --silent --filter @rumble-realms/sim-cli start robust"
+    "test:robust": "pnpm --silent --filter @rumble-realms/sim-cli start robust",
+    "sync:functions": "node tools/sync-functions.mjs",
+    "check:functions": "node tools/sync-functions.mjs --check",
+    "check:deno": "bash tools/check-deno.sh"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",

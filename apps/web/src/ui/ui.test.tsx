@@ -1,6 +1,7 @@
-import { CARD_IDS, CARDS, MAX_LEVEL, UPGRADES } from '@rumble-realms/engine';
+import { CARD_IDS, CARDS, UPGRADES } from '@rumble-realms/engine';
 import { renderToString } from 'react-dom/server';
 import { describe, expect, it } from 'vitest';
+import type { MatchReport } from '../game/store.ts';
 import type { SessionSnapshot } from '../game/types.ts';
 import de from '../i18n/de.json';
 import en from '../i18n/en.json';
@@ -11,7 +12,7 @@ import { CardView } from './CardView.tsx';
 import { DeckScreen } from './DeckScreen.tsx';
 import { TAB_ORDER, TabBar } from './TabBar.tsx';
 import { BotLevelPicker, TitleScreen } from './TitleScreen.tsx';
-import { START_DECK } from '../game/config.ts';
+import { fakePlayer } from './fakes.ts';
 
 // Card values come from the data, so a balance round does not break these tests.
 const KNIGHT_HP = CARDS.knight.hp;
@@ -63,8 +64,15 @@ function snap(patch: Partial<SessionSnapshot> = {}): SessionSnapshot {
   };
 }
 
-function view(s: SessionSnapshot): string {
-  return renderToString(<BattleView snapshot={s} actions={actions} field={<div />} />);
+function view(s: SessionSnapshot, report?: MatchReport): string {
+  return renderToString(
+    <BattleView
+      snapshot={s}
+      {...(report ? { report } : {})}
+      actions={{ ...actions, retryReport: noop }}
+      field={<div />}
+    />,
+  );
 }
 
 const roundResult = (
@@ -77,45 +85,60 @@ const roundResult = (
 });
 
 describe('TitleScreen', () => {
-  it('shows play button and version', () => {
+  it('shows the fight button and no longer the prototype hint', () => {
     const html = renderToString(
-      <TitleScreen onPlay={noop} deck={START_DECK} levels={{}} botLevel="easy" onBotLevel={noop} />,
+      <TitleScreen
+        player={fakePlayer()}
+        botLevel="easy"
+        onBotLevel={noop}
+        starting={false}
+        startError={null}
+        onPlay={noop}
+        onResume={noop}
+        onForfeit={noop}
+      />,
     );
     expect(html).toContain('data-testid="play-button"');
-    expect(html).toContain('Engine v');
+    expect(html).toContain('Kampf!');
+    expect(html).not.toContain('Prototyp');
   });
 });
 
 describe('TabBar', () => {
-  it('has the two tabs and marks the current one', () => {
+  it('has the three tabs and marks the current one', () => {
     const html = renderToString(<TabBar tab="deck" onSelect={noop} />);
     expect(html).toContain('data-testid="tab-battle"');
     expect(html).toContain('data-testid="tab-deck"');
+    expect(html).toContain('data-testid="tab-profile"');
     expect(html).toContain('Kampf');
+    expect(html).toContain('Profil');
     expect(html).toMatch(
       /aria-current="page"[^>]*data-testid="tab-deck"|data-testid="tab-deck"[^>]*aria-current="page"/,
     );
     expect(html.match(/aria-current/g)).toHaveLength(1);
   });
 
-  it('shows Deck left of Kampf', () => {
+  it('shows Deck left of Kampf left of Profil', () => {
     const html = renderToString(<TabBar tab="battle" onSelect={noop} />);
     expect(html.indexOf('data-testid="tab-deck"')).toBeLessThan(
       html.indexOf('data-testid="tab-battle"'),
     );
-    expect(TAB_ORDER).toEqual(['deck', 'battle']);
+    expect(html.indexOf('data-testid="tab-battle"')).toBeLessThan(
+      html.indexOf('data-testid="tab-profile"'),
+    );
+    expect(TAB_ORDER).toEqual(['deck', 'battle', 'profile']);
   });
 });
 
 describe('DeckScreen', () => {
   it('shows four places and every card of the game with the deck marked', () => {
-    const html = renderToString(<DeckScreen />);
+    const html = renderToString(<DeckScreen player={fakePlayer()} />);
     expect(html).toContain('data-testid="deck-screen"');
     for (let i = 0; i < 4; i++) expect(html).toContain(`data-testid="deck-slot-${i}"`);
     expect(html).toContain('Alle Karten');
     for (const id of CARD_IDS) expect(html).toContain(`data-testid="deck-card-${id}"`);
     expect(html.match(/data-in-deck="true"/g)).toHaveLength(4);
-    for (const id of START_DECK) {
+    for (const id of fakePlayer().deck) {
       expect(html).toMatch(new RegExp(`data-testid="deck-slot-\\d"[^>]*data-card="${id}"`));
     }
     expect(html).not.toContain('data-testid="card-detail"');
@@ -174,45 +197,8 @@ describe('CardDetail', () => {
 
   it('has no level control in the battle', () => {
     const html = renderToString(<CardDetail card="knight" level={2} onClose={noop} />);
-    expect(html).not.toContain('level-picker');
+    expect(html).not.toContain('level-up-button');
     expect(html).toContain('Level 2');
-  });
-
-  it('shows the level picker with test mode hint when a handler is given', () => {
-    const html = renderToString(
-      <CardDetail card="tnt" level={3} onClose={noop} onLevelChange={noop} />,
-    );
-    expect(html).toContain('data-testid="level-minus"');
-    expect(html).toContain('data-testid="level-plus"');
-    expect(html).toMatch(/data-testid="level-value" data-level="3"[^>]*>Level 3</);
-    expect(html).toContain('Testmodus: Level frei wählbar');
-    expect(html).not.toMatch(/data-testid="level-minus"[^>]*disabled/);
-    expect(html).not.toMatch(/data-testid="level-plus"[^>]*disabled/);
-  });
-
-  it('disables the buttons at the ends and updates with the level', () => {
-    const low = renderToString(
-      <CardDetail card="tnt" level={1} onClose={noop} onLevelChange={noop} />,
-    );
-    expect(low).toMatch(
-      /data-testid="level-minus"[^>]*disabled|disabled[^>]*data-testid="level-minus"/,
-    );
-    const high = renderToString(
-      <CardDetail card="tnt" level={MAX_LEVEL} onClose={noop} onLevelChange={noop} />,
-    );
-    expect(high).toMatch(
-      /data-testid="level-plus"[^>]*disabled|disabled[^>]*data-testid="level-plus"/,
-    );
-    expect(high).toContain(`Level ${MAX_LEVEL}`);
-    // The values follow the level (knight hp: +20 % at level 3).
-    const l1 = renderToString(
-      <CardDetail card="knight" level={1} onClose={noop} onLevelChange={noop} />,
-    );
-    const l3 = renderToString(
-      <CardDetail card="knight" level={3} onClose={noop} onLevelChange={noop} />,
-    );
-    expect(l1).toContain(String(KNIGHT_HP));
-    expect(l3).toContain(String(KNIGHT_HP_L3));
   });
 });
 
@@ -318,6 +304,135 @@ describe('BattleView', () => {
     expect(loss).toContain('data-outcome="loss"');
     expect(loss).toContain('Niederlage');
     expect(view(snap({ ...base, winner: 'draw', lives: [0, 0] }))).toContain('data-outcome="draw"');
+  });
+});
+
+describe('result: report to the server', () => {
+  const finished = snap({
+    phase: 'finished',
+    turn: null,
+    offer: null,
+    winner: 0,
+    lives: [2, 0],
+    roundResult: roundResult(0),
+  });
+  const booked = (over: Partial<NonNullable<MatchReport['result']>>): MatchReport => ({
+    state: 'done',
+    error: null,
+    result: {
+      outcome: 'win',
+      eloDelta: 12,
+      elo: 1012,
+      highestArena: 1,
+      arenaUnlocked: false,
+      gold: 0,
+      packId: 'p1',
+      repeated: false,
+      ...over,
+    },
+  });
+
+  it('shows nothing before the report starts', () => {
+    const html = view(finished);
+    expect(html).not.toContain('result-report-state');
+    expect(html).not.toContain('disabled=""');
+  });
+
+  it('sending: a note, "play again" is locked', () => {
+    const html = view(finished, { state: 'sending', result: null, error: null });
+    expect(html).toMatch(/data-testid="result-report-state" data-state="sending"/);
+    expect(html).toContain('Ergebnis wird gespeichert');
+    expect(html).toMatch(/<button[^>]*data-testid="play-again"[^>]*disabled/);
+    expect(html).not.toMatch(/<button[^>]*data-testid="back-to-title"[^>]*disabled/);
+  });
+
+  it('win: Elo with sign, reward pack, arena note, no gold', () => {
+    const html = view(finished, booked({ arenaUnlocked: true }));
+    expect(html).toMatch(/data-state="done"/);
+    expect(html).toMatch(/data-testid="result-elo">Elo: \+12 \(jetzt 1012\)/);
+    expect(html).toContain('data-testid="result-pack"');
+    expect(html).toContain('data-testid="result-arena"');
+    expect(html).not.toContain('result-gold');
+    expect(html).not.toMatch(/<button[^>]*data-testid="play-again"[^>]*disabled/);
+  });
+
+  it('win: "open pack" button only if the view can open packs', () => {
+    expect(view(finished, booked({}))).not.toContain('result-open-pack');
+    const html = renderToString(
+      <BattleView
+        snapshot={finished}
+        report={booked({})}
+        actions={{ ...actions, openPack: noop }}
+        field={<div />}
+      />,
+    );
+    expect(html).toContain('data-testid="result-open-pack"');
+    expect(html).toContain('Pack öffnen');
+  });
+
+  it('loss: negative Elo and consolation gold, no pack', () => {
+    const html = view(
+      { ...finished, winner: 1 },
+      booked({ outcome: 'loss', eloDelta: -8, elo: 992, gold: 15, packId: null }),
+    );
+    expect(html).toContain('Elo: \u22128 (jetzt 992)');
+    expect(html).toContain('Trost-Gold: +15');
+    expect(html).toContain('data-testid="result-gold"');
+    expect(html).not.toContain('result-pack');
+    expect(html).not.toContain('result-open-pack');
+    expect(html).not.toContain('result-arena');
+  });
+
+  it('failed without network: text and retry button', () => {
+    const html = view(finished, { state: 'failed', result: null, error: 'unavailable' });
+    expect(html).toMatch(/data-state="failed"/);
+    expect(html).toContain('Kein Netz');
+    expect(html).toContain('data-testid="result-retry"');
+    expect(html).toContain('Erneut versuchen');
+  });
+
+  it('failed because rejected or outdated: not counted, no retry', () => {
+    for (const error of ['match_rejected', 'match_not_found', 'engine_mismatch'] as const) {
+      const html = view(finished, { state: 'failed', result: null, error });
+      expect(html, error).toContain('nicht gewertet');
+      expect(html, error).not.toContain('result-retry');
+    }
+    for (const detail of ['incomplete', 'abandoned']) {
+      const html = view(finished, {
+        state: 'failed',
+        result: null,
+        error: 'match_rejected',
+        detail,
+      });
+      expect(html, detail).toContain('nicht gewertet');
+      expect(html, detail).not.toContain('Niederlage');
+    }
+  });
+
+  it('failed because the report was broken: counts as a loss, no retry', () => {
+    for (const detail of ['bot_mismatch', 'bad_picks', 'leftover']) {
+      const html = view(finished, {
+        state: 'failed',
+        result: null,
+        error: 'match_rejected',
+        detail,
+      });
+      expect(html, detail).toContain('Es zählt als Niederlage.');
+      expect(html, detail).not.toContain('nicht gewertet');
+      expect(html, detail).not.toContain('result-retry');
+    }
+    expect(en['result.failedRejectedLoss']).toContain('counts as a loss');
+  });
+
+  it('failed for another reason: generic text with retry', () => {
+    const html = view(finished, { state: 'failed', result: null, error: 'internal' });
+    expect(html).toContain('konnte nicht gespeichert werden');
+    expect(html).toContain('data-testid="result-retry"');
+  });
+
+  it('the leave dialog says the match stays open', () => {
+    expect(de['battle.leaveText']).toContain('bleibt offen');
+    expect(en['battle.leaveText']).toContain('stays open');
   });
 });
 
@@ -481,26 +596,6 @@ describe('card detail upgrades', () => {
     expect(html).toMatch(/data-testid="detail-upgrade-1"[^>]*data-highlight="true"/);
     expect(html).toMatch(/data-testid="detail-upgrade-0"[^>]*data-highlight="false"/);
     expect(html).not.toContain('role="switch"');
-  });
-
-  it('deck tab: a switch per upgrade, state from the mask, test mode note', () => {
-    const html = renderToString(
-      <CardDetail card="knight" level={1} onClose={noop} upgradeMask={5} onToggleUpgrade={noop} />,
-    );
-    expect(html.match(/role="switch"/g)).toHaveLength(3);
-    expect(html).toMatch(/data-testid="upgrade-switch-0"[^>]*/);
-    expect(html).toMatch(/aria-checked="true"[^>]*data-testid="upgrade-switch-0"/);
-    expect(html).toMatch(/aria-checked="false"[^>]*data-testid="upgrade-switch-1"/);
-    expect(html).toMatch(/aria-checked="true"[^>]*data-testid="upgrade-switch-2"/);
-    expect(html).toContain('Testmodus: Upgrades frei schaltbar');
-  });
-});
-
-describe('deck tab upgrades', () => {
-  it('shows the unlocked upgrades of every card as symbols (all by default)', () => {
-    const html = renderToString(<DeckScreen />);
-    expect(html.match(/data-testid="tile-upgrades"/g)).toHaveLength(4 + CARD_IDS.length);
-    expect(html).toContain('data-count="3"');
   });
 });
 

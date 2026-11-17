@@ -12,6 +12,7 @@ export * from './data/cards.ts';
 export * from './data/balance.ts';
 export * from './data/specials.ts';
 export * from './data/progression.ts';
+export * from './data/arenas.ts';
 export * from './data/upgrades.ts';
 export * from './upgrades.ts';
 export * from './data/bots.ts';

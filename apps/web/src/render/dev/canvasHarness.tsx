@@ -3,7 +3,7 @@
  * itself (the human picks slot 0 whenever an offer appears).
  * Query: seed=<n> (default 1), speed=1|2, deck=tnt,assassin,shroomling,bat (player deck).
  */
-import { BOT_PROFILES, CARDS, type CardId } from '@rumble-realms/engine';
+import { BOT_PROFILES, CARDS, ENGINE_VERSION, type CardId } from '@rumble-realms/engine';
 import { StrictMode, useEffect, useMemo } from 'react';
 import { createRoot } from 'react-dom/client';
 import { createLocalSession } from '../../game/session.ts';
@@ -26,7 +26,18 @@ function Harness() {
     const bot = BOT_PROFILES.find((b) => b.name.includes('Gustav')) ?? BOT_PROFILES[0];
     if (bot === undefined) throw new Error('No bot profile');
     const deck = parseDeck(deckParam) ?? START_DECK;
-    const s = createLocalSession({ seed, bot, playerName: 'Harness', playerDeck: deck });
+    const levels = Object.fromEntries(deck.map((card) => [card, 1]));
+    const s = createLocalSession({
+      ticket: {
+        matchId: 'harness',
+        seed,
+        engineVersion: ENGINE_VERSION,
+        botLevel: bot.level,
+        botProfile: bot.id,
+        player: { deck: [...deck], levels },
+      },
+      playerName: 'Harness',
+    });
     s.setSpeed(speed);
     return s;
   }, [seed, speed, deckParam]);
