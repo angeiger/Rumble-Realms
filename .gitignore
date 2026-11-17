@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-server
 dev-dist
 coverage
 .env
@@ -9,7 +10,9 @@ coverage
 *.tsbuildinfo
 # Playwright output
 test-results
+test-results-server
 playwright-report
+playwright-report-server
 blob-report
 playwright/.cache
 .DS_Store

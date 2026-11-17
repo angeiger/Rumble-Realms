@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "typecheck": "pnpm -r --workspace-concurrency=1 --if-present typecheck",
     "test:e2e": "pnpm --filter @rumble-realms/web test:e2e",
+    "test:e2e:server": "pnpm --filter @rumble-realms/web test:e2e:server",
     "test": "pnpm -r --workspace-concurrency=1 --if-present test",
     "test:backend": "pnpm --filter @rumble-realms/backend-tests test:backend",
     "build": "pnpm -r --workspace-concurrency=1 --if-present build",

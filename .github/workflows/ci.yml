@@ -56,7 +56,7 @@ jobs:
   # No secrets: the stack runs on the runner with its public default keys.
   backend:
     runs-on: ubuntu-latest
-    timeout-minutes: 25
+    timeout-minutes: 50
     permissions:
       contents: read
     steps:
@@ -91,6 +91,20 @@ jobs:
         run: pnpm test:backend
         env:
           BACKEND_TESTS_REQUIRED: '1'
+      # The app in a browser against the same stack: real guest sign-in, database and function.
+      - run: pnpm --filter @rumble-realms/web exec playwright install --with-deps chromium
+      - name: End-to-end tests against the stack
+        run: pnpm test:e2e:server
+        env:
+          BACKEND_TESTS_REQUIRED: '1'
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: playwright-results-server
+          path: |
+            apps/web/playwright-report-server
+            apps/web/test-results-server
+          retention-days: 7
       - name: Logs of the Edge Function
         if: failure()
         run: docker logs supabase_edge_runtime_rumble-realms 2>&1 | tail -n 200

@@ -42,11 +42,14 @@ export default tseslint.config(
   {
     ignores: [
       '**/dist/**',
+      '**/dist-server/**',
       '**/node_modules/**',
       '**/coverage/**',
       '**/dev-dist/**',
       '**/playwright-report/**',
+      '**/playwright-report-server/**',
       '**/test-results/**',
+      '**/test-results-server/**',
       '**/blob-report/**',
       // Generated, byte-identical copy of packages/engine and packages/shared (D-083); the
       // originals are linted. Checked by `pnpm check:functions`.

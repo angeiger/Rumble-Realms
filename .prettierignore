@@ -1,5 +1,6 @@
 node_modules
 dist
+dist-server
 dev-dist
 coverage
 pnpm-lock.yaml
@@ -7,7 +8,9 @@ docs/SPEC.md
 CLAUDE.md
 .claude/
 test-results
+test-results-server
 playwright-report
+playwright-report-server
 blob-report
 playwright/.cache
 # Generated copy of packages/engine and packages/shared (pnpm sync:functions, D-083)
